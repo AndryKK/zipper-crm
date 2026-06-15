@@ -51,11 +51,11 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
   });
 
   const [selectedCategories, setSelectedCategories] = useState<number[]>(
-    product?.categories?.map((c) => c.cid) ?? []
+    product?.categories?.map((c: any) => c.cid) ?? []
   );
   const [selectedFilters, setSelectedFilters] = useState<number[]>([]);
   const [chars, setChars] = useState<{ title: string; value: string }[]>(
-    product?.chars?.map((c) => ({ title: c.title, value: c.value ?? "" })) ?? []
+    product?.chars?.map((c: any) => ({ title: c.title, value: c.value ?? "" })) ?? []
   );
 
   const set = (k: string, v: unknown) => setForm((prev) => ({ ...prev, [k]: v }));
@@ -294,7 +294,7 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
             <div key={filter.id} className="border rounded-md overflow-hidden">
               <div className="bg-gray-50 px-4 py-2 font-medium text-sm">{filter.title}</div>
               <div className="p-3 flex flex-wrap gap-2">
-                {filter.filters.map((ff) => (
+                {filter.filters.map((ff: any) => (
                   <label key={ff.id} className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
                       type="checkbox"
