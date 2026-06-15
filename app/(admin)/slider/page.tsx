@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2, GripVertical } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { getImgUrl } from "@/lib/utils";
 
 export default function SliderPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,7 +98,7 @@ export default function SliderPage() {
                 </div>
                 {slide.img && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/img/upload-files/slider/${slide.img}`} alt="" className="h-20 w-32 rounded object-cover shrink-0" />
+                  <img src={getImgUrl(slide.img, "slider")} alt="" className="h-20 w-32 rounded object-cover shrink-0" />
                 )}
                 <div className="flex-1 space-y-2">
                   <Input defaultValue={slide.title} onBlur={(e) => updateSlide(slide.id, { title: e.target.value })} placeholder="Заголовок" />

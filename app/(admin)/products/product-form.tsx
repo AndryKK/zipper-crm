@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { transliterate } from "@/lib/utils";
+import { transliterate, getImgUrl } from "@/lib/utils";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 interface Props {
   product?: any;
@@ -419,7 +419,7 @@ function PhotosTab({ productId, photos, photos2 }: {
               <div key={p.id} className="relative group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`/img/upload-files/products/${p.img}`}
+                  src={getImgUrl(p.img, "products")}
                   alt=""
                   className="h-24 w-24 rounded-md object-cover border"
                 />
@@ -449,7 +449,7 @@ function PhotosTab({ productId, photos, photos2 }: {
               <div key={p.id} className="relative group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`/img/upload-files/products2/${p.img}`}
+                  src={getImgUrl(p.img, "products2")}
                   alt=""
                   className="h-24 w-24 rounded-md object-cover border"
                 />

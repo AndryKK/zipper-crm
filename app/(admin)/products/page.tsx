@@ -1,6 +1,7 @@
 ﻿import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { supabaseServer } from "@/lib/supabase";
+import { getImgUrl } from "@/lib/utils";
 import Link from "next/link";
 import { Plus, Pencil, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -176,7 +177,7 @@ export default async function ProductsPage({
                     {product.img ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={`/img/upload-files/products/${product.img}`}
+                        src={getImgUrl(product.img, "products")}
                         alt={product.title}
                         className="h-10 w-10 rounded object-cover"
                       />

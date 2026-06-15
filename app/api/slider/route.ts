@@ -1,8 +1,20 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+
+const BUCKET = "uploads";
+
+async function uploadFile(file: File, prefix: string): Promise<string | undefined> {
+  const filename = `${Date.now()}-${prefix}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
+  const storagePath = `slider/${filename}`;
+  const bytes = await file.arrayBuffer();
+  const { error } = await supabaseServer.storage
+    .from(BUCKET)
+    .upload(storagePath, bytes, { contentType: file.type || "image/jpeg", upsert: false });
+  if (error) return undefined;
+  const { data: { publicUrl } } = supabaseServer.storage.from(BUCKET).getPublicUrl(storagePath);
+  return publicUrl;
+}
 
 export async function GET() {
   const session = await auth();
@@ -23,22 +35,12 @@ export async function POST(req: NextRequest) {
   const file = formData.get("img") as File | null;
   const file2 = formData.get("img2") as File | null;
 
-  let img: string | undefined;
-  let img2: string | undefined;
+  await supabaseServer.storage.createBucket(BUCKET, { public: true }).catch(() => {});
 
-  const uploadDir = path.join(process.cwd(), "public", "img", "upload-files", "slider");
-  await mkdir(uploadDir, { recursive: true });
-
-  if (file && file.size > 0) {
-    const buf = Buffer.from(await file.arrayBuffer());
-    img = `${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
-    await writeFile(path.join(uploadDir, img), buf);
-  }
-  if (file2 && file2.size > 0) {
-    const buf = Buffer.from(await file2.arrayBuffer());
-    img2 = `${Date.now()}-m-${file2.name.replace(/[^a-z0-9.]/gi, "_")}`;
-    await writeFile(path.join(uploadDir, img2), buf);
-  }
+  const [img, img2] = await Promise.all([
+    file && file.size > 0 ? uploadFile(file, "d") : Promise.resolve(undefined),
+    file2 && file2.size > 0 ? uploadFile(file2, "m") : Promise.resolve(undefined),
+  ]);
 
   const { data: maxTransRow } = await supabaseServer
     .from("slider")
@@ -55,12 +57,7 @@ export async function POST(req: NextRequest) {
     const { data } = await supabaseServer.from("slider").insert({
       translation_id: translationId,
       lang: l.code,
-      title,
-      descr,
-      uri,
-      priority,
-      img,
-      img2,
+      title, descr, uri, priority, img, img2,
     }).select("*").single();
     return data;
   }));

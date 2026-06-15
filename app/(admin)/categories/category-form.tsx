@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { transliterate } from "@/lib/utils";
+import { transliterate, getImgUrl } from "@/lib/utils";
 import { Loader2, Upload } from "lucide-react";
 interface Props {
   category?: any | null;
@@ -152,7 +152,7 @@ export function CategoryForm({ category, parentCategories }: Props) {
           <div className="flex items-center gap-4">
             {currentImg ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/img/upload-files/categories/${currentImg}`} alt="" className="h-20 w-20 rounded object-cover border" />
+              <img src={getImgUrl(currentImg, "categories")} alt="" className="h-20 w-20 rounded object-cover border" />
             ) : (
               <div className="h-20 w-20 rounded bg-gray-100 border flex items-center justify-center text-gray-400 text-xs">Немає</div>
             )}
