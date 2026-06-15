@@ -10,29 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { transliterate } from "@/lib/utils";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
-import type {
-  Product, Category, Measure, AllFilter, AllFilterFilter, Lang,
-  ProductCategory, ProductPhoto, ProductPhoto2, ProductChar,
-  ProductColor, ProductTogether,
-} from "@/app/generated/prisma";
-
-type ProductWithRelations = Product & {
-  categories?: ProductCategory[];
-  photos?: ProductPhoto[];
-  photos2?: ProductPhoto2[];
-  chars?: ProductChar[];
-  colors?: (ProductColor & { productWith: { id: number; title: string; img: string | null } })[];
-  together?: (ProductTogether & { productWith: { id: number; title: string; img: string | null } })[];
-};
-
-type AllFilterWithChildren = AllFilter & { filters: AllFilterFilter[] };
-
 interface Props {
-  product?: ProductWithRelations;
-  categories: Category[];
-  measures: Measure[];
-  filters: AllFilterWithChildren[];
-  langs: Lang[];
+  product?: any;
+  categories: any[];
+  measures: any[];
+  filters: any[];
+  langs: any[];
   mode: "create" | "edit";
 }
 
@@ -93,7 +76,7 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
         filterIds: selectedFilters,
       };
 
-      let savedProduct: Product;
+      let savedProduct: any;
       if (mode === "create") {
         const res = await fetch("/api/products", {
           method: "POST",
@@ -400,8 +383,8 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
 
 function PhotosTab({ productId, photos, photos2 }: {
   productId: number;
-  photos: ProductPhoto[];
-  photos2: ProductPhoto2[];
+  photos: any[];
+  photos2: any[];
 }) {
   const [uploading, setUploading] = useState(false);
 

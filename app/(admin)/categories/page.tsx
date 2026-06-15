@@ -1,5 +1,5 @@
 import { Header } from "@/components/admin/header";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -8,30 +8,34 @@ import { CategoryRow } from "@/components/admin/category-row";
 export const dynamic = "force-dynamic";
 
 export default async function CategoriesPage() {
-  const [categories, ruCategories] = await Promise.all([
-    prisma.category.findMany({
-      where: { lang: "uk" },
-      orderBy: { priority: "asc" },
-    }),
-    prisma.category.findMany({
-      where: { lang: "ru" },
-      select: { id: true, translationId: true },
-    }),
+  const [{ data: categories }, { data: ruCategories }] = await Promise.all([
+    supabaseServer
+      .from("categories")
+      .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+      .eq("lang", "uk")
+      .order("priority", { ascending: true }),
+    supabaseServer
+      .from("categories")
+      .select("id, translation_id")
+      .eq("lang", "ru"),
   ]);
 
-  const ruIdMap = new Map(ruCategories.map((c) => [c.translationId, c.id]));
+  const allCats = (categories || []) as any[];
+  const allRu = (ruCategories || []) as any[];
 
-  const byPid = new Map<number, typeof categories>();
-  for (const cat of categories) {
+  const ruIdMap = new Map(allRu.map((c: any) => [c.translation_id, c.id]));
+
+  const byPid = new Map<number, any[]>();
+  for (const cat of allCats) {
     const arr = byPid.get(cat.pid) ?? [];
     arr.push(cat);
     byPid.set(cat.pid, arr);
   }
 
   function renderTree(pid: number, depth: number): React.JSX.Element[] {
-    return (byPid.get(pid) ?? []).flatMap((cat) => [
-      <CategoryRow key={cat.id} cat={cat} indent={depth} ruId={ruIdMap.get(cat.translationId)} />,
-      ...renderTree(cat.translationId, depth + 1),
+    return (byPid.get(pid) ?? []).flatMap((cat: any) => [
+      <CategoryRow key={cat.id} cat={cat} indent={depth} ruId={ruIdMap.get(cat.translation_id)} />,
+      ...renderTree(cat.translation_id, depth + 1),
     ]);
   }
 

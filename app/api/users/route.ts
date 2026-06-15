@@ -1,20 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const q = new URL(req.url).searchParams.get("q") ?? "";
-  const where = q ? { OR: [{ login: { contains: q } }, { person: { contains: q } }, { phone: { contains: q } }] } : {};
-  const items = await prisma.user.findMany({ where, orderBy: { id: "desc" }, take: 100, omit: { password: true } });
-  return NextResponse.json(items);
+
+  let query = supabaseServer
+    .from("users")
+    .select("id, login, person, phone, email, rank, status, addr_delivery:addrDelivery")
+    .order("id", { ascending: false })
+    .limit(100);
+
+  if (q) {
+    query = query.or(`login.ilike.%${q}%,person.ilike.%${q}%,phone.ilike.%${q}%`);
+  }
+
+  const { data: items } = await query;
+  return NextResponse.json(items || []);
 }
 
 export async function PUT(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, ...data } = await req.json();
-  const item = await prisma.user.update({ where: { id }, data, omit: { password: true } });
+  const { data: item } = await supabaseServer
+    .from("users")
+    .update(data)
+    .eq("id", id)
+    .select("id, login, person, phone, email, rank, status, addr_delivery:addrDelivery")
+    .single();
   return NextResponse.json(item);
 }

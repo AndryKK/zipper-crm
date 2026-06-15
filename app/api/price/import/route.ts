@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import * as XLSX from "xlsx";
 
@@ -30,16 +30,13 @@ export async function POST(req: NextRequest) {
     const price3 = row["Ціна 3"] ? parseFloat(String(row["Ціна 3"])) : null;
     const price3n = row["Мін. к-сть 3"] ? parseFloat(String(row["Мін. к-сть 3"])) : null;
 
-    const products = await prisma.product.findMany({ where: { pcode } });
-    if (!products.length) {
+    const { data: products } = await supabaseServer.from("products").select("id").eq("pcode", pcode);
+    if (!products?.length) {
       log.push(`⚠ Артикул "${pcode}" не знайдено`);
       continue;
     }
 
-    await prisma.product.updateMany({
-      where: { pcode },
-      data: { price, price_sale, price2, price2n, price3, price3n },
-    });
+    await supabaseServer.from("products").update({ price, price_sale, price2, price2n, price3, price3n }).eq("pcode", pcode);
     updated++;
     log.push(`✓ ${pcode} → ціна ${price} грн`);
   }

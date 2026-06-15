@@ -4,11 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
-import type { Article } from "@/app/generated/prisma";
 import { formatDate } from "@/lib/utils";
 
 type ArticleRowProps = {
-  article: Article;
+  article: any;
 };
 
 export function ArticleRow({ article }: ArticleRowProps) {

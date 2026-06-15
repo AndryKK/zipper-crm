@@ -1,5 +1,5 @@
 import { Header } from "@/components/admin/header";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import { CategoryForm } from "../category-form";
 
@@ -9,17 +9,28 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const isNew = id === "new";
 
-  const [category, allCategories] = await Promise.all([
-    isNew ? null : prisma.category.findUnique({ where: { id: parseInt(id) } }),
-    prisma.category.findMany({ where: { lang: "uk", pid: 0 }, orderBy: { title: "asc" } }),
+  const [{ data: category }, { data: allCategories }] = await Promise.all([
+    isNew
+      ? { data: null }
+      : supabaseServer
+          .from("categories")
+          .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+          .eq("id", parseInt(id))
+          .single(),
+    supabaseServer
+      .from("categories")
+      .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+      .eq("lang", "uk")
+      .eq("pid", 0)
+      .order("title", { ascending: true }),
   ]);
 
   if (!isNew && !category) notFound();
 
   return (
     <>
-      <Header title={isNew ? "Нова категорія" : `Редагувати: ${category!.title}`} />
-      <CategoryForm category={category} parentCategories={allCategories} />
+      <Header title={isNew ? "Нова категорія" : `Редагувати: ${(category as any)!.title}`} />
+      <CategoryForm category={category as any} parentCategories={(allCategories || []) as any[]} />
     </>
   );
 }

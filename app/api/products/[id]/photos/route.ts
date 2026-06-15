@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -24,9 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const filename = `${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
     await writeFile(path.join(uploadDir, filename), buffer);
 
-    const photo = gallery
-      ? await prisma.productPhoto2.create({ data: { pid: productId, img: filename } })
-      : await prisma.productPhoto.create({ data: { pid: productId, img: filename } });
+    const table = gallery ? "products_photos2" : "products_photos";
+    const { data: photo } = await supabaseServer.from(table).insert({ pid: productId, img: filename }).select("*").single();
     created.push(photo);
   }
 
@@ -37,14 +36,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await params;
   const { photoId, gallery } = await req.json();
 
-  if (gallery) {
-    await prisma.productPhoto2.delete({ where: { id: photoId } });
-  } else {
-    await prisma.productPhoto.delete({ where: { id: photoId } });
-  }
+  const table = gallery ? "products_photos2" : "products_photos";
+  await supabaseServer.from(table).delete().eq("id", photoId);
 
   return NextResponse.json({ success: true });
 }

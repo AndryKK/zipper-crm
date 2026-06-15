@@ -1,6 +1,6 @@
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Plus, Pencil, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,74 +17,126 @@ export default async function ProductsPage({
   const sp = await searchParams;
   const q = sp.q ?? "";
   const page = parseInt(sp.page ?? "1");
-  // catId is a translationId value (matches products_categories.cid)
   const catId = sp.cat !== undefined ? parseInt(sp.cat) : undefined;
   const limit = 30;
 
-  // Category filtering routes through RU products because
-  // products_categories.pid references RU product IDs.
-  // We find matching RU products, get their translationIds,
+  // Category filtering: find RU products in that category, get their translationIds,
   // then find UK products with those translationIds.
-  let catFilter: object = {};
-  if (catId === 0) {
-    catFilter = { pid: 0 };
-  } else if (catId !== undefined) {
-    const ruInCat = await prisma.product.findMany({
-      where: { lang: "ru", categories: { some: { cid: catId } } },
-      select: { translationId: true },
-    });
-    const tids = ruInCat.map((p) => p.translationId);
-    catFilter = { translationId: { in: tids } };
+  let translationIdFilter: number[] | null = null;
+  if (catId !== undefined && catId !== 0) {
+    const { data: ruInCat } = await supabaseServer
+      .from("products")
+      .select("translation_id")
+      .eq("lang", "ru")
+      .in(
+        "id",
+        (await supabaseServer.from("products_categories").select("pid").eq("cid", catId)).data?.map((r: any) => r.pid) || []
+      );
+    translationIdFilter = (ruInCat || []).map((p: any) => p.translation_id);
   }
 
-  const where = {
-    lang: "uk",
-    ...catFilter,
-    ...(q && {
-      OR: [
-        { title: { contains: q } },
-        { pcode: { contains: q } },
-      ],
-    }),
-  };
+  let query = supabaseServer
+    .from("products")
+    .select("*, label_action:labelAction, translation_id:translationId", { count: "exact" })
+    .eq("lang", "uk");
 
-  const activeCategory =
-    catId !== undefined && catId !== 0
-      ? await prisma.category.findFirst({ where: { translationId: catId, lang: "uk" }, select: { title: true } })
-      : null;
+  if (catId === 0) {
+    query = query.eq("pid", 0);
+  } else if (translationIdFilter !== null) {
+    if (translationIdFilter.length === 0) {
+      return (
+        <>
+          <Header title="Товари" />
+          <div className="p-6"><p className="text-gray-400">Товарів не знайдено</p></div>
+        </>
+      );
+    }
+    query = query.in("translation_id", translationIdFilter);
+  }
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      orderBy: [{ priority: "asc" }, { id: "desc" }],
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.product.count({ where }),
-  ]);
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,pcode.ilike.%${q}%`);
+  }
 
+  const { data: products, count } = await query
+    .order("priority", { ascending: true })
+    .order("id", { ascending: false })
+    .range((page - 1) * limit, page * limit - 1);
+
+  const total = count ?? 0;
   const totalPages = Math.ceil(total / limit);
+  const allProducts = (products || []) as any[];
 
-  // Batch-load UK category names via RU product links
-  const translationIds = products.map((p) => p.translationId);
-  type CatRow = { tid: number; cats: string };
-  const catRows: CatRow[] = translationIds.length
-    ? await prisma.$queryRawUnsafe<CatRow[]>(`
-        SELECT ru_p.translationId as tid,
-               GROUP_CONCAT(c.title ORDER BY c.title SEPARATOR ', ') as cats
-        FROM products ru_p
-        JOIN products_categories pc ON ru_p.id = pc.pid
-        JOIN categories c ON pc.cid = c.translationId AND c.lang = 'uk'
-        WHERE ru_p.lang = 'ru'
-          AND ru_p.translationId IN (${translationIds.join(",")})
-        GROUP BY ru_p.translationId
-      `)
-    : [];
-  const catMap = new Map<number, string>(catRows.map((r) => [Number(r.tid), r.cats]));
+  // Get active category title if filtering
+  let activeCategoryTitle: string | null = null;
+  if (catId !== undefined && catId !== 0) {
+    const { data: catRow } = await supabaseServer
+      .from("categories")
+      .select("title")
+      .eq("translation_id", catId)
+      .eq("lang", "uk")
+      .single();
+    activeCategoryTitle = (catRow as any)?.title ?? null;
+  }
+
+  // Batch-load UK category names via products_categories join
+  const tids = allProducts.map((p: any) => p.translation_id).filter(Boolean);
+  const catMap = new Map<number, string>();
+  if (tids.length) {
+    // Get RU product ids for these translation_ids
+    const { data: ruProds } = await supabaseServer
+      .from("products")
+      .select("id, translation_id")
+      .in("translation_id", tids)
+      .eq("lang", "ru");
+
+    if (ruProds?.length) {
+      const ruIds = ruProds.map((p: any) => p.id);
+      const { data: pcRows } = await supabaseServer
+        .from("products_categories")
+        .select("pid, cid")
+        .in("pid", ruIds);
+
+      const allCids = [...new Set((pcRows || []).map((r: any) => r.cid))];
+      if (allCids.length) {
+        const { data: catRows } = await supabaseServer
+          .from("categories")
+          .select("translation_id, title")
+          .in("translation_id", allCids)
+          .eq("lang", "uk");
+
+        const catTitleMap: Record<number, string> = {};
+        for (const c of catRows || []) {
+          catTitleMap[(c as any).translation_id] = (c as any).title;
+        }
+
+        // Build pid -> cids map
+        const pidCids: Record<number, number[]> = {};
+        for (const pc of pcRows || []) {
+          if (!pidCids[(pc as any).pid]) pidCids[(pc as any).pid] = [];
+          pidCids[(pc as any).pid].push((pc as any).cid);
+        }
+
+        // Map translation_id -> category names
+        const tidToRuId: Record<number, number> = {};
+        for (const rp of ruProds) {
+          tidToRuId[(rp as any).translation_id] = (rp as any).id;
+        }
+
+        for (const tid of tids) {
+          const ruId = tidToRuId[tid];
+          if (ruId && pidCids[ruId]) {
+            const names = pidCids[ruId].map((cid: number) => catTitleMap[cid]).filter(Boolean).join(", ");
+            catMap.set(tid, names);
+          }
+        }
+      }
+    }
+  }
 
   return (
     <>
-      <Header title={activeCategory ? `Товари — ${activeCategory.title}` : catId === 0 ? "Товари — без категорії" : "Товари"} />
+      <Header title={activeCategoryTitle ? `Товари — ${activeCategoryTitle}` : catId === 0 ? "Товари — без категорії" : "Товари"} />
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <ProductsSearch defaultValue={q} />
@@ -117,7 +169,7 @@ export default async function ProductsPage({
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
+              {allProducts.map((product: any) => (
                 <tr key={product.id} className="border-t hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{product.id}</td>
                   <td className="px-4 py-2.5">
@@ -134,21 +186,21 @@ export default async function ProductsPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{product.title}</div>
-                    {product.labelAction === 1 && <Badge variant="warning" className="mt-0.5">Акція</Badge>}
+                    {product.label_action === 1 && <Badge variant="warning" className="mt-0.5">Акція</Badge>}
                   </td>
                   <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{product.pcode ?? "—"}</td>
                   <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                     {product.price_sale ? (
                       <span>
-                        <span className="text-red-600">{product.price_sale.toFixed(2)}</span>
-                        <span className="text-gray-400 line-through ml-1 text-xs">{product.price.toFixed(2)}</span>
+                        <span className="text-red-600">{Number(product.price_sale).toFixed(2)}</span>
+                        <span className="text-gray-400 line-through ml-1 text-xs">{Number(product.price).toFixed(2)}</span>
                       </span>
                     ) : (
-                      <span>{product.price.toFixed(2)}</span>
+                      <span>{Number(product.price).toFixed(2)}</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-gray-500 text-xs">
-                    {catMap.get(product.translationId) ?? "—"}
+                    {catMap.get(product.translation_id) ?? "—"}
                   </td>
                   <td className="px-4 py-2.5">
                     {product.active === 1
@@ -168,7 +220,7 @@ export default async function ProductsPage({
                   </td>
                 </tr>
               ))}
-              {products.length === 0 && (
+              {allProducts.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                     Товарів не знайдено

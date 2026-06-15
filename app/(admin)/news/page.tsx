@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil } from "lucide-react";
@@ -8,12 +8,19 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
   const { page: pageStr, q } = await searchParams;
   const page = parseInt(pageStr ?? "1");
   const limit = 20;
-  const where = { lang: "uk", ...(q ? { title: { contains: q } } : {}) };
-  const [items, total] = await Promise.all([
-    prisma.news.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { priority: "asc" } }),
-    prisma.news.count({ where }),
-  ]);
+
+  let query = supabaseServer
+    .from("news")
+    .select("*", { count: "exact" })
+    .eq("lang", "uk");
+  if (q) query = query.ilike("title", `%${q}%`);
+  const { data: items, count } = await query
+    .order("priority", { ascending: true })
+    .range((page - 1) * limit, page * limit - 1);
+
+  const total = count ?? 0;
   const pages = Math.ceil(total / limit);
+  const allItems = (items || []) as any[];
 
   return (
     <>
@@ -34,11 +41,11 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
               </tr>
             </thead>
             <tbody>
-              {items.map((n) => (
+              {allItems.map((n: any) => (
                 <tr key={n.id} className="border-t hover:bg-gray-50">
                   <td className="px-4 py-2 text-gray-400">{n.priority}</td>
                   <td className="px-4 py-2 font-medium">{n.title}</td>
-                  <td className="px-4 py-2 text-gray-500 text-xs">{n.data.toLocaleDateString("uk-UA")}</td>
+                  <td className="px-4 py-2 text-gray-500 text-xs">{new Date(n.data).toLocaleDateString("uk-UA")}</td>
                   <td className="px-4 py-2 text-right">
                     <Button variant="ghost" size="sm" asChild>
                       <Link href={`/news/${n.id}`}><Pencil className="h-4 w-4" /></Link>

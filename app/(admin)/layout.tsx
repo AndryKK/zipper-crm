@@ -1,27 +1,36 @@
 import { Sidebar } from "@/components/admin/sidebar";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const catRoots = await prisma.category.findMany({
-    where: { lang: "uk", pid: 0 },
-    orderBy: { priority: "asc" },
-    select: { id: true, translationId: true, title: true },
-  });
+  const { data: catRoots } = await supabaseServer
+    .from("categories")
+    .select("id, translation_id, title")
+    .eq("lang", "uk")
+    .eq("pid", 0)
+    .order("priority", { ascending: true });
 
-  const catChildren = await prisma.category.findMany({
-    where: { lang: "uk", pid: { in: catRoots.map((r) => r.translationId) } },
-    orderBy: { priority: "asc" },
-    select: { id: true, translationId: true, title: true, pid: true },
-  });
+  const roots = catRoots || [];
+  const rootTransIds = roots.map((r: any) => r.translation_id);
 
-  const catalogRoots = catRoots.map((root) => ({
-    id: root.translationId,
+  const { data: catChildren } = rootTransIds.length
+    ? await supabaseServer
+        .from("categories")
+        .select("id, translation_id, title, pid")
+        .eq("lang", "uk")
+        .in("pid", rootTransIds)
+        .order("priority", { ascending: true })
+    : { data: [] };
+
+  const children2 = catChildren || [];
+
+  const catalogRoots = roots.map((root: any) => ({
+    id: root.translation_id,
     title: root.title,
-    children: catChildren
-      .filter((c) => c.pid === root.translationId)
-      .map((c) => ({ id: c.translationId, title: c.title })),
+    children: children2
+      .filter((c: any) => c.pid === root.translation_id)
+      .map((c: any) => ({ id: c.translation_id, title: c.title })),
   }));
 
   return (

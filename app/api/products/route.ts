@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -12,31 +12,21 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = parseInt(searchParams.get("limit") ?? "50");
 
-  const where = {
-    lang,
-    ...(q && {
-      OR: [
-        { title: { contains: q } },
-        { pcode: { contains: q } },
-        { uri: { contains: q } },
-      ],
-    }),
-  };
+  let query = supabaseServer
+    .from("products")
+    .select("*, label_action:labelAction, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr", { count: "exact" })
+    .eq("lang", lang);
 
-  const [items, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      orderBy: [{ priority: "asc" }, { id: "desc" }],
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        categories: { include: { category: { select: { title: true } } } },
-      },
-    }),
-    prisma.product.count({ where }),
-  ]);
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,pcode.ilike.%${q}%,uri.ilike.%${q}%`);
+  }
 
-  return NextResponse.json({ items, total, page, limit });
+  const { data: items, count } = await query
+    .order("priority", { ascending: true })
+    .order("id", { ascending: false })
+    .range((page - 1) * limit, page * limit - 1);
+
+  return NextResponse.json({ items: items || [], total: count ?? 0, page, limit });
 }
 
 export async function POST(req: NextRequest) {
@@ -46,30 +36,35 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { categoryIds, ...data } = body;
 
-  const maxTransId = await prisma.product.aggregate({ _max: { translationId: true } });
-  const translationId = (maxTransId._max.translationId ?? 0) + 1;
+  const { data: maxTransRow } = await supabaseServer
+    .from("products")
+    .select("translation_id")
+    .order("translation_id", { ascending: false })
+    .limit(1)
+    .single();
+  const translationId = ((maxTransRow as any)?.translation_id ?? 0) + 1;
 
-  const langs = await prisma.lang.findMany({ where: { active: 1 } });
+  const { data: langs } = await supabaseServer.from("langs").select("*").eq("active", 1);
+  const activeLangs = langs || [];
 
   const products = await Promise.all(
-    langs.map((l) =>
-      prisma.product.create({
-        data: {
-          ...data,
-          lang: l.code,
-          translationId,
-          title: l.code === data.lang ? data.title : `[${l.code}] ${data.title}`,
-        },
-      })
-    )
+    activeLangs.map(async (l: any) => {
+      const { data: p } = await supabaseServer.from("products").insert({
+        ...data,
+        lang: l.code,
+        translation_id: translationId,
+        title: l.code === data.lang ? data.title : `[${l.code}] ${data.title}`,
+      }).select("*").single();
+      return p;
+    })
   );
 
-  const mainProduct = products.find((p) => p.lang === (data.lang ?? "uk"))!;
+  const mainProduct = products.find((p: any) => p?.lang === (data.lang ?? "uk")) ?? products[0];
 
-  if (categoryIds?.length) {
-    await prisma.productCategory.createMany({
-      data: categoryIds.map((cid: number) => ({ pid: mainProduct.id, cid })),
-    });
+  if (categoryIds?.length && mainProduct) {
+    await supabaseServer.from("products_categories").insert(
+      categoryIds.map((cid: number) => ({ pid: (mainProduct as any).id, cid }))
+    );
   }
 
   return NextResponse.json(mainProduct, { status: 201 });

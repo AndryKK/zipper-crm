@@ -1,6 +1,6 @@
 import { Header } from "@/components/admin/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { ShoppingCart, Package, Users, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -8,21 +8,32 @@ export const dynamic = "force-dynamic";
 
 async function getStats() {
   const [
-    productsCount, ordersCount, usersCount, articlesCount,
-    recentOrders,
+    { count: productsCount },
+    { count: ordersCount },
+    { count: usersCount },
+    { count: articlesCount },
+    { data: recentOrders },
   ] = await Promise.all([
-    prisma.product.count({ where: { lang: "uk" } }),
-    prisma.order.count(),
-    prisma.user.count(),
-    prisma.article.count({ where: { lang: "uk" } }),
-    prisma.order.findMany({
-      orderBy: { date: "desc" },
-      take: 10,
-      include: { items: true },
-    }),
+    supabaseServer.from("products").select("*", { count: "exact", head: true }).eq("lang", "uk"),
+    supabaseServer.from("orders").select("*", { count: "exact", head: true }),
+    supabaseServer.from("users").select("*", { count: "exact", head: true }),
+    supabaseServer.from("articles").select("*", { count: "exact", head: true }).eq("lang", "uk"),
+    supabaseServer
+      .from("orders")
+      .select("*, addr_delivery:addrDelivery, items:orders_item(*)")
+      .order("date", { ascending: false })
+      .limit(10),
   ]);
-  const newOrders = recentOrders.filter((o) => !o.status || o.status === "Получен").length;
-  return { productsCount, ordersCount, usersCount, articlesCount, recentOrders, newOrders };
+  const orders = recentOrders || [];
+  const newOrders = orders.filter((o: any) => !o.status || o.status === "Получен").length;
+  return {
+    productsCount: productsCount ?? 0,
+    ordersCount: ordersCount ?? 0,
+    usersCount: usersCount ?? 0,
+    articlesCount: articlesCount ?? 0,
+    recentOrders: orders,
+    newOrders,
+  };
 }
 
 export default async function DashboardPage() {
@@ -56,8 +67,8 @@ export default async function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => {
-                  const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
+                {recentOrders.map((order: any) => {
+                  const total = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
                   return (
                     <tr key={order.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="py-2.5 font-mono">{order.id}</td>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -7,13 +7,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   const body = await req.json();
-  const item = await prisma.userCategory.findUnique({ where: { id: parseInt(id) } });
+  const { data: item } = await supabaseServer.from("users_categories").select("translation_id").eq("id", parseInt(id)).single();
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  await prisma.userCategory.updateMany({
-    where: { translationId: item.translationId },
-    data: { discount: body.discount, discount_total: body.discount_total, priority: body.priority },
-  });
-  const updated = await prisma.userCategory.update({ where: { id: parseInt(id) }, data: { title: body.title } });
+  await supabaseServer
+    .from("users_categories")
+    .update({ discount: body.discount, discount_total: body.discount_total, priority: body.priority })
+    .eq("translation_id", (item as any).translation_id);
+  const { data: updated } = await supabaseServer
+    .from("users_categories")
+    .update({ title: body.title })
+    .eq("id", parseInt(id))
+    .select("*")
+    .single();
   return NextResponse.json(updated);
 }
 
@@ -21,8 +26,8 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  const item = await prisma.userCategory.findUnique({ where: { id: parseInt(id) } });
+  const { data: item } = await supabaseServer.from("users_categories").select("translation_id").eq("id", parseInt(id)).single();
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  await prisma.userCategory.deleteMany({ where: { translationId: item.translationId } });
+  await supabaseServer.from("users_categories").delete().eq("translation_id", (item as any).translation_id);
   return NextResponse.json({ success: true });
 }

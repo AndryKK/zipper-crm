@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -12,27 +12,15 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = 30;
 
-  const where = {
-    ...(status !== null && status !== "" && { status }),
-    ...(q && {
-      OR: [
-        { person: { contains: q } },
-        { phone: { contains: q } },
-        { login: { contains: q } },
-      ],
-    }),
-  };
+  let query = supabaseServer
+    .from("orders")
+    .select("*, addr_delivery:addrDelivery, items:orders_item(*)", { count: "exact" })
+    .order("date", { ascending: false })
+    .range((page - 1) * limit, page * limit - 1);
 
-  const [items, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { date: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-      include: { items: true },
-    }),
-    prisma.order.count({ where }),
-  ]);
+  if (status) query = query.eq("status", status);
+  if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
 
-  return NextResponse.json({ items, total });
+  const { data: items, count } = await query;
+  return NextResponse.json({ items: items || [], total: count ?? 0 });
 }

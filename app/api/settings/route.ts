@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const items = await prisma.setting.findMany({ where: { lang: "uk" }, orderBy: { value: "asc" } });
-  return NextResponse.json(items);
+  const { data } = await supabaseServer.from("settings").select("*").eq("lang", "uk").order("value", { ascending: true });
+  return NextResponse.json(data || []);
 }
 
 export async function PUT(req: NextRequest) {
@@ -15,11 +15,10 @@ export async function PUT(req: NextRequest) {
   const updates: { value: string; text: string; lang: string }[] = await req.json();
 
   await Promise.all(updates.map((u) =>
-    prisma.setting.upsert({
-      where: { value_lang: { value: u.value, lang: u.lang } },
-      update: { text: u.text },
-      create: { value: u.value, text: u.text, lang: u.lang },
-    })
+    supabaseServer.from("settings").upsert(
+      { value: u.value, text: u.text, lang: u.lang },
+      { onConflict: "value,lang", ignoreDuplicates: false }
+    )
   ));
 
   return NextResponse.json({ success: true });

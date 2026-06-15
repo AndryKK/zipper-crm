@@ -9,11 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { transliterate } from "@/lib/utils";
 import { Loader2, Upload } from "lucide-react";
-import type { Category } from "@/app/generated/prisma";
-
 interface Props {
-  category?: Category | null;
-  parentCategories: Category[];
+  category?: any | null;
+  parentCategories: any[];
 }
 
 export function CategoryForm({ category, parentCategories }: Props) {

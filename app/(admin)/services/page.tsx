@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil } from "lucide-react";
 
 export default async function ServicesPage() {
-  const items = await prisma.service.findMany({ where: { lang: "uk" }, orderBy: { priority: "asc" } });
+  const { data } = await supabaseServer.from("services").select("*").eq("lang", "uk").order("priority", { ascending: true });
+  const items = (data || []) as any[];
   return (
     <>
       <Header title="Послуги" />
@@ -24,7 +25,7 @@ export default async function ServicesPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((s) => (
+              {items.map((s: any) => (
                 <tr key={s.id} className="border-t hover:bg-gray-50">
                   <td className="px-4 py-2 text-gray-400">{s.priority}</td>
                   <td className="px-4 py-2 font-medium">{s.title}</td>

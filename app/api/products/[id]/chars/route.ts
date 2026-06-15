@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -9,18 +9,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const { chars, lang } = await req.json();
 
-  await prisma.productChar.deleteMany({ where: { pid: parseInt(id), lang } });
+  await supabaseServer.from("products_chars").delete().eq("pid", parseInt(id)).eq("lang", lang);
 
   if (chars?.length) {
-    await prisma.productChar.createMany({
-      data: chars.map((c: { title: string; value: string }, i: number) => ({
+    await supabaseServer.from("products_chars").insert(
+      chars.map((c: { title: string; value: string }, i: number) => ({
         pid: parseInt(id),
         title: c.title,
         value: c.value,
         lang,
         priority: i,
-      })),
-    });
+      }))
+    );
   }
 
   return NextResponse.json({ success: true });

@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
-import type { Category } from "@/app/generated/prisma";
-
 type CategoryRowProps = {
-  cat: Category;
+  cat: any;
   indent: number;
   ruId?: number;
 };

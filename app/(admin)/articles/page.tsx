@@ -1,5 +1,5 @@
 import { Header } from "@/components/admin/header";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -8,10 +8,14 @@ import { ArticleRow } from "@/components/admin/article-row";
 export const dynamic = "force-dynamic";
 
 export default async function ArticlesPage() {
-  const articles = await prisma.article.findMany({
-    where: { lang: "uk" },
-    orderBy: [{ priority: "asc" }, { data: "desc" }],
-  });
+  const { data } = await supabaseServer
+    .from("articles")
+    .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+    .eq("lang", "uk")
+    .order("priority", { ascending: true })
+    .order("data", { ascending: false });
+
+  const articles = (data || []) as any[];
 
   return (
     <>
@@ -32,7 +36,7 @@ export default async function ArticlesPage() {
               </tr>
             </thead>
             <tbody>
-              {articles.map((a) => (
+              {articles.map((a: any) => (
                 <ArticleRow key={a.id} article={a} />
               ))}
             </tbody>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -21,10 +21,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const bytes = await file.arrayBuffer();
   await writeFile(path.join(uploadDir, filename), Buffer.from(bytes));
 
-  const updated = await prisma.category.update({
-    where: { id: parseInt(id) },
-    data: { img: filename },
-  });
+  const { data: updated } = await supabaseServer
+    .from("categories")
+    .update({ img: filename })
+    .eq("id", parseInt(id))
+    .select("img")
+    .single();
 
-  return NextResponse.json({ img: updated.img });
+  return NextResponse.json({ img: (updated as any)?.img });
 }

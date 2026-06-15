@@ -1,5 +1,5 @@
 import { Header } from "@/components/admin/header";
-import { prisma } from "@/lib/db";
+import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
@@ -17,29 +17,19 @@ export default async function OrdersPage({
   const q = sp.q ?? "";
   const limit = 30;
 
-  const where = {
-    ...(statusFilter && { status: statusFilter }),
-    ...(q && {
-      OR: [
-        { person: { contains: q } },
-        { phone: { contains: q } },
-        { login: { contains: q } },
-      ],
-    }),
-  };
+  let query = supabaseServer
+    .from("orders")
+    .select("*, addr_delivery:addrDelivery, items:orders_item(*)", { count: "exact" })
+    .order("date", { ascending: false })
+    .range((page - 1) * limit, page * limit - 1);
 
-  const [orders, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { date: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-      include: { items: true },
-    }),
-    prisma.order.count({ where }),
-  ]);
+  if (statusFilter) query = query.eq("status", statusFilter);
+  if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
 
+  const { data: orders, count } = await query;
+  const total = count ?? 0;
   const totalPages = Math.ceil(total / limit);
+  const allOrders = (orders || []) as any[];
 
   return (
     <>
@@ -61,16 +51,16 @@ export default async function OrdersPage({
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => {
-                const total = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
+              {allOrders.map((order: any) => {
+                const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
                 return (
                   <tr key={order.id} className="border-t hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5 font-mono text-gray-400 text-xs">{order.id}</td>
                     <td className="px-4 py-2.5 font-medium">{order.person ?? order.login ?? "—"}</td>
                     <td className="px-4 py-2.5 text-gray-600">{order.phone ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">{order.addrDelivery ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-center">{order.items.length}</td>
-                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">{total.toFixed(2)} грн</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">{order.addr_delivery ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-center">{(order.items || []).length}</td>
+                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
                     <td className="px-4 py-2.5 text-gray-500">{formatDate(order.date)}</td>
                     <td className="px-4 py-2.5">
                       <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
@@ -85,7 +75,7 @@ export default async function OrdersPage({
                   </tr>
                 );
               })}
-              {orders.length === 0 && (
+              {allOrders.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-12 text-center text-gray-400">Замовлень немає</td>
                 </tr>
