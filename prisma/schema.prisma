@@ -1,0 +1,546 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model AdmUser {
+  id     Int    @id @default(autoincrement())
+  login  String @unique @db.VarChar(100)
+  pass   String @db.VarChar(255)
+  status String @default("administrator") @db.VarChar(50)
+
+  @@map("adm_users")
+}
+
+model AdmLoginFail {
+  id    Int      @id @default(autoincrement())
+  ip    String   @db.VarChar(50)
+  times Int      @default(1)
+  data  DateTime @default(now())
+
+  @@map("adm_login_fails")
+}
+
+model Lang {
+  id         Int     @id @default(autoincrement())
+  code       String  @unique @db.VarChar(10)
+  title      String  @db.VarChar(100)
+  active     Int     @default(1)
+  visibility Int     @default(1)
+  priority   Int     @default(0)
+  flag       String? @db.VarChar(50)
+
+  @@map("langs")
+}
+
+model Currency {
+  id      Int    @id @default(autoincrement())
+  title   String @db.VarChar(50)
+  rate    Float  @default(1)
+  uri     String @db.VarChar(20)
+  enabled Int    @default(1)
+
+  @@map("currency")
+}
+
+model Setting {
+  id    Int    @id @default(autoincrement())
+  value String @db.VarChar(100)
+  text  String @db.Text
+  lang  String @db.VarChar(10)
+
+  @@unique([value, lang])
+  @@map("settings")
+}
+
+model SettingText {
+  id    Int    @id @default(autoincrement())
+  value String @db.VarChar(100)
+  text  String @db.Text
+  lang  String @db.VarChar(10)
+
+  @@unique([value, lang])
+  @@map("settings_text")
+}
+
+model CustomString {
+  id    Int    @id @default(autoincrement())
+  value String @db.VarChar(100)
+  text  String @db.Text
+  lang  String @db.VarChar(10)
+
+  @@unique([value, lang])
+  @@map("custom_strings")
+}
+
+model Social {
+  id       Int     @id @default(autoincrement())
+  icon     String? @db.VarChar(50)
+  title    String? @db.VarChar(100)
+  text     String? @db.VarChar(500)
+  priority Int     @default(0)
+  enabled  Int     @default(1)
+
+  @@map("socials")
+}
+
+model Core {
+  id       Int     @id @default(autoincrement())
+  uri      String  @db.VarChar(100)
+  lang     String  @db.VarChar(10)
+  heading  String? @db.VarChar(255)
+  text     String? @db.Text
+  text2    String? @db.Text
+  seoTitle String? @db.VarChar(255) @map("seoTitle")
+  seoKey   String? @db.VarChar(500) @map("seoKey")
+  seoDescr String? @db.VarChar(500) @map("seoDescr")
+
+  @@unique([uri, lang])
+  @@map("core")
+}
+
+model Measure {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  title         String  @db.VarChar(100)
+  short_title   String  @db.VarChar(50)
+  priority      Int     @default(0)
+
+  @@map("measures")
+}
+
+model MeasureReal {
+  id            Int    @id @default(autoincrement())
+  translationId Int
+  lang          String @db.VarChar(10)
+  title         String @db.VarChar(100)
+  short_title   String @db.VarChar(50)
+  priority      Int    @default(0)
+
+  @@map("measures_real")
+}
+
+model Category {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  pid           Int     @default(0)
+  title         String  @db.VarChar(255)
+  uri           String  @db.VarChar(255)
+  img           String? @db.VarChar(255)
+  img2          String? @db.VarChar(255)
+  discount      Float?
+  ndiscount     Int?
+  visibility    Int     @default(1)
+  priority      Int     @default(0)
+  descr         String? @db.Text
+  text          String? @db.Text
+  seoTitle      String? @db.VarChar(255)
+  seoKey        String? @db.Text
+  seoDescr      String? @db.Text
+
+  productLinks  ProductCategory[]
+
+  @@map("categories")
+}
+
+model Product {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  pcode         String? @db.VarChar(100)
+  title         String  @db.VarChar(255)
+  main_title    String? @db.VarChar(255)
+  descr         String? @db.Text
+  heading       String? @db.VarChar(255)
+  text          String? @db.Text
+  price         Float   @default(0)
+  price_sale    Float?
+  price2        Float?
+  price3        Float?
+  price2n       Float?
+  price3n       Float?
+  img           String? @db.VarChar(255)
+  img2          String? @db.VarChar(255)
+  measure       Int?
+  minquantity   Float   @default(1)
+  package       Int?
+  uri           String  @db.VarChar(255)
+  active        Int     @default(1)
+  labelAction   Int     @default(0)
+  popular       Int     @default(0)
+  priority      Int     @default(0)
+  pid           Int     @default(0)
+  filterId      Int?
+  seoTitle      String? @db.VarChar(255)
+  seoKey        String? @db.VarChar(500)
+  seoDescr      String? @db.VarChar(500)
+
+  categories    ProductCategory[]
+  photos        ProductPhoto[]
+  photos2       ProductPhoto2[]
+  chars         ProductChar[]
+  colors        ProductColor[]      @relation("ColorMain")
+  colorsWith    ProductColor[]      @relation("ColorWith")
+  together      ProductTogether[]   @relation("TogetherMain")
+  togetherWith  ProductTogether[]   @relation("TogetherWith")
+  filterItems   AllFilterItem[]
+  cartItems     Cart[]
+  favourites    ProductFavourite[]
+
+  @@map("products")
+}
+
+model ProductCategory {
+  id         Int      @id @default(autoincrement())
+  pid        Int
+  cid        Int
+
+  product    Product  @relation(fields: [pid], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [cid], references: [id], onDelete: Cascade)
+
+  @@unique([pid, cid])
+  @@map("products_categories")
+}
+
+model ProductPhoto {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  img      String  @db.VarChar(255)
+  priority Int     @default(0)
+
+  product  Product @relation(fields: [pid], references: [id], onDelete: Cascade)
+
+  @@map("products_photos")
+}
+
+model ProductPhoto2 {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  img      String  @db.VarChar(255)
+  priority Int     @default(0)
+
+  product  Product @relation(fields: [pid], references: [id], onDelete: Cascade)
+
+  @@map("products_photos2")
+}
+
+model ProductChar {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  chid     Int?
+  title    String  @db.VarChar(255)
+  value    String? @db.VarChar(500)
+  lang     String  @db.VarChar(10)
+  priority Int     @default(0)
+
+  product  Product @relation(fields: [pid], references: [id], onDelete: Cascade)
+
+  @@map("products_chars")
+}
+
+model ProductColor {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  pid_with Int
+
+  product     Product @relation("ColorMain", fields: [pid], references: [id], onDelete: Cascade)
+  productWith Product @relation("ColorWith", fields: [pid_with], references: [id], onDelete: Cascade)
+
+  @@map("products_colors")
+}
+
+model ProductTogether {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  pid_with Int
+
+  product     Product @relation("TogetherMain", fields: [pid], references: [id], onDelete: Cascade)
+  productWith Product @relation("TogetherWith", fields: [pid_with], references: [id], onDelete: Cascade)
+
+  @@map("products_together")
+}
+
+model ProductFavourite {
+  id      Int     @id @default(autoincrement())
+  pid     Int
+  login   String  @db.VarChar(100)
+
+  product Product @relation(fields: [pid], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [login], references: [login])
+
+  @@map("products_favourites")
+}
+
+model AllFilter {
+  id            Int               @id @default(autoincrement())
+  translationId Int
+  lang          String            @db.VarChar(10)
+  pid           Int               @default(0)
+  uri           String?           @db.VarChar(255)
+  title         String            @db.VarChar(255)
+  priority      Int               @default(0)
+  descr         String?           @db.Text
+  img           String?           @db.VarChar(255)
+
+  filters       AllFilterFilter[]
+
+  @@map("all_filters")
+}
+
+model AllFilterFilter {
+  id            Int             @id @default(autoincrement())
+  translationId Int
+  pid           Int
+  lang          String          @db.VarChar(10)
+  title         String          @db.VarChar(255)
+  uri           String?         @db.VarChar(100)
+  priority      Int             @default(0)
+
+  parent        AllFilter       @relation(fields: [pid], references: [id], onDelete: Cascade)
+  items         AllFilterItem[]
+
+  @@map("all_filters_filters")
+}
+
+model AllFilterItem {
+  id      Int             @id @default(autoincrement())
+  pid     Int
+  fid     Int
+
+  product Product         @relation(fields: [pid], references: [id], onDelete: Cascade)
+  filter  AllFilterFilter @relation(fields: [fid], references: [id], onDelete: Cascade)
+
+  @@unique([pid, fid])
+  @@map("all_filters_items")
+}
+
+model Slider {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  img           String? @db.VarChar(255)
+  img2          String? @db.VarChar(255)
+  title         String? @db.VarChar(255)
+  descr         String? @db.Text
+  uri           String? @db.VarChar(500)
+  priority      Int     @default(0)
+  active        Int     @default(1)
+
+  @@map("slider")
+}
+
+model Article {
+  id            Int       @id @default(autoincrement())
+  translationId Int
+  lang          String    @db.VarChar(10)
+  uri           String    @db.VarChar(255)
+  title         String    @db.VarChar(255)
+  descr         String?   @db.Text
+  text          String?   @db.Text
+  img           String?   @db.VarChar(255)
+  priority      Int       @default(0)
+  data          DateTime  @default(now())
+  seoTitle      String?   @db.VarChar(255)
+  seoKey        String?   @db.VarChar(500)
+  seoDescr      String?   @db.VarChar(500)
+
+  photos        ArticlePhoto[]
+
+  @@map("articles")
+}
+
+model ArticlePhoto {
+  id       Int     @id @default(autoincrement())
+  pid      Int
+  img      String  @db.VarChar(255)
+  priority Int     @default(0)
+
+  article  Article @relation(fields: [pid], references: [id], onDelete: Cascade)
+
+  @@map("articles_photos")
+}
+
+model News {
+  id            Int       @id @default(autoincrement())
+  translationId Int
+  lang          String    @db.VarChar(10)
+  uri           String    @db.VarChar(255)
+  title         String    @db.VarChar(255)
+  descr         String?   @db.Text
+  text          String?   @db.Text
+  img           String?   @db.VarChar(255)
+  priority      Int       @default(0)
+  data          DateTime  @default(now())
+
+  photos        NewsPhoto[]
+
+  @@map("news")
+}
+
+model NewsPhoto {
+  id       Int    @id @default(autoincrement())
+  pid      Int
+  img      String @db.VarChar(255)
+  priority Int    @default(0)
+
+  news     News   @relation(fields: [pid], references: [id], onDelete: Cascade)
+
+  @@map("news_photos")
+}
+
+model Service {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  img           String? @db.VarChar(100)
+  title         String  @db.VarChar(255)
+  descr         String? @db.Text
+  priority      Int     @default(0)
+
+  @@map("services")
+}
+
+model Manager {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  img           String? @db.VarChar(255)
+  title         String  @db.VarChar(255)
+  descr         String? @db.Text
+  phone         String? @db.VarChar(100)
+  email         String? @db.VarChar(100)
+  skype         String? @db.VarChar(100)
+  priority      Int     @default(0)
+
+  @@map("managers")
+}
+
+model Gallery {
+  id            Int     @id @default(autoincrement())
+  translationId Int
+  lang          String  @db.VarChar(10)
+  img           String? @db.VarChar(255)
+  title         String? @db.VarChar(255)
+  uri           String? @db.VarChar(255)
+
+  @@map("gallery")
+}
+
+model User {
+  id           Int     @id @default(autoincrement())
+  login        String  @unique @db.Char(50)
+  password     String  @db.VarChar(255)
+  rank         Int?    @db.SmallInt
+  addrDelivery String? @db.Text
+  phone        String? @db.Char(30)
+  person       String? @db.Char(40)
+
+  carts        Cart[]
+  favourites   ProductFavourite[]
+
+  @@map("users")
+}
+
+model UserCategory {
+  id             Int    @id @default(autoincrement())
+  translationId  Int
+  lang           String @db.VarChar(10)
+  title          String @db.VarChar(255)
+  discount       Float  @default(0)
+  discount_total Float  @default(0)
+  priority       Int    @default(0)
+
+  @@map("users_categories")
+}
+
+model UserRecoverPassword {
+  id      Int      @id @default(autoincrement())
+  login   String   @db.VarChar(100)
+  token   String   @db.VarChar(255)
+  created DateTime @default(now())
+
+  @@map("users_recover_password")
+}
+
+model Cart {
+  id       Int      @id @default(autoincrement())
+  login    String   @db.VarChar(100)
+  product  Int
+  type     String   @default("prod") @db.VarChar(20)
+  price    Float    @default(0)
+  quantity Float    @default(1)
+  add_time DateTime @default(now())
+  reminded Int      @default(0)
+
+  user       User?   @relation(fields: [login], references: [login])
+  productRel Product @relation(fields: [product], references: [id])
+
+  @@map("cart")
+}
+
+model Order {
+  id           Int      @id @default(autoincrement())
+  login        String?  @db.Char(50)
+  person       String?  @db.Char(150)
+  phone        String?  @db.Char(25)
+  addrDelivery String?  @db.Text
+  status       String?  @db.Char(30)
+  date         DateTime @default(now())
+  notes        String?  @db.Text
+  currency     String?  @db.VarChar(10)
+  pay_method   String?  @db.Char(40)
+  ttn          String?  @db.Char(50)
+  msg          String?  @db.Text
+  callme       Int?     @default(0)
+
+  items        OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         Int     @id @default(autoincrement())
+  oid        Int
+  type       String? @db.Char(15)
+  product    Int
+  price      Float   @default(0)
+  quantity   Int     @default(1)
+  price_base Float   @default(0)
+
+  order      Order   @relation(fields: [oid], references: [id], onDelete: Cascade)
+
+  @@map("orders_item")
+}
+
+model OrderReturn {
+  id       Int       @id @default(autoincrement())
+  date     DateTime  @default(now())
+  login    String?   @db.Char(50)
+  person   String?   @db.Char(40)
+  phone    String?   @db.Char(15)
+  reason   String?   @db.Text
+  status   String?   @db.Char(20)
+  notes    String?   @db.Text
+  title    String?   @db.Char(255)
+  quantity String?   @db.Char(255)
+
+  @@map("orders_returns")
+}
+
+model Doc {
+  id       Int    @id @default(autoincrement())
+  title    String @db.VarChar(255)
+  file     String @db.VarChar(255)
+  lang     String @db.VarChar(10)
+  priority Int    @default(0)
+
+  @@map("docs")
+}

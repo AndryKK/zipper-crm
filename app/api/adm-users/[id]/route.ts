@@ -1,0 +1,24 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import bcrypt from "bcryptjs";
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const { password, status } = await req.json();
+  const data: Record<string, unknown> = {};
+  if (password) data.pass = await bcrypt.hash(password, 10);
+  if (status !== undefined) data.status = status;
+  await prisma.admUser.update({ where: { id: parseInt(id) }, data });
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  await prisma.admUser.delete({ where: { id: parseInt(id) } });
+  return NextResponse.json({ success: true });
+}
