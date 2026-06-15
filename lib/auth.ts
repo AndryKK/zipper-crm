@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { prisma } from "./db";
+import { supabaseServer } from "./supabase";
 import { authConfig } from "./auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -15,9 +15,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
 
-        const user = await prisma.admUser.findUnique({
-          where: { login: credentials.username as string },
-        });
+        const { data: user } = await supabaseServer
+          .from("adm_users")
+          .select("id, login, pass")
+          .eq("login", credentials.username as string)
+          .single();
 
         if (!user) return null;
 
