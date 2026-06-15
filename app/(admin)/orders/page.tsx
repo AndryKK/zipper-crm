@@ -1,4 +1,4 @@
-﻿import { Header } from "@/components/admin/header";
+import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -19,17 +19,26 @@ export default async function OrdersPage({
 
   let query = supabaseServer
     .from("orders")
-    .select("*, addrDelivery:addr_delivery, items:orders_item(*)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 
   if (statusFilter) query = query.eq("status", statusFilter);
   if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
 
-  const { data: orders, count } = await query;
+  const { data: orderRows, count } = await query;
   const total = count ?? 0;
   const totalPages = Math.ceil(total / limit);
-  const allOrders = (orders || []) as any[];
+
+  const orderIds = (orderRows || []).map((o: any) => o.id);
+  const { data: allItems } = orderIds.length > 0
+    ? await supabaseServer.from("orders_item").select("*").in("oid", orderIds)
+    : { data: [] };
+
+  const allOrders = (orderRows || []).map((o: any) => ({
+    ...o,
+    items: (allItems || []).filter((i: any) => i.oid === o.id),
+  }));
 
   return (
     <>

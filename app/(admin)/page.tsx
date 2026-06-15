@@ -12,19 +12,24 @@ async function getStats() {
     { count: ordersCount },
     { count: usersCount },
     { count: articlesCount },
-    { data: recentOrders },
+    { data: orderRows },
   ] = await Promise.all([
     supabaseServer.from("products").select("*", { count: "exact", head: true }).eq("lang", "uk"),
     supabaseServer.from("orders").select("*", { count: "exact", head: true }),
     supabaseServer.from("users").select("*", { count: "exact", head: true }),
     supabaseServer.from("articles").select("*", { count: "exact", head: true }).eq("lang", "uk"),
-    supabaseServer
-      .from("orders")
-      .select("*, addrDelivery:addr_delivery, items:orders_item(*)")
-      .order("date", { ascending: false })
-      .limit(10),
+    supabaseServer.from("orders").select("*").order("date", { ascending: false }).limit(10),
   ]);
-  const orders = recentOrders || [];
+
+  const orderIds = (orderRows || []).map((o: any) => o.id);
+  const { data: orderItems } = orderIds.length > 0
+    ? await supabaseServer.from("orders_item").select("*").in("oid", orderIds)
+    : { data: [] };
+
+  const orders = (orderRows || []).map((o: any) => ({
+    ...o,
+    items: (orderItems || []).filter((i: any) => i.oid === o.id),
+  }));
   const newOrders = orders.filter((o: any) => !o.status || o.status === "Получен").length;
   return {
     productsCount: productsCount ?? 0,

@@ -9,23 +9,21 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const { data: product } = await supabaseServer
     .from("products")
-    .select(`
-      *,
-      labelAction:label_action,
-      translationId:translation_id,
-      seoTitle:seo_title,
-      seoKey:seo_key,
-      seoDescr:seo_descr,
-      categories:products_categories(*),
-      photos:products_photos(* ),
-      photos2:products_photos2(*),
-      chars:products_chars(*)
-    `)
+    .select("*, labelAction:label_action, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .eq("id", parseInt(id))
     .single();
 
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(product);
+
+  const pid = parseInt(id);
+  const [{ data: categories }, { data: photos }, { data: photos2 }, { data: chars }] = await Promise.all([
+    supabaseServer.from("products_categories").select("*").eq("pid", pid),
+    supabaseServer.from("products_photos").select("*").eq("pid", pid).order("priority", { ascending: true }),
+    supabaseServer.from("products_photos2").select("*").eq("pid", pid).order("priority", { ascending: true }),
+    supabaseServer.from("products_chars").select("*").eq("pid", pid).order("priority", { ascending: true }),
+  ]);
+
+  return NextResponse.json({ ...product, categories: categories || [], photos: photos || [], photos2: photos2 || [], chars: chars || [] });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

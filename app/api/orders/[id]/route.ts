@@ -8,11 +8,12 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const { data: order } = await supabaseServer
     .from("orders")
-    .select("*, addrDelivery:addr_delivery, items:orders_item(*)")
+    .select("*")
     .eq("id", parseInt(id))
     .single();
   if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(order);
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id));
+  return NextResponse.json({ ...order, items: items || [] });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .from("orders")
     .update(body)
     .eq("id", parseInt(id))
-    .select("*, addrDelivery:addr_delivery")
+    .select("*")
     .single();
   return NextResponse.json(order);
 }

@@ -14,13 +14,23 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseServer
     .from("orders")
-    .select("*, addrDelivery:addr_delivery, items:orders_item(*)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 
   if (status) query = query.eq("status", status);
   if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
 
-  const { data: items, count } = await query;
-  return NextResponse.json({ items: items || [], total: count ?? 0 });
+  const { data: orderRows, count } = await query;
+
+  const orderIds = (orderRows || []).map((o: any) => o.id);
+  const { data: allItems } = orderIds.length > 0
+    ? await supabaseServer.from("orders_item").select("*").in("oid", orderIds)
+    : { data: [] };
+
+  const items = (orderRows || []).map((o: any) => ({
+    ...o,
+    items: (allItems || []).filter((i: any) => i.oid === o.id),
+  }));
+  return NextResponse.json({ items, total: count ?? 0 });
 }
