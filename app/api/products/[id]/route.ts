@@ -16,7 +16,6 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       chars: { orderBy: { priority: "asc" } },
       colors: { include: { productWith: { select: { id: true, title: true, img: true, lang: true } } } },
       together: { include: { productWith: { select: { id: true, title: true, img: true, lang: true } } } },
-      filterItems: { include: { filter: { include: { parent: true } } } },
     },
   });
 
@@ -42,16 +41,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (categoryIds.length) {
       await prisma.productCategory.createMany({
         data: categoryIds.map((cid: number) => ({ pid: product.id, cid })),
-        skipDuplicates: true,
-      });
-    }
-  }
-
-  if (filterIds !== undefined) {
-    await prisma.allFilterItem.deleteMany({ where: { pid: product.id } });
-    if (filterIds.length) {
-      await prisma.allFilterItem.createMany({
-        data: filterIds.map((fid: number) => ({ pid: product.id, fid })),
         skipDuplicates: true,
       });
     }

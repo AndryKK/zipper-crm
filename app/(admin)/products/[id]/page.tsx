@@ -18,7 +18,6 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         chars: { orderBy: { priority: "asc" } },
         colors: { include: { productWith: { select: { id: true, title: true, img: true } } } },
         together: { include: { productWith: { select: { id: true, title: true, img: true } } } },
-        filterItems: true,
       },
     }),
     prisma.category.findMany({ where: { lang: "uk" }, orderBy: { title: "asc" } }),

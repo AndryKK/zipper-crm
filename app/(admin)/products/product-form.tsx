@@ -23,7 +23,6 @@ type ProductWithRelations = Product & {
   chars?: ProductChar[];
   colors?: (ProductColor & { productWith: { id: number; title: string; img: string | null } })[];
   together?: (ProductTogether & { productWith: { id: number; title: string; img: string | null } })[];
-  filterItems?: { pid: number; fid: number }[];
 };
 
 type AllFilterWithChildren = AllFilter & { filters: AllFilterFilter[] };
@@ -71,9 +70,7 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
   const [selectedCategories, setSelectedCategories] = useState<number[]>(
     product?.categories?.map((c) => c.cid) ?? []
   );
-  const [selectedFilters, setSelectedFilters] = useState<number[]>(
-    product?.filterItems?.map((f) => f.fid) ?? []
-  );
+  const [selectedFilters, setSelectedFilters] = useState<number[]>([]);
   const [chars, setChars] = useState<{ title: string; value: string }[]>(
     product?.chars?.map((c) => ({ title: c.title, value: c.value ?? "" })) ?? []
   );

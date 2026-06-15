@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
-import type { Article } from "@prisma/client";
+import type { Article } from "@/app/generated/prisma";
 import { formatDate } from "@/lib/utils";
 
 type ArticleRowProps = {
