@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -7,7 +7,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: filters } = await supabaseServer
     .from("all_filters")
-    .select("*, translation_id:translationId")
+    .select("*, translationId:translation_id")
     .eq("lang", "uk")
     .order("priority", { ascending: true });
 
@@ -18,7 +18,7 @@ export async function GET() {
   if (filterIds.length) {
     const { data: filterItems } = await supabaseServer
       .from("all_filters_filters")
-      .select("*, translation_id:translationId, filter_id:filterId")
+      .select("*, translationId:translation_id, filterId:filter_id")
       .in("pid", filterIds)
       .eq("lang", "uk")
       .order("priority", { ascending: true });

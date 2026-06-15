@@ -18,11 +18,11 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       .from("products")
       .select(`
         *,
-        label_action:labelAction,
-        translation_id:translationId,
-        seo_title:seoTitle,
-        seo_key:seoKey,
-        seo_descr:seoDescr,
+        labelAction:label_action,
+        translationId:translation_id,
+        seoTitle:seo_title,
+        seoKey:seo_key,
+        seoDescr:seo_descr,
         categories:products_categories(*),
         photos:products_photos(*),
         photos2:products_photos2(*),
@@ -30,7 +30,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       `)
       .eq("id", parseInt(id))
       .single(),
-    supabaseServer.from("categories").select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr").eq("lang", "uk").order("title", { ascending: true }),
+    supabaseServer.from("categories").select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority", { ascending: true }),
   ]);
@@ -38,7 +38,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   // Load filters with their sub-filters
   const { data: allFilters } = await supabaseServer
     .from("all_filters")
-    .select("*, translation_id:translationId")
+    .select("*, translationId:translation_id")
     .eq("lang", "uk")
     .order("priority", { ascending: true });
 
@@ -48,7 +48,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   if (filterIds.length) {
     const { data: filterItems } = await supabaseServer
       .from("all_filters_filters")
-      .select("*, translation_id:translationId, filter_id:filterId")
+      .select("*, translationId:translation_id, filterId:filter_id")
       .in("pid", filterIds)
       .eq("lang", "uk")
       .order("priority", { ascending: true });

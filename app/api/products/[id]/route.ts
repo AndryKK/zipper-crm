@@ -11,11 +11,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     .from("products")
     .select(`
       *,
-      label_action:labelAction,
-      translation_id:translationId,
-      seo_title:seoTitle,
-      seo_key:seoKey,
-      seo_descr:seoDescr,
+      labelAction:label_action,
+      translationId:translation_id,
+      seoTitle:seo_title,
+      seoKey:seo_key,
+      seoDescr:seo_descr,
       categories:products_categories(*),
       photos:products_photos(* ),
       photos2:products_photos2(*),

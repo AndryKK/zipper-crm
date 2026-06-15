@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseServer
     .from("orders")
-    .select("*, addr_delivery:addrDelivery, items:orders_item(*)", { count: "exact" })
+    .select("*, addrDelivery:addr_delivery, items:orders_item(*)", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 

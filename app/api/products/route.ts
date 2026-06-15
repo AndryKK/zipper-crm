@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseServer
     .from("products")
-    .select("*, label_action:labelAction, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr", { count: "exact" })
+    .select("*, labelAction:label_action, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr", { count: "exact" })
     .eq("lang", lang);
 
   if (q) {

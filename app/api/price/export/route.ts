@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import * as XLSX from "xlsx";
@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data: products } = await supabaseServer
     .from("products")
-    .select("*, label_action:labelAction, translation_id:translationId, categories:products_categories(cid)")
+    .select("*, labelAction:label_action, translationId:translation_id, categories:products_categories(cid)")
     .eq("lang", "uk")
     .eq("active", 1)
     .order("priority", { ascending: true })

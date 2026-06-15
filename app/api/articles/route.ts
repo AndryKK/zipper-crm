@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const lang = new URL(req.url).searchParams.get("lang") ?? "uk";
   const { data } = await supabaseServer
     .from("articles")
-    .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+    .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .eq("lang", lang)
     .order("priority", { ascending: true })
     .order("data", { ascending: false });

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
@@ -7,7 +7,7 @@ import path from "path";
 export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { data } = await supabaseServer.from("slider").select("*, translation_id:translationId").eq("lang", "uk").order("priority", { ascending: true });
+  const { data } = await supabaseServer.from("slider").select("*, translationId:translation_id").eq("lang", "uk").order("priority", { ascending: true });
   return NextResponse.json(data || []);
 }
 

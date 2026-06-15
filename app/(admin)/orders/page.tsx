@@ -1,4 +1,4 @@
-import { Header } from "@/components/admin/header";
+﻿import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ export default async function OrdersPage({
 
   let query = supabaseServer
     .from("orders")
-    .select("*, addr_delivery:addrDelivery, items:orders_item(*)", { count: "exact" })
+    .select("*, addrDelivery:addr_delivery, items:orders_item(*)", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 

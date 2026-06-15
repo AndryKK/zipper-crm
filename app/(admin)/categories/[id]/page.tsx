@@ -14,12 +14,12 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
       ? { data: null }
       : supabaseServer
           .from("categories")
-          .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+          .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
           .eq("id", parseInt(id))
           .single(),
     supabaseServer
       .from("categories")
-      .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+      .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
       .eq("lang", "uk")
       .eq("pid", 0)
       .order("title", { ascending: true }),

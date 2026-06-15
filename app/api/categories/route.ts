@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -7,7 +7,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data } = await supabaseServer
     .from("categories")
-    .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+    .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .order("pid", { ascending: true })
     .order("priority", { ascending: true });
   return NextResponse.json(data || []);
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
         lang: l.code,
         translation_id: translationId,
         title: l.code === body.lang ? body.title : `[${l.code}] ${body.title}`,
-      }).select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr").single();
+      }).select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr").single();
       return data;
     })
   );

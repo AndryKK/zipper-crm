@@ -1,4 +1,4 @@
-import { Header } from "@/components/admin/header";
+﻿import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
@@ -37,7 +37,7 @@ export default async function ProductsPage({
 
   let query = supabaseServer
     .from("products")
-    .select("*, label_action:labelAction, translation_id:translationId", { count: "exact" })
+    .select("*, labelAction:label_action, translationId:translation_id", { count: "exact" })
     .eq("lang", "uk");
 
   if (catId === 0) {

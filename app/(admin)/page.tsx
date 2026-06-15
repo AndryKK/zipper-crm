@@ -1,4 +1,4 @@
-import { Header } from "@/components/admin/header";
+﻿import { Header } from "@/components/admin/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabaseServer } from "@/lib/supabase";
 import { ShoppingCart, Package, Users, FileText } from "lucide-react";
@@ -20,7 +20,7 @@ async function getStats() {
     supabaseServer.from("articles").select("*", { count: "exact", head: true }).eq("lang", "uk"),
     supabaseServer
       .from("orders")
-      .select("*, addr_delivery:addrDelivery, items:orders_item(*)")
+      .select("*, addrDelivery:addr_delivery, items:orders_item(*)")
       .order("date", { ascending: false })
       .limit(10),
   ]);

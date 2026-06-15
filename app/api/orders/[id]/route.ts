@@ -8,7 +8,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const { data: order } = await supabaseServer
     .from("orders")
-    .select("*, addr_delivery:addrDelivery, items:orders_item(*)")
+    .select("*, addrDelivery:addr_delivery, items:orders_item(*)")
     .eq("id", parseInt(id))
     .single();
   if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .from("orders")
     .update(body)
     .eq("id", parseInt(id))
-    .select("*, addr_delivery:addrDelivery")
+    .select("*, addrDelivery:addr_delivery")
     .single();
   return NextResponse.json(order);
 }

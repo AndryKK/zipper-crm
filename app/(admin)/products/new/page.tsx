@@ -1,4 +1,4 @@
-import { Header } from "@/components/admin/header";
+﻿import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import { ProductForm } from "../product-form";
 
@@ -10,14 +10,14 @@ export default async function NewProductPage() {
     { data: measures },
     { data: langs },
   ] = await Promise.all([
-    supabaseServer.from("categories").select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr").eq("lang", "uk").order("title", { ascending: true }),
+    supabaseServer.from("categories").select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority", { ascending: true }),
   ]);
 
   const { data: allFilters } = await supabaseServer
     .from("all_filters")
-    .select("*, translation_id:translationId")
+    .select("*, translationId:translation_id")
     .eq("lang", "uk")
     .order("priority", { ascending: true });
 
@@ -27,7 +27,7 @@ export default async function NewProductPage() {
   if (filterIds.length) {
     const { data: filterItems } = await supabaseServer
       .from("all_filters_filters")
-      .select("*, translation_id:translationId, filter_id:filterId")
+      .select("*, translationId:translation_id, filterId:filter_id")
       .in("pid", filterIds)
       .eq("lang", "uk")
       .order("priority", { ascending: true });

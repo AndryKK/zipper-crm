@@ -8,7 +8,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const { data: item } = await supabaseServer
     .from("categories")
-    .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+    .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .eq("id", parseInt(id))
     .single();
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .from("categories")
     .update(body)
     .eq("id", parseInt(id))
-    .select("*, translation_id:translationId, seo_title:seoTitle, seo_key:seoKey, seo_descr:seoDescr")
+    .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .single();
   return NextResponse.json(item);
 }

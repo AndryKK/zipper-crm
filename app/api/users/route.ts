@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseServer
     .from("users")
-    .select("id, login, person, phone, email, rank, status, addr_delivery:addrDelivery")
+    .select("id, login, person, phone, rank, addrDelivery:addr_delivery")
     .order("id", { ascending: false })
     .limit(100);
 
@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest) {
     .from("users")
     .update(data)
     .eq("id", id)
-    .select("id, login, person, phone, email, rank, status, addr_delivery:addrDelivery")
+    .select("id, login, person, phone, rank, addrDelivery:addr_delivery")
     .single();
   return NextResponse.json(item);
 }
