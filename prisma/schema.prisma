@@ -97,9 +97,9 @@ model Core {
   heading  String? @db.VarChar(255)
   text     String? @db.Text
   text2    String? @db.Text
-  seoTitle String? @db.VarChar(255) @map("seoTitle")
-  seoKey   String? @db.VarChar(500) @map("seoKey")
-  seoDescr String? @db.VarChar(500) @map("seoDescr")
+  seoTitle String? @db.VarChar(255) @map("seo_title")
+  seoKey   String? @db.VarChar(500) @map("seo_key")
+  seoDescr String? @db.VarChar(500) @map("seo_descr")
 
   @@unique([uri, lang])
   @@map("core")
@@ -107,7 +107,7 @@ model Core {
 
 model Measure {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   title         String  @db.VarChar(100)
   short_title   String  @db.VarChar(50)
@@ -118,7 +118,7 @@ model Measure {
 
 model MeasureReal {
   id            Int    @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String @db.VarChar(10)
   title         String @db.VarChar(100)
   short_title   String @db.VarChar(50)
@@ -129,7 +129,7 @@ model MeasureReal {
 
 model Category {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   pid           Int     @default(0)
   title         String  @db.VarChar(255)
@@ -142,18 +142,19 @@ model Category {
   priority      Int     @default(0)
   descr         String? @db.Text
   text          String? @db.Text
-  seoTitle      String? @db.VarChar(255)
-  seoKey        String? @db.Text
-  seoDescr      String? @db.Text
+  seoTitle      String? @db.VarChar(255) @map("seo_title")
+  seoKey        String? @db.Text        @map("seo_key")
+  seoDescr      String? @db.Text        @map("seo_descr")
 
   productLinks  ProductCategory[]
+  filterItems   AllFilterItem[]
 
   @@map("categories")
 }
 
 model Product {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   pcode         String? @db.VarChar(100)
   title         String  @db.VarChar(255)
@@ -174,14 +175,14 @@ model Product {
   package       Int?
   uri           String  @db.VarChar(255)
   active        Int     @default(1)
-  labelAction   Int     @default(0)
+  labelAction   Int     @default(0)  @map("label_action")
   popular       Int     @default(0)
   priority      Int     @default(0)
   pid           Int     @default(0)
-  filterId      Int?
-  seoTitle      String? @db.VarChar(255)
-  seoKey        String? @db.VarChar(500)
-  seoDescr      String? @db.VarChar(500)
+  filterId      Int?               @map("filter_id")
+  seoTitle      String? @db.VarChar(255) @map("seo_title")
+  seoKey        String? @db.VarChar(500) @map("seo_key")
+  seoDescr      String? @db.VarChar(500) @map("seo_descr")
 
   categories    ProductCategory[]
   photos        ProductPhoto[]
@@ -191,7 +192,6 @@ model Product {
   colorsWith    ProductColor[]      @relation("ColorWith")
   together      ProductTogether[]   @relation("TogetherMain")
   togetherWith  ProductTogether[]   @relation("TogetherWith")
-  filterItems   AllFilterItem[]
   cartItems     Cart[]
   favourites    ProductFavourite[]
 
@@ -281,7 +281,7 @@ model ProductFavourite {
 
 model AllFilter {
   id            Int               @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String            @db.VarChar(10)
   pid           Int               @default(0)
   uri           String?           @db.VarChar(255)
@@ -297,7 +297,7 @@ model AllFilter {
 
 model AllFilterFilter {
   id            Int             @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   pid           Int
   lang          String          @db.VarChar(10)
   title         String          @db.VarChar(255)
@@ -312,19 +312,19 @@ model AllFilterFilter {
 
 model AllFilterItem {
   id      Int             @id @default(autoincrement())
-  pid     Int
+  cid     Int             @map("cid")
   fid     Int
 
-  product Product         @relation(fields: [pid], references: [id], onDelete: Cascade)
-  filter  AllFilterFilter @relation(fields: [fid], references: [id], onDelete: Cascade)
+  category Category        @relation(fields: [cid], references: [id], onDelete: Cascade)
+  filter   AllFilterFilter @relation(fields: [fid], references: [id], onDelete: Cascade)
 
-  @@unique([pid, fid])
+  @@unique([cid, fid])
   @@map("all_filters_items")
 }
 
 model Slider {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   img           String? @db.VarChar(255)
   img2          String? @db.VarChar(255)
@@ -339,7 +339,7 @@ model Slider {
 
 model Article {
   id            Int       @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String    @db.VarChar(10)
   uri           String    @db.VarChar(255)
   title         String    @db.VarChar(255)
@@ -348,9 +348,9 @@ model Article {
   img           String?   @db.VarChar(255)
   priority      Int       @default(0)
   data          DateTime  @default(now())
-  seoTitle      String?   @db.VarChar(255)
-  seoKey        String?   @db.VarChar(500)
-  seoDescr      String?   @db.VarChar(500)
+  seoTitle      String?   @db.VarChar(255) @map("seo_title")
+  seoKey        String?   @db.VarChar(500) @map("seo_key")
+  seoDescr      String?   @db.VarChar(500) @map("seo_descr")
 
   photos        ArticlePhoto[]
 
@@ -370,7 +370,7 @@ model ArticlePhoto {
 
 model News {
   id            Int       @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String    @db.VarChar(10)
   uri           String    @db.VarChar(255)
   title         String    @db.VarChar(255)
@@ -398,7 +398,7 @@ model NewsPhoto {
 
 model Service {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   img           String? @db.VarChar(100)
   title         String  @db.VarChar(255)
@@ -410,7 +410,7 @@ model Service {
 
 model Manager {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   img           String? @db.VarChar(255)
   title         String  @db.VarChar(255)
@@ -425,7 +425,7 @@ model Manager {
 
 model Gallery {
   id            Int     @id @default(autoincrement())
-  translationId Int
+  translationId Int     @map("translation_id")
   lang          String  @db.VarChar(10)
   img           String? @db.VarChar(255)
   title         String? @db.VarChar(255)
@@ -439,7 +439,7 @@ model User {
   login        String  @unique @db.Char(50)
   password     String  @db.VarChar(255)
   rank         Int?    @db.SmallInt
-  addrDelivery String? @db.Text
+  addrDelivery String? @db.Text @map("addr_delivery")
   phone        String? @db.Char(30)
   person       String? @db.Char(40)
 
@@ -451,7 +451,7 @@ model User {
 
 model UserCategory {
   id             Int    @id @default(autoincrement())
-  translationId  Int
+  translationId  Int     @map("translation_id")
   lang           String @db.VarChar(10)
   title          String @db.VarChar(255)
   discount       Float  @default(0)
@@ -491,7 +491,7 @@ model Order {
   login        String?  @db.Char(50)
   person       String?  @db.Char(150)
   phone        String?  @db.Char(25)
-  addrDelivery String?  @db.Text
+  addrDelivery String?  @db.Text @map("addr_delivery")
   status       String?  @db.Char(30)
   date         DateTime @default(now())
   notes        String?  @db.Text

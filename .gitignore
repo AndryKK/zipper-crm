@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# MySQL dump files
+*.tar.gz
+*.sql.gz
+/scripts/dump-extracted/
+/scripts/supabase-import/
+/supabase-import/
 
 # vercel
 .vercel

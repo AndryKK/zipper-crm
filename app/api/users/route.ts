@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const q = new URL(req.url).searchParams.get("q") ?? "";
   const where = q ? { OR: [{ login: { contains: q } }, { person: { contains: q } }, { phone: { contains: q } }] } : {};
-  const items = await prisma.user.findMany({ where, orderBy: { id: "desc" }, take: 100, omit: { pass: true } });
+  const items = await prisma.user.findMany({ where, orderBy: { id: "desc" }, take: 100, omit: { password: true } });
   return NextResponse.json(items);
 }
 
@@ -15,6 +15,6 @@ export async function PUT(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, ...data } = await req.json();
-  const item = await prisma.user.update({ where: { id }, data, omit: { pass: true } });
+  const item = await prisma.user.update({ where: { id }, data, omit: { password: true } });
   return NextResponse.json(item);
 }
