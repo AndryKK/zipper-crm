@@ -33,9 +33,7 @@ export function formatDate(date: Date | string): string {
 export function getImgUrl(img: string | null | undefined, folder: string): string | undefined {
   if (!img) return undefined;
   if (img.startsWith("http")) return img;
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base) return `/img/upload-files/${folder}/${img}`;
-  return `${base}/storage/v1/object/public/uploads/${folder}/${img}`;
+  return `/img/upload-files/${folder}/${img}`;
 }
 
 export function formatPrice(price: number): string {
