@@ -438,3 +438,335 @@ body {
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
 }
+
+/* ════════════════════════════════════════════════════════
+   LIGHT THEME REFINEMENTS
+   All rules are scoped to [data-theme="light"] so they
+   never affect dark mode.
+   ════════════════════════════════════════════════════════ */
+
+/* Page background and base variables */
+[data-theme="light"] body { background: #f0f4f8; }
+[data-theme="light"] { --bg: #f0f4f8; --text-muted: #64748b; }
+
+/* ── Cards: more visible depth ── */
+[data-theme="light"] .crm-card {
+  border-color: #e2eaf3;
+  box-shadow:
+    0 1px 2px rgba(15,23,42,0.05),
+    0 4px 16px rgba(15,23,42,0.04);
+}
+[data-theme="light"] .crm-card:hover {
+  border-color: #c9d7ea;
+  box-shadow:
+    0 4px 12px rgba(15,23,42,0.09),
+    0 16px 40px rgba(15,23,42,0.05);
+}
+
+/* ── Table: refined header + row stripes ── */
+[data-theme="light"] .crm-table th {
+  background: #f4f7fb;
+  border-bottom: 2px solid #dde5f0;
+  color: #4a5a72;
+  letter-spacing: 0.07em;
+}
+[data-theme="light"] .crm-table td {
+  border-bottom: 1px solid #edf1f8;
+}
+[data-theme="light"] .crm-table tbody tr:nth-child(even) td {
+  background: #fafbfd;
+}
+[data-theme="light"] .crm-table tbody tr:hover td {
+  background: #eef2ff;
+}
+[data-theme="light"] .crm-table tbody tr:hover td:first-child {
+  border-left: 2px solid #6366f1;
+  padding-left: 14px;
+}
+
+/* ── Badges: saturated for white background ── */
+[data-theme="light"] .badge-blue   { background: #eef2ff; color: #4338ca; }
+[data-theme="light"] .badge-green  { background: #ecfdf5; color: #047857; }
+[data-theme="light"] .badge-amber  { background: #fffbeb; color: #b45309; }
+[data-theme="light"] .badge-red    { background: #fff1f2; color: #be123c; }
+[data-theme="light"] .badge-purple { background: #faf5ff; color: #6d28d9; }
+[data-theme="light"] .badge-gray   { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+/* ── Sidebar: clean light with strong indigo accent ── */
+[data-theme="light"] .crm-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e4eaf4;
+  box-shadow: 2px 0 16px rgba(15,23,42,0.05);
+}
+[data-theme="light"] .crm-sidebar-logo {
+  border-bottom-color: #edf1f8;
+}
+[data-theme="light"] .crm-sidebar-group-btn {
+  color: #64748b;
+  opacity: 0.75;
+}
+[data-theme="light"] .crm-sidebar-item {
+  color: #374151;
+}
+[data-theme="light"] .crm-sidebar-item:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+[data-theme="light"] .crm-sidebar-item--active {
+  background: linear-gradient(90deg, #eef2ff 60%, rgba(238,242,255,0.3));
+  color: #4338ca;
+  border-left: 3px solid #6366f1;
+  padding-left: 11px;
+  font-weight: 600;
+}
+[data-theme="light"] .crm-sidebar-footer {
+  border-top-color: #edf1f8;
+}
+[data-theme="light"] .sidebar-item { color: #64748b; }
+[data-theme="light"] .sidebar-item:hover { background: #eef2ff; color: #4338ca; }
+
+/* ── Header ── */
+[data-theme="light"] header {
+  border-bottom: 1px solid #e4eaf4;
+  box-shadow: 0 1px 0 #edf1f8, 0 2px 8px rgba(15,23,42,0.04);
+}
+
+/* ── Buttons ── */
+[data-theme="light"] .btn-ghost {
+  background: #ffffff;
+  border-color: #dde5f0;
+  color: #475569;
+}
+[data-theme="light"] .btn-ghost:hover {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+/* ── Inputs ── */
+[data-theme="light"] .crm-input {
+  background: #ffffff;
+  border-color: #d8e1ef;
+}
+[data-theme="light"] .crm-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+}
+
+/* ── Stat cards: slightly stronger shadow in light ── */
+[data-theme="light"] .crm-stat-card {
+  box-shadow: 0 2px 6px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.04);
+}
+[data-theme="light"] .crm-stat-card:hover {
+  box-shadow: 0 6px 20px rgba(15,23,42,0.1), 0 20px 48px rgba(15,23,42,0.06);
+}
+
+/* ════════════════════════════════════════════════════════
+   CATEGORY TREE
+   ════════════════════════════════════════════════════════ */
+
+.cat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.cat-card:hover { box-shadow: var(--shadow-card); }
+.cat-card--open {
+  border-color: rgba(99,102,241,0.38);
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.1), var(--shadow-card);
+}
+
+.cat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  user-select: none;
+  transition: background 0.14s;
+}
+.cat-header:hover { background: var(--bg-hover); }
+
+.cat-toggle-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cat-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cat-subtitle {
+  flex: 1;
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cat-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.cat-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.cat-expand-btn:hover {
+  background: rgba(99,102,241,0.12);
+  color: var(--accent);
+}
+
+.cat-body {
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar2);
+}
+
+.cat-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 15px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.cat-sub-row:last-child { border-bottom: none; }
+.cat-sub-row:hover { background: var(--bg-hover); }
+
+/* Pill badges */
+.cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 99px;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.14s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.cat-badge--products { color: var(--accent); background: rgba(99,102,241,0.12); }
+.cat-badge--products:hover { background: rgba(99,102,241,0.22); }
+.cat-badge--visible  { color: var(--success); background: rgba(16,185,129,0.12); }
+.cat-badge--hidden   { color: var(--text-muted); background: rgba(100,116,139,0.1); }
+.cat-badge--discount { color: var(--warning); background: rgba(245,158,11,0.12); font-weight: 700; }
+
+/* Action buttons */
+.cat-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.14s, color 0.14s, transform 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.cat-action:hover          { background: rgba(99,102,241,0.1); color: var(--accent); transform: scale(1.1); }
+.cat-action--edit:hover    { color: var(--accent); }
+.cat-action--add:hover     { background: rgba(16,185,129,0.1); color: var(--success); }
+.cat-action--del:hover     { background: rgba(239,68,68,0.1);  color: var(--danger);  }
+
+/* Footer add-subcategory strip */
+.cat-add-footer { padding: 8px 15px; border-top: 1px solid var(--border); }
+.cat-add-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border: 1.5px dashed rgba(99,102,241,0.3);
+  padding: 7px 14px;
+  border-radius: 9px;
+  text-decoration: none;
+  width: 100%;
+  transition: background 0.14s, border-color 0.14s;
+}
+.cat-add-footer-link:hover {
+  background: rgba(99,102,241,0.07);
+  border-color: rgba(99,102,241,0.55);
+}
+
+.cat-empty-text {
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Light-theme overrides ── */
+[data-theme="light"] .cat-card {
+  border-color: #e2eaf3;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 16px rgba(15,23,42,0.04);
+}
+[data-theme="light"] .cat-card:hover {
+  box-shadow: 0 4px 18px rgba(15,23,42,0.09), 0 1px 4px rgba(15,23,42,0.05);
+}
+[data-theme="light"] .cat-card--open {
+  border-color: rgba(99,102,241,0.45);
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.1), 0 6px 24px rgba(99,102,241,0.1);
+}
+[data-theme="light"] .cat-header:hover  { background: #f4f7ff; }
+[data-theme="light"] .cat-title         { color: #1e293b; }
+[data-theme="light"] .cat-subtitle      { color: #334155; }
+[data-theme="light"] .cat-meta          { color: #94a3b8; }
+[data-theme="light"] .cat-body          { background: #f8fafd; border-top-color: #e8eef8; }
+[data-theme="light"] .cat-sub-row       { border-bottom-color: #edf1f8; }
+[data-theme="light"] .cat-sub-row:hover { background: #eef2ff; }
+[data-theme="light"] .cat-badge--products       { color: #4338ca; background: #eef2ff; }
+[data-theme="light"] .cat-badge--products:hover { background: #e0e7ff; }
+[data-theme="light"] .cat-badge--visible        { color: #047857; background: #ecfdf5; }
+[data-theme="light"] .cat-badge--hidden         { color: #64748b; background: #f1f5f9; }
+[data-theme="light"] .cat-badge--discount       { color: #b45309; background: #fffbeb; }
+[data-theme="light"] .cat-expand-btn:hover      { background: #eef2ff; color: #4338ca; }
+[data-theme="light"] .cat-action:hover          { background: #f1f5f9; color: #374151; }
+[data-theme="light"] .cat-action--edit:hover    { background: #eef2ff; color: #4338ca; }
+[data-theme="light"] .cat-action--add:hover     { background: #ecfdf5; color: #047857; }
+[data-theme="light"] .cat-action--del:hover     { background: #fff1f2; color: #be123c; }
+[data-theme="light"] .cat-add-footer            { border-top-color: #e8eef8; }
+[data-theme="light"] .cat-add-footer-link       { color: #4338ca; border-color: rgba(99,102,241,0.28); }
+[data-theme="light"] .cat-add-footer-link:hover { background: #eef2ff; border-color: rgba(99,102,241,0.5); }

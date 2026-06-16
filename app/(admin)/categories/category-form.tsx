@@ -12,9 +12,10 @@ import { Loader2, Upload } from "lucide-react";
 interface Props {
   category?: any | null;
   parentCategories: any[];
+  initialPid?: number;
 }
 
-export function CategoryForm({ category, parentCategories }: Props) {
+export function CategoryForm({ category, parentCategories, initialPid = 0 }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
@@ -25,7 +26,7 @@ export function CategoryForm({ category, parentCategories }: Props) {
   const [form, setForm] = useState({
     title: category?.title ?? "",
     uri: category?.uri ?? "",
-    pid: category?.pid ?? 0,
+    pid: category?.pid ?? initialPid,
     visibility: category?.visibility ?? 1,
     priority: category?.priority ?? 0,
     discount: category?.discount ?? "",
@@ -115,7 +116,9 @@ export function CategoryForm({ category, parentCategories }: Props) {
             <SelectContent>
               <SelectItem value="0">— Коренева —</SelectItem>
               {parentCategories.map((p) => (
-                <SelectItem key={p.id} value={String(p.translationId)}>{p.title}</SelectItem>
+                <SelectItem key={p.id} value={String(p.translationId)}>
+                  {p._depth > 0 ? " ".repeat(p._depth * 3) + "└ " + p.title : p.title}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -21,19 +21,28 @@ export default async function ProductsPage({
   const catId = sp.cat !== undefined ? parseInt(sp.cat) : undefined;
   const limit = 30;
 
-  // Category filtering: find RU products in that category, get their translationIds,
-  // then find UK products with those translationIds.
+  // Category filtering:
+  // products_categories.cid = categories.translation_id (the original/primary language id).
+  // URL param ?cat=X is the translation_id, so cid == catId directly.
   let translationIdFilter: number[] | null = null;
   if (catId !== undefined && catId !== 0) {
-    const { data: ruInCat } = await supabaseServer
-      .from("products")
-      .select("translation_id")
-      .eq("lang", "ru")
-      .in(
-        "id",
-        (await supabaseServer.from("products_categories").select("pid").eq("cid", catId)).data?.map((r: any) => r.pid) || []
-      );
-    translationIdFilter = (ruInCat || []).map((p: any) => p.translation_id);
+    const { data: pcRows } = await supabaseServer
+      .from("products_categories")
+      .select("pid")
+      .eq("cid", catId);
+
+    const productIds = (pcRows || []).map((r: any) => r.pid);
+
+    if (productIds.length > 0) {
+      const { data: ruInCat } = await supabaseServer
+        .from("products")
+        .select("translation_id")
+        .eq("lang", "ru")
+        .in("id", productIds);
+      translationIdFilter = (ruInCat || []).map((p: any) => p.translation_id);
+    } else {
+      translationIdFilter = [];
+    }
   }
 
   let query = supabaseServer
@@ -146,7 +155,7 @@ export default async function ProductsPage({
           </Link>
         </div>
 
-        <div className="flex items-center gap-3 text-sm text-gray-500">
+        <div className="flex items-center gap-3 text-sm" style={{ color: "var(--text-muted)" }}>
           <span>Знайдено: {total} товарів</span>
           {catId !== undefined && (
             <Link href="/products" className="text-blue-500 hover:underline text-xs">
@@ -155,25 +164,25 @@ export default async function ProductsPage({
           )}
         </div>
 
-        <div className="rounded-md border overflow-hidden bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+        <div className="crm-card overflow-hidden">
+          <table className="crm-table">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 w-12">ID</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 w-20">Фото</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Назва</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Артикул</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Ціна</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Категорія</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Статус</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Дії</th>
+                <th style={{ width: 48 }}>ID</th>
+                <th style={{ width: 80 }}>Фото</th>
+                <th>Назва</th>
+                <th>Артикул</th>
+                <th>Ціна</th>
+                <th>Категорія</th>
+                <th>Статус</th>
+                <th style={{ textAlign: "right" }}>Дії</th>
               </tr>
             </thead>
             <tbody>
               {allProducts.map((product: any) => (
-                <tr key={product.id} className="border-t hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{product.id}</td>
-                  <td className="px-4 py-2.5">
+                <tr key={product.id}>
+                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.id}</td>
+                  <td>
                     {product.img ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -182,34 +191,34 @@ export default async function ProductsPage({
                         className="h-10 w-10 rounded object-cover"
                       />
                     ) : (
-                      <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">—</div>
+                      <div className="h-10 w-10 rounded flex items-center justify-center text-xs" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>—</div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td>
                     <div className="font-medium">{product.title}</div>
                     {product.label_action === 1 && <Badge variant="warning" className="mt-0.5">Акція</Badge>}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{product.pcode ?? "—"}</td>
-                  <td className="px-4 py-2.5 font-medium whitespace-nowrap">
+                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.pcode ?? "—"}</td>
+                  <td className="font-medium whitespace-nowrap">
                     {product.price_sale ? (
                       <span>
                         <span className="text-red-600">{Number(product.price_sale).toFixed(2)}</span>
-                        <span className="text-gray-400 line-through ml-1 text-xs">{Number(product.price).toFixed(2)}</span>
+                        <span className="line-through ml-1 text-xs" style={{ color: "var(--text-muted)" }}>{Number(product.price).toFixed(2)}</span>
                       </span>
                     ) : (
                       <span>{Number(product.price).toFixed(2)}</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs">
+                  <td className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {catMap.get(product.translation_id) ?? "—"}
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td>
                     {product.active === 1
                       ? <Badge variant="success"><Eye className="h-3 w-3 mr-1" />Активний</Badge>
                       : <Badge variant="secondary"><EyeOff className="h-3 w-3 mr-1" />Прихований</Badge>
                     }
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td>
                     <div className="flex items-center justify-end gap-1">
                       <Link href={`/products/${product.id}`}>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -223,7 +232,7 @@ export default async function ProductsPage({
               ))}
               {allProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Товарів не знайдено
                   </td>
                 </tr>
@@ -239,7 +248,7 @@ export default async function ProductsPage({
                 <Button variant="outline" size="sm">← Попередня</Button>
               </Link>
             )}
-            <span className="text-sm text-gray-500">Сторінка {page} з {totalPages}</span>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>Сторінка {page} з {totalPages}</span>
             {page < totalPages && (
               <Link href={`/products?page=${page + 1}${q ? `&q=${q}` : ""}${catId !== undefined ? `&cat=${catId}` : ""}`}>
                 <Button variant="outline" size="sm">Наступна →</Button>

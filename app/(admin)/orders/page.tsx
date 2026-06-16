@@ -6,6 +6,16 @@ import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+function orderStatusClass(status: string | null): string {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("завершен") || s.includes("завершено")) return "badge badge-green";
+  if (s.includes("відправлен") || s.includes("отправлен")) return "badge badge-purple";
+  if (s.includes("отримано") || s.includes("получен")) return "badge badge-blue";
+  if (s.includes("в работ") || s.includes("в робот")) return "badge badge-amber";
+  if (s.includes("скасован") || s.includes("отмен")) return "badge badge-red";
+  return "badge badge-gray";
+}
+
 export default async function OrdersPage({
   searchParams,
 }: {
@@ -44,39 +54,39 @@ export default async function OrdersPage({
     <>
       <Header title="Замовлення" />
       <div className="p-6 space-y-4">
-        <div className="rounded-md border overflow-hidden bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+        <div className="crm-card overflow-hidden">
+          <table className="crm-table">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">#</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Клієнт</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Телефон</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Адреса</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Товарів</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Сума</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Дата</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Статус</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Дії</th>
+                <th>#</th>
+                <th>Клієнт</th>
+                <th>Телефон</th>
+                <th>Адреса</th>
+                <th>Товарів</th>
+                <th>Сума</th>
+                <th>Дата</th>
+                <th>Статус</th>
+                <th style={{ textAlign: "right" }}>Дії</th>
               </tr>
             </thead>
             <tbody>
               {allOrders.map((order: any) => {
                 const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
                 return (
-                  <tr key={order.id} className="border-t hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-gray-400 text-xs">{order.id}</td>
-                    <td className="px-4 py-2.5 font-medium">{order.person ?? order.login ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{order.phone ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">{order.addr_delivery ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-center">{(order.items || []).length}</td>
-                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
-                    <td className="px-4 py-2.5 text-gray-500">{formatDate(order.date)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                  <tr key={order.id}>
+                    <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
+                    <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
+                    <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
+                    <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
+                    <td className="text-center">{(order.items || []).length}</td>
+                    <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
+                    <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
+                    <td>
+                      <span className={orderStatusClass(order.status)}>
                         {order.status ?? "Новий"}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td style={{ textAlign: "right" }}>
                       <Link href={`/orders/${order.id}`}>
                         <Button variant="outline" size="sm">Переглянути</Button>
                       </Link>
@@ -86,14 +96,16 @@ export default async function OrdersPage({
               })}
               {allOrders.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">Замовлень немає</td>
+                  <td colSpan={9} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
+                    Замовлень немає
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
 
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm" style={{ color: "var(--text-muted)" }}>
           <span>Всього: {total}</span>
           {totalPages > 1 && (
             <div className="flex items-center gap-2">

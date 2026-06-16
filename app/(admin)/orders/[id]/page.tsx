@@ -98,32 +98,32 @@ export default function OrderDetailPage() {
 
         <Card>
           <CardHeader><CardTitle className="text-sm">Товари замовлення</CardTitle></CardHeader>
-          <CardContent>
-            <table className="w-full text-sm">
+          <CardContent style={{ padding: 0 }}>
+            <table className="crm-table">
               <thead>
-                <tr className="border-b text-gray-500">
-                  <th className="pb-2 text-left font-medium">ID товару</th>
-                  <th className="pb-2 text-left font-medium">Тип</th>
-                  <th className="pb-2 text-right font-medium">Ціна</th>
-                  <th className="pb-2 text-right font-medium">К-сть</th>
-                  <th className="pb-2 text-right font-medium">Сума</th>
+                <tr>
+                  <th>ID товару</th>
+                  <th>Тип</th>
+                  <th style={{ textAlign: "right" }}>Ціна</th>
+                  <th style={{ textAlign: "right" }}>К-сть</th>
+                  <th style={{ textAlign: "right" }}>Сума</th>
                 </tr>
               </thead>
               <tbody>
                 {order.items?.map((item: { id: number; product: number; type: string | null; price: number; quantity: number }) => (
-                  <tr key={item.id} className="border-b last:border-0">
-                    <td className="py-2 font-mono text-xs text-gray-500">#{item.product}</td>
-                    <td className="py-2 text-gray-500">{item.type ?? "—"}</td>
-                    <td className="py-2 text-right">{item.price.toFixed(2)} грн</td>
-                    <td className="py-2 text-right">{item.quantity}</td>
-                    <td className="py-2 text-right font-medium">{(item.price * item.quantity).toFixed(2)} грн</td>
+                  <tr key={item.id}>
+                    <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>#{item.product}</td>
+                    <td style={{ color: "var(--text-muted)" }}>{item.type ?? "—"}</td>
+                    <td style={{ textAlign: "right" }}>{item.price.toFixed(2)} грн</td>
+                    <td style={{ textAlign: "right" }}>{item.quantity}</td>
+                    <td className="font-medium" style={{ textAlign: "right" }}>{(item.price * item.quantity).toFixed(2)} грн</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4} className="pt-3 text-right font-semibold">Разом:</td>
-                  <td className="pt-3 text-right font-bold text-lg">{orderTotal.toFixed(2)} грн</td>
+                  <td colSpan={4} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
+                  <td className="font-bold text-lg" style={{ textAlign: "right", borderBottom: "none" }}>{orderTotal.toFixed(2)} грн</td>
                 </tr>
               </tfoot>
             </table>
