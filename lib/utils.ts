@@ -34,8 +34,7 @@ export function getImgUrl(img: string | null | undefined, folder: string): strin
   if (!img) return undefined;
   if (img.startsWith("http")) return img;
   const r2 = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
-  if (r2) return `${r2}/${folder}/${img}`;
-  return `/img/upload-files/${folder}/${img}`;
+  return r2 ? `${r2}/${folder}/${img}` : undefined;
 }
 
 export function formatPrice(price: number): string {

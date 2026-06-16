@@ -47,3 +47,6 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# Local image uploads — served from Cloudflare R2
+/public/img/upload-files/
