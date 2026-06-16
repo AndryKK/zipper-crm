@@ -1,20 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-
-const BUCKET = "uploads";
-
-async function uploadFile(file: File, prefix: string): Promise<string | undefined> {
-  const filename = `${Date.now()}-${prefix}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
-  const storagePath = `slider/${filename}`;
-  const bytes = await file.arrayBuffer();
-  const { error } = await supabaseServer.storage
-    .from(BUCKET)
-    .upload(storagePath, bytes, { contentType: file.type || "image/jpeg", upsert: false });
-  if (error) return undefined;
-  const { data: { publicUrl } } = supabaseServer.storage.from(BUCKET).getPublicUrl(storagePath);
-  return publicUrl;
-}
+import { uploadToR2 } from "@/lib/r2";
 
 export async function GET() {
   const session = await auth();
@@ -35,7 +22,10 @@ export async function POST(req: NextRequest) {
   const file = formData.get("img") as File | null;
   const file2 = formData.get("img2") as File | null;
 
-  await supabaseServer.storage.createBucket(BUCKET, { public: true }).catch(() => {});
+  async function uploadFile(f: File, prefix: string): Promise<string> {
+    const filename = `${Date.now()}-${prefix}-${f.name.replace(/[^a-z0-9.]/gi, "_")}`;
+    return uploadToR2(`slider/${filename}`, await f.arrayBuffer(), f.type || "image/jpeg");
+  }
 
   const [img, img2] = await Promise.all([
     file && file.size > 0 ? uploadFile(file, "d") : Promise.resolve(undefined),

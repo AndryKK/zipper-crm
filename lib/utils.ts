@@ -33,6 +33,8 @@ export function formatDate(date: Date | string): string {
 export function getImgUrl(img: string | null | undefined, folder: string): string | undefined {
   if (!img) return undefined;
   if (img.startsWith("http")) return img;
+  const r2 = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
+  if (r2) return `${r2}/${folder}/${img}`;
   return `/img/upload-files/${folder}/${img}`;
 }
 
