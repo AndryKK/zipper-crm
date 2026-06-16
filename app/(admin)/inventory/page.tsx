@@ -1,0 +1,484 @@
+"use client";
+
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Header } from "@/components/admin/header";
+import {
+  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package,
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface WarehouseOption { id: number; title: string; }
+interface InventoryRow {
+  id: number;
+  product_id: number;
+  warehouse_id: number;
+  quantity: number;
+  reserved: number;
+  initial_quantity: number;
+  min_quantity: number;
+  product?: { id: number; title: string; pcode?: string; lang: string };
+  warehouse?: { id: number; title: string };
+}
+
+function InventoryContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const warehouseIdParam = searchParams.get("warehouse_id");
+
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(warehouseIdParam || "");
+  const [rows, setRows] = useState<InventoryRow[]>([]);
+  const [filteredRows, setFilteredRows] = useState<InventoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<Partial<InventoryRow>>({});
+  const [saving, setSaving] = useState(false);
+
+  /* Add-new inline form */
+  const [showAdd, setShowAdd] = useState(false);
+  const [addProductId, setAddProductId] = useState("");
+  const [addInitial, setAddInitial] = useState("0");
+  const [addMin, setAddMin] = useState("0");
+  const [addQty, setAddQty] = useState("0");
+
+  async function loadWarehouses() {
+    const res = await fetch("/api/warehouses");
+    const data = await res.json();
+    setWarehouses(data);
+    if (!selectedWarehouse && data.length > 0) {
+      setSelectedWarehouse(String(data[0].id));
+    }
+  }
+
+  const loadInventory = useCallback(async () => {
+    if (!selectedWarehouse) return;
+    setLoading(true);
+    const res = await fetch(`/api/inventory?warehouse_id=${selectedWarehouse}`);
+    const data = await res.json();
+    setRows(data);
+    setLoading(false);
+  }, [selectedWarehouse]);
+
+  useEffect(() => { loadWarehouses(); }, []);
+  useEffect(() => { loadInventory(); }, [loadInventory]);
+
+  useEffect(() => {
+    if (!q) { setFilteredRows(rows); return; }
+    const lower = q.toLowerCase();
+    setFilteredRows(rows.filter((r) =>
+      r.product?.title?.toLowerCase().includes(lower) ||
+      r.product?.pcode?.toLowerCase().includes(lower)
+    ));
+  }, [q, rows]);
+
+  function startEdit(row: InventoryRow) {
+    setEditingId(row.id);
+    setEditForm({
+      quantity: row.quantity,
+      reserved: row.reserved,
+      initial_quantity: row.initial_quantity,
+      min_quantity: row.min_quantity,
+    });
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    setSaving(true);
+    const res = await fetch("/api/inventory", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingId, ...editForm }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      toast.success("Залишки оновлено");
+      setEditingId(null);
+      loadInventory();
+    } else {
+      const e = await res.json();
+      toast.error(e.error);
+    }
+  }
+
+  async function addEntry() {
+    if (!addProductId || !selectedWarehouse) {
+      toast.error("Вкажіть товар");
+      return;
+    }
+    const res = await fetch("/api/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: Number(addProductId),
+        warehouse_id: Number(selectedWarehouse),
+        quantity: Number(addQty),
+        initial_quantity: Number(addInitial),
+        min_quantity: Number(addMin),
+      }),
+    });
+    if (res.ok) {
+      toast.success("Запис додано");
+      setShowAdd(false);
+      setAddProductId("");
+      setAddInitial("0");
+      setAddMin("0");
+      setAddQty("0");
+      loadInventory();
+    } else {
+      const e = await res.json();
+      toast.error(e.error);
+    }
+  }
+
+  const currentWarehouse = warehouses.find((w) => String(w.id) === selectedWarehouse);
+  const totalQty = filteredRows.reduce((s, r) => s + Number(r.quantity), 0);
+  const lowStock = filteredRows.filter((r) => Number(r.quantity) <= Number(r.min_quantity) && Number(r.min_quantity) > 0).length;
+
+  return (
+    <>
+      <Header
+        title="Залишки на складі"
+        subtitle={currentWarehouse ? `${currentWarehouse.title}` : "Оберіть склад"}
+        actions={
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>
+            <Plus size={14} /> Додати запис
+          </button>
+        }
+      />
+
+      <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
+
+        {/* Summary cards */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+            gap: 14,
+            marginBottom: 20,
+          }}
+        >
+          <div className="crm-card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Позицій</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{filteredRows.length}</div>
+          </div>
+          <div className="crm-card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Всього одиниць</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{totalQty.toFixed(0)}</div>
+          </div>
+          <div className="crm-card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Під мінімумом</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: lowStock > 0 ? "var(--danger)" : "var(--success)" }}>
+              {lowStock}
+            </div>
+          </div>
+        </div>
+
+        {/* Filters row */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            marginBottom: 16,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* Warehouse selector */}
+          <div style={{ position: "relative" }}>
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => {
+                setSelectedWarehouse(e.target.value);
+                router.push(`/inventory?warehouse_id=${e.target.value}`);
+              }}
+              className="crm-input"
+              style={{ paddingRight: 32, appearance: "none", cursor: "pointer", minWidth: 160 }}
+            >
+              <option value="">Всі склади</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>{w.title}</option>
+              ))}
+            </select>
+            <ChevronDown
+              size={13}
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-muted)",
+                pointerEvents: "none",
+              }}
+            />
+          </div>
+
+          {/* Search */}
+          <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+            <Search
+              size={14}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-muted)",
+              }}
+            />
+            <input
+              className="crm-input"
+              placeholder="Пошук за назвою або кодом..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ paddingLeft: 36 }}
+            />
+          </div>
+        </div>
+
+        {/* Add entry form */}
+        {showAdd && (
+          <div className="crm-card animate-scale-in" style={{ padding: 20, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 14 }}>
+              Додати запис залишків
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px auto", gap: 10, alignItems: "end" }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                  ID товару *
+                </label>
+                <input
+                  className="crm-input"
+                  type="number"
+                  placeholder="напр. 123"
+                  value={addProductId}
+                  onChange={(e) => setAddProductId(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                  Поч. залишок
+                </label>
+                <input
+                  className="crm-input"
+                  type="number"
+                  value={addInitial}
+                  onChange={(e) => setAddInitial(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                  Поточний
+                </label>
+                <input
+                  className="crm-input"
+                  type="number"
+                  value={addQty}
+                  onChange={(e) => setAddQty(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                  Мінімум
+                </label>
+                <input
+                  className="crm-input"
+                  type="number"
+                  value={addMin}
+                  onChange={(e) => setAddMin(e.target.value)}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="btn-primary" onClick={addEntry} style={{ whiteSpace: "nowrap" }}>
+                  <Save size={13} /> Додати
+                </button>
+                <button className="btn-ghost" onClick={() => setShowAdd(false)} style={{ padding: "8px 10px" }}>
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="crm-card">
+          {loading ? (
+            <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>
+              Завантаження...
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div style={{ padding: "64px 24px", textAlign: "center" }}>
+              <Boxes size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
+              <p style={{ color: "var(--text-muted)", fontSize: 14 }}>
+                {q ? "Нічого не знайдено" : "Записів залишків немає"}
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="crm-table">
+                <thead>
+                  <tr>
+                    <th>Товар</th>
+                    <th>Склад</th>
+                    <th style={{ textAlign: "right" }}>Поч. залишок</th>
+                    <th style={{ textAlign: "right" }}>Поточний</th>
+                    <th style={{ textAlign: "right" }}>Резерв</th>
+                    <th style={{ textAlign: "right" }}>Доступний</th>
+                    <th style={{ textAlign: "right" }}>Мінімум</th>
+                    <th style={{ textAlign: "right" }}>Дії</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => {
+                    const available = Number(row.quantity) - Number(row.reserved);
+                    const isLow = Number(row.quantity) <= Number(row.min_quantity) && Number(row.min_quantity) > 0;
+                    const isEditing = editingId === row.id;
+
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                              {row.product?.title ?? `#${row.product_id}`}
+                            </div>
+                            {row.product?.pcode && (
+                              <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                {row.product.pcode}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
+                          {row.warehouse?.title ?? `#${row.warehouse_id}`}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {isEditing ? (
+                            <input
+                              className="crm-input"
+                              type="number"
+                              value={editForm.initial_quantity}
+                              onChange={(e) => setEditForm({ ...editForm, initial_quantity: Number(e.target.value) })}
+                              style={{ width: 80, textAlign: "right" }}
+                            />
+                          ) : (
+                            <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {isEditing ? (
+                            <input
+                              className="crm-input"
+                              type="number"
+                              value={editForm.quantity}
+                              onChange={(e) => setEditForm({ ...editForm, quantity: Number(e.target.value) })}
+                              style={{ width: 80, textAlign: "right" }}
+                            />
+                          ) : (
+                            <span
+                              style={{
+                                fontFamily: "monospace",
+                                fontWeight: 700,
+                                color: isLow ? "var(--danger)" : "var(--text)",
+                              }}
+                            >
+                              {Number(row.quantity).toFixed(0)}
+                              {isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {isEditing ? (
+                            <input
+                              className="crm-input"
+                              type="number"
+                              value={editForm.reserved}
+                              onChange={(e) => setEditForm({ ...editForm, reserved: Number(e.target.value) })}
+                              style={{ width: 80, textAlign: "right" }}
+                            />
+                          ) : (
+                            <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>
+                              {Number(row.reserved).toFixed(0)}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <span
+                            style={{
+                              fontFamily: "monospace",
+                              fontWeight: 600,
+                              color: available < 0 ? "var(--danger)" : available === 0 ? "var(--warning)" : "var(--success)",
+                            }}
+                          >
+                            {available.toFixed(0)}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {isEditing ? (
+                            <input
+                              className="crm-input"
+                              type="number"
+                              value={editForm.min_quantity}
+                              onChange={(e) => setEditForm({ ...editForm, min_quantity: Number(e.target.value) })}
+                              style={{ width: 80, textAlign: "right" }}
+                            />
+                          ) : (
+                            <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>
+                              {Number(row.min_quantity).toFixed(0)}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                            {isEditing ? (
+                              <>
+                                <button
+                                  className="btn-primary"
+                                  onClick={saveEdit}
+                                  disabled={saving}
+                                  style={{ padding: "5px 10px", fontSize: 12 }}
+                                >
+                                  <Save size={12} /> Зберегти
+                                </button>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => setEditingId(null)}
+                                  style={{ padding: "5px 8px" }}
+                                >
+                                  <X size={12} />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="btn-ghost"
+                                onClick={() => startEdit(row)}
+                                style={{ padding: "5px 10px", fontSize: 12 }}
+                              >
+                                Змінити
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>
+        Завантаження...
+      </div>
+    }>
+      <InventoryContent />
+    </Suspense>
+  );
+}

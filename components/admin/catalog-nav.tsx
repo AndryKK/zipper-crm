@@ -15,40 +15,92 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
+  const linkStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "5px 8px 5px 40px",
+    fontSize: 12,
+    color: "rgba(148,163,184,0.8)",
+    textDecoration: "none" as const,
+    borderRadius: 6,
+    margin: "1px 8px",
+    transition: "all 0.12s",
+  };
+
   return (
-    <div>
-      <Link
-        href="/products"
-        className="block py-1 pl-11 pr-3 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+    <div style={{ marginTop: 2 }}>
+      <Link href="/products" style={linkStyle}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
       >
         — всі товари
       </Link>
-      <Link
-        href="/products?cat=0"
-        className="block py-1 pl-11 pr-3 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+      <Link href="/products?cat=0" style={linkStyle}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
       >
         — без категорії
       </Link>
 
       {roots.map((root) => (
         <div key={root.id}>
-          <div className="flex items-center group">
+          <div style={{ display: "flex", alignItems: "center" }}>
             <button
               onClick={() => toggle(root.id)}
-              className="flex flex-1 items-center gap-1.5 py-1 pl-9 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors text-left"
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "5px 8px 5px 32px",
+                fontSize: 12,
+                color: "rgba(148,163,184,0.85)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "left" as const,
+                borderRadius: 6,
+                margin: "1px 8px 1px 0",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = "#c7d2fe";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(99,102,241,0.1)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = "rgba(148,163,184,0.85)";
+                (e.currentTarget as HTMLButtonElement).style.background = "none";
+              }}
             >
               {expanded.includes(root.id) ? (
-                <ChevronDown className="h-3 w-3 shrink-0" />
+                <ChevronDown size={11} />
               ) : (
-                <ChevronRight className="h-3 w-3 shrink-0" />
+                <ChevronRight size={11} />
               )}
-              <span className="truncate">{root.title}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {root.title}
+              </span>
             </button>
             <Link
               href={`/products/new?cat=${root.id}`}
-              className="shrink-0 px-2 py-1 text-gray-300 hover:text-green-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
+              style={{
+                flexShrink: 0,
+                padding: "5px 8px",
+                color: "rgba(165,180,252,0.3)",
+                borderRadius: 4,
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.color = "#10b981";
+                (e.currentTarget as HTMLAnchorElement).style.background = "rgba(16,185,129,0.1)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.color = "rgba(165,180,252,0.3)";
+                (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+              }}
             >
-              <Plus className="h-3 w-3" />
+              <Plus size={11} />
             </Link>
           </div>
 
@@ -57,24 +109,42 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
               {root.children.length === 0 ? (
                 <Link
                   href={`/products?cat=${root.id}`}
-                  className="block py-1 pl-14 pr-3 text-xs text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                  style={{ ...linkStyle, paddingLeft: 52 }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
                 >
                   — товари категорії
                 </Link>
               ) : (
                 root.children.map((child) => (
-                  <div key={child.id} className="flex items-center group">
+                  <div key={child.id} style={{ display: "flex", alignItems: "center" }}>
                     <Link
                       href={`/products?cat=${child.id}`}
-                      className="flex-1 py-1 pl-14 pr-2 text-xs text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors truncate"
+                      style={{ ...linkStyle, flex: 1, paddingLeft: 52, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
                     >
                       {child.title}
                     </Link>
                     <Link
                       href={`/products/new?cat=${child.id}`}
-                      className="shrink-0 px-2 py-1 text-gray-300 hover:text-green-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
+                      style={{
+                        flexShrink: 0,
+                        padding: "5px 8px",
+                        color: "rgba(165,180,252,0.3)",
+                        borderRadius: 4,
+                        transition: "all 0.12s",
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLAnchorElement).style.color = "#10b981";
+                        (e.currentTarget as HTMLAnchorElement).style.background = "rgba(16,185,129,0.1)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLAnchorElement).style.color = "rgba(165,180,252,0.3)";
+                        (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+                      }}
                     >
-                      <Plus className="h-3 w-3" />
+                      <Plus size={11} />
                     </Link>
                   </div>
                 ))

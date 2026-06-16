@@ -1,12 +1,11 @@
 "use client";
+
 import {
   ColumnDef, flexRender, getCoreRowModel, getPaginationRowModel,
   getSortedRowModel, getFilteredRowModel, useReactTable, SortingState, ColumnFiltersState,
 } from "@tanstack/react-table";
 import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -35,61 +34,99 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className="space-y-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {searchKey && (
-        <Input
-          placeholder={searchPlaceholder}
-          value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-          onChange={(e) => table.getColumn(searchKey)?.setFilterValue(e.target.value)}
-          className="max-w-sm"
-        />
+        <div style={{ position: "relative", maxWidth: 320 }}>
+          <Search
+            size={14}
+            style={{
+              position: "absolute",
+              left: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-muted)",
+            }}
+          />
+          <input
+            className="crm-input"
+            placeholder={searchPlaceholder}
+            value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
+            onChange={(e) => table.getColumn(searchKey)?.setFilterValue(e.target.value)}
+            style={{ paddingLeft: 32 }}
+          />
+        </div>
       )}
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3 text-left font-medium text-gray-700 whitespace-nowrap">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-t hover:bg-gray-50 transition-colors">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-2.5">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
+
+      <div className="crm-card" style={{ overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="crm-table">
+            <thead>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th key={header.id}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
                   ))}
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">
-                  Нічого не знайдено
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.length ? (
+                table.getRowModel().rows.map((row) => (
+                  <tr key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={columns.length}
+                    style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)" }}
+                  >
+                    Нічого не знайдено
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div className="flex items-center justify-between text-sm text-gray-600">
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 12.5,
+          color: "var(--text-muted)",
+        }}
+      >
         <span>
           Сторінка {table.getState().pagination.pageIndex + 1} з {table.getPageCount()} •{" "}
           {table.getFilteredRowModel().rows.length} записів
         </span>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            className="btn-ghost"
+            style={{ padding: "5px 8px" }}
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ padding: "5px 8px" }}
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            <ChevronRight size={14} />
+          </button>
         </div>
       </div>
     </div>

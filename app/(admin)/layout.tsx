@@ -34,9 +34,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }));
 
   return (
-    <div className="flex h-full bg-gray-100 text-slate-900">
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "var(--bg)",
+      }}
+    >
       <Sidebar catalogRoots={catalogRoots} />
-      <main className="flex-1 ml-64 flex flex-col min-h-screen">
+      <main
+        style={{
+          flex: 1,
+          marginLeft: 248,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: "100vh",
+        }}
+      >
         {children}
       </main>
     </div>
