@@ -14,7 +14,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
       ? { data: null }
       : supabaseServer
           .from("categories")
-          .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
+          .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr, image_new_shop")
           .eq("id", parseInt(id))
           .single(),
     supabaseServer

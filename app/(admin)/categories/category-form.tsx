@@ -19,8 +19,11 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
+  const [imgNewShopUploading, setImgNewShopUploading] = useState(false);
   const [currentImg, setCurrentImg] = useState(category?.img ?? "");
+  const [currentImgNewShop, setCurrentImgNewShop] = useState(category?.image_new_shop ?? "");
   const imgInputRef = useRef<HTMLInputElement>(null);
+  const imgNewShopInputRef = useRef<HTMLInputElement>(null);
   const isNew = !category;
 
   const [form, setForm] = useState({
@@ -53,6 +56,22 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
       toast.error("Помилка завантаження");
     }
     setImgUploading(false);
+  }
+
+  async function uploadImgNewShop(file: File) {
+    if (!category) return;
+    setImgNewShopUploading(true);
+    const fd = new FormData();
+    fd.append("img", file);
+    const res = await fetch(`/api/categories/${category.id}/image?field=image_new_shop`, { method: "POST", body: fd });
+    if (res.ok) {
+      const data = await res.json();
+      setCurrentImgNewShop(data.image_new_shop);
+      toast.success("Фото нового магазину оновлено!");
+    } else {
+      toast.error("Помилка завантаження");
+    }
+    setImgNewShopUploading(false);
   }
 
   async function save() {
@@ -170,6 +189,33 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
               <Button type="button" variant="outline" size="sm" disabled={imgUploading} onClick={() => imgInputRef.current?.click()}>
                 {imgUploading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
                 {currentImg ? "Замінити фото" : "Завантажити фото"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isNew && (
+        <div className="border-t pt-4 space-y-2">
+          <p className="text-sm font-medium text-gray-700">Фото для нового магазину <span className="text-xs text-gray-400 font-normal">(image_new_shop)</span></p>
+          <div className="flex items-center gap-4">
+            {currentImgNewShop ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={currentImgNewShop} alt="" className="h-20 w-20 rounded object-cover border" />
+            ) : (
+              <div className="h-20 w-20 rounded bg-gray-100 border flex items-center justify-center text-gray-400 text-xs">Немає</div>
+            )}
+            <div>
+              <input
+                ref={imgNewShopInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImgNewShop(f); }}
+              />
+              <Button type="button" variant="outline" size="sm" disabled={imgNewShopUploading} onClick={() => imgNewShopInputRef.current?.click()}>
+                {imgNewShopUploading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+                {currentImgNewShop ? "Замінити фото" : "Завантажити фото"}
               </Button>
             </div>
           </div>

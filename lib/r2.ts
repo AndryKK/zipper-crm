@@ -25,6 +25,6 @@ export async function uploadToR2(
       ContentType: contentType,
     })
   );
-  const publicUrl = process.env.R2_PUBLIC_URL!;
+  const publicUrl = (process.env.R2_PUBLIC_URL ?? process.env.NEXT_PUBLIC_R2_PUBLIC_URL)!;
   return `${publicUrl}/${key}`;
 }
