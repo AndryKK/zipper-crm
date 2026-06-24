@@ -1,6 +1,7 @@
 import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import { Users, ShoppingCart } from "lucide-react";
+import { UsersTable } from "./users-table";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ async function fetchAllUsers() {
   while (true) {
     const { data, error } = await supabaseServer
       .from("users")
-      .select("id, login, person, phone, rank, addr_delivery")
+      .select("id, login, person, phone, rank, addr_delivery, password")
       .order("id", { ascending: false })
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) { console.error("[users] fetch error:", error.message); break; }
@@ -109,56 +110,14 @@ export default async function UsersPage() {
         </div>
 
         {/* Table */}
-        <div className="crm-card">
-          {allUsers.length === 0 ? (
-            <div style={{ padding: "64px 24px", textAlign: "center" }}>
-              <Users size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
-              <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Клієнтів ще немає</p>
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="crm-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Логін</th>
-                    <th>Ім&apos;я</th>
-                    <th>Телефон</th>
-                    <th>Адреса</th>
-                    <th style={{ textAlign: "right" }}>Замовлень</th>
-                    <th>Ранг</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allUsers.map((u: any) => {
-                    const cnt = orderCountMap[u.login] ?? 0;
-                    return (
-                      <tr key={u.id}>
-                        <td style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>#{u.id}</td>
-                        <td style={{ fontWeight: 600 }}>{u.login}</td>
-                        <td>{u.person ?? "—"}</td>
-                        <td style={{ color: "var(--text-muted)" }}>{u.phone ?? "—"}</td>
-                        <td style={{ color: "var(--text-muted)", fontSize: 12.5, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {u.addr_delivery ?? "—"}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {cnt > 0
-                            ? <span className="badge badge-blue">{cnt}</span>
-                            : <span style={{ color: "var(--text-muted)" }}>0</span>}
-                        </td>
-                        <td>
-                          {u.rank
-                            ? <span className="badge badge-purple">Ранг {u.rank}</span>
-                            : <span style={{ color: "var(--text-muted)" }}>—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {allUsers.length === 0 ? (
+          <div className="crm-card" style={{ padding: "64px 24px", textAlign: "center" }}>
+            <Users size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Клієнтів ще немає</p>
+          </div>
+        ) : (
+          <UsersTable users={allUsers} orderCountMap={orderCountMap} />
+        )}
       </div>
     </>
   );
