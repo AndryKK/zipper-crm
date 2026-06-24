@@ -36,7 +36,7 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
     price3: product?.price3 ?? "",
     price3n: product?.price3n ?? "",
     minquantity: product?.minquantity ?? 1,
-    measure: product?.measure ?? "",
+    measure: product?.measure ? String(product.measure) : "0",
     active: product?.active ?? 1,
     labelAction: product?.labelAction ?? 0,
     popular: product?.popular ?? 0,
@@ -54,6 +54,41 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
     product?.categories?.map((c: any) => c.cid) ?? []
   );
   const [selectedFilters, setSelectedFilters] = useState<number[]>([]);
+
+  const [cascadeMain, setCascadeMain] = useState<string>("0");
+  const [cascadeSub, setCascadeSub] = useState<string>("0");
+  const [cascadeType, setCascadeType] = useState<string>("0");
+
+  const mainCats = categories.filter((c: any) => c.pid === 0);
+  const subCats = cascadeMain !== "0"
+    ? (() => {
+        const main = categories.find((m: any) => m.id === parseInt(cascadeMain));
+        return main ? categories.filter((c: any) => c.pid === main.translationId) : [];
+      })()
+    : [];
+  const typeCats = cascadeSub !== "0"
+    ? (() => {
+        const sub = categories.find((s: any) => s.id === parseInt(cascadeSub));
+        return sub ? categories.filter((c: any) => c.pid === sub.translationId) : [];
+      })()
+    : [];
+
+  function getCategoryPath(catId: number): string {
+    const cat = categories.find((c: any) => c.id === catId);
+    if (!cat) return `#${catId}`;
+    if (cat.pid === 0) return cat.title;
+    const parent = categories.find((c: any) => c.translationId === cat.pid);
+    if (!parent || parent.pid === 0) return `${parent?.title ?? "?"} › ${cat.title}`;
+    const grandParent = categories.find((c: any) => c.translationId === parent.pid);
+    return `${grandParent?.title ?? "?"} › ${parent.title} › ${cat.title}`;
+  }
+
+  function addCascadeCategory() {
+    const idStr = cascadeType !== "0" ? cascadeType : cascadeSub !== "0" ? cascadeSub : cascadeMain;
+    const id = parseInt(idStr);
+    if (!id || selectedCategories.includes(id)) return;
+    setSelectedCategories((prev) => [...prev, id]);
+  }
   const [chars, setChars] = useState<{ title: string; value: string }[]>(
     product?.chars?.map((c: any) => ({ title: c.title, value: c.value ?? "" })) ?? []
   );
@@ -64,14 +99,29 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
     setSaving(true);
     try {
       const payload = {
-        ...form,
+        title: form.title,
+        main_title: form.main_title,
+        pcode: form.pcode,
+        uri: form.uri,
+        heading: form.heading,
+        text: form.text,
+        descr: form.descr,
+        lang: form.lang,
         price: parseFloat(String(form.price)) || 0,
-        price_sale: form.price_sale !== "" ? parseFloat(String(form.price_sale)) : null,
-        price2: form.price2 !== "" ? parseFloat(String(form.price2)) : null,
-        price2n: form.price2n !== "" ? parseFloat(String(form.price2n)) : null,
-        price3: form.price3 !== "" ? parseFloat(String(form.price3)) : null,
-        price3n: form.price3n !== "" ? parseFloat(String(form.price3n)) : null,
-        measure: form.measure !== "" ? parseInt(String(form.measure)) : null,
+        price_sale: form.price_sale !== "" ? parseFloat(String(form.price_sale)) : 0,
+        price2: form.price2 !== "" ? parseFloat(String(form.price2)) : 0,
+        price2n: form.price2n !== "" ? parseInt(String(form.price2n)) : 0,
+        price3: form.price3 !== "" ? parseFloat(String(form.price3)) : 0,
+        price3n: form.price3n !== "" ? parseInt(String(form.price3n)) : 0,
+        measure: form.measure !== "0" ? String(parseInt(form.measure)) : "",
+        minquantity: parseInt(String(form.minquantity)) || 0,
+        priority: parseInt(String(form.priority)) || 0,
+        active: parseInt(String(form.active)),
+        label_action: parseInt(String(form.labelAction)),
+        popular: parseInt(String(form.popular)),
+        seo_title: form.seoTitle,
+        seo_key: form.seoKey,
+        seo_descr: form.seoDescr,
         categoryIds: selectedCategories,
         filterIds: selectedFilters,
       };
@@ -166,13 +216,13 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label>Одиниця виміру</Label>
+              <Label>Наявність</Label>
               <Select value={String(form.measure)} onValueChange={(v) => set("measure", v)}>
                 <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— Не вказано —</SelectItem>
+                  <SelectItem value="0">— Не вказано —</SelectItem>
                   {measures.map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.title} ({m.short_title})</SelectItem>
+                    <SelectItem key={m.id} value={String(m.id)}>{m.title}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -266,25 +316,65 @@ export function ProductForm({ product, categories, measures, filters, langs, mod
       )}
 
       {activeTab === "categories" && (
-        <div className="max-w-xl space-y-3">
-          <p className="text-sm text-gray-500">Оберіть одну або кілька категорій</p>
-          <div className="border rounded-md divide-y max-h-80 overflow-y-auto">
-            {categories.map((cat) => (
-              <label key={cat.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedCategories.includes(cat.id)}
-                  onChange={(e) => {
-                    setSelectedCategories((prev) =>
-                      e.target.checked ? [...prev, cat.id] : prev.filter((id) => id !== cat.id)
-                    );
-                  }}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className="text-sm">{cat.pid > 0 ? "  └ " : ""}{cat.title}</span>
-              </label>
-            ))}
+        <div className="max-w-2xl space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label>Основна категорія</Label>
+              <Select value={cascadeMain} onValueChange={(v) => { setCascadeMain(v); setCascadeSub("0"); setCascadeType("0"); }}>
+                <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">— Оберіть —</SelectItem>
+                  {mainCats.map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Підкатегорія</Label>
+              <Select value={cascadeSub} onValueChange={(v) => { setCascadeSub(v); setCascadeType("0"); }} disabled={subCats.length === 0}>
+                <SelectTrigger><SelectValue placeholder={subCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">— Оберіть —</SelectItem>
+                  {subCats.map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Тип</Label>
+              <Select value={cascadeType} onValueChange={setCascadeType} disabled={typeCats.length === 0}>
+                <SelectTrigger><SelectValue placeholder={typeCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">— Оберіть —</SelectItem>
+                  {typeCats.map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          <Button type="button" variant="outline" size="sm" onClick={addCascadeCategory} disabled={cascadeMain === "0"}>
+            <Plus className="h-4 w-4 mr-1" />Додати до категорій
+          </Button>
+
+          {selectedCategories.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Обрано</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedCategories.map((catId) => (
+                  <div key={catId} className="flex items-center gap-1.5 bg-[var(--bg)] border border-[var(--border)] rounded-md px-2.5 py-1 text-sm">
+                    <span>{getCategoryPath(catId)}</span>
+                    <button type="button" onClick={() => setSelectedCategories((prev) => prev.filter((id) => id !== catId))} className="text-gray-400 hover:text-red-500 ml-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

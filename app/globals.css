@@ -28,8 +28,12 @@
   --radius:          12px;
   --radius-sm:       8px;
   /* Tailwind semantic tokens (used by shadcn-style ui/) */
-  --color-card:      #ffffff;
-  --color-card-fg:   #0f172a;
+  --color-card:                #ffffff;
+  --color-card-fg:             #0f172a;
+  --color-popover:             #ffffff;
+  --color-popover-foreground:  #0f172a;
+  --color-accent:              rgba(99,102,241,0.08);
+  --color-accent-foreground:   #0f172a;
 }
 
 /* ─── Dark theme ─── */
@@ -58,8 +62,12 @@
   --shadow-card:     0 2px 8px rgba(0,0,0,0.4), 0 8px 32px rgba(0,0,0,0.3);
   --radius:          12px;
   --radius-sm:       8px;
-  --color-card:      #161b27;
-  --color-card-fg:   #e2e8f0;
+  --color-card:                #161b27;
+  --color-card-fg:             #e2e8f0;
+  --color-popover:             #1e293b;
+  --color-popover-foreground:  #e2e8f0;
+  --color-accent:              rgba(99,102,241,0.15);
+  --color-accent-foreground:   #e2e8f0;
 }
 
 /* ─── Dark-theme overrides for hardcoded Tailwind utility classes ───

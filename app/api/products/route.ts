@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { categoryIds, ...data } = body;
+  const { categoryIds, filterIds: _filterIds, ...data } = body;
 
   const { data: maxTransRow } = await supabaseServer
     .from("products")
