@@ -9,68 +9,124 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
-const SETTING_LABELS: Record<string, string> = {
-  site_title: "Назва сайту",
-  form_email: "Email для форм",
-  np_api_key: "API ключ Nova Poshta",
-  sale_discount: "Знижка на акції (%)",
-  search_length: "Мін. довжина пошуку",
-  search_results_number: "К-сть результатів пошуку",
-  recaptcha0siteks: "reCAPTCHA Site Key",
-  recaptcha0secrets: "reCAPTCHA Secret Key",
+type Section = {
+  title: string;
+  keys: string[];
 };
 
+const LABELS: Record<string, string> = {
+  // Загальні
+  site_title:            "Назва сайту",
+  form_email:            "Email для форм",
+  sale_discount:         "Знижка на акції (%)",
+  search_length:         "Мін. довжина пошуку",
+  search_results_number: "К-сть результатів пошуку",
+  recaptcha0siteks:      "reCAPTCHA Site Key",
+  recaptcha0secrets:     "reCAPTCHA Secret Key",
+  // Реквізити постачальника
+  supplier_name:         "Назва / ПІБ (Постачальник)",
+  supplier_account:      "Р/р (IBAN)",
+  supplier_bank:         "Банк",
+  supplier_edrpou:       "ЄДРПОУ / ІПН",
+  // Nova Poshta
+  np_api_key:            "API ключ",
+  np_sender_ref:         "Ref відправника (Counterparty)",
+  np_sender_contact_ref: "Ref контакту відправника",
+  np_sender_city_ref:    "Ref міста відправника",
+  np_sender_warehouse_ref: "Ref відділення відправника",
+  np_sender_phone:       "Телефон відправника",
+  // Viber
+  viber_token:           "Bot Token",
+};
+
+const SECTIONS: Section[] = [
+  { title: "Загальні", keys: ["site_title", "form_email", "sale_discount", "search_length", "search_results_number", "recaptcha0siteks", "recaptcha0secrets"] },
+  { title: "Реквізити постачальника (для рахунків)", keys: ["supplier_name", "supplier_account", "supplier_bank", "supplier_edrpou"] },
+  { title: "Nova Poshta", keys: ["np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_phone"] },
+  { title: "Viber", keys: ["viber_token"] },
+];
+
+const ALL_KNOWN_KEYS = new Set(SECTIONS.flatMap((s) => s.keys));
+
 export default function SettingsPage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [settings, setSettings] = useState<any[]>([]);
+  // values map: key → text
+  const [values, setValues] = useState<Record<string, string>>({});
+  // "other" = DB records not in LABELS
+  const [other, setOther] = useState<{ id: number; value: string; text: string; lang: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch<any[]>("/api/settings").then((data) => { if (data) setSettings(data); });
+    apiFetch<{ id: number; value: string; text: string; lang: string }[]>("/api/settings").then((data) => {
+      if (!data) return;
+      const map: Record<string, string> = {};
+      for (const s of data) map[s.value] = s.text;
+      setValues(map);
+      setOther(data.filter((s) => !ALL_KNOWN_KEYS.has(s.value)));
+    });
   }, []);
 
-  const updateValue = (id: number, text: string) => {
-    setSettings((prev) => prev.map((s) => s.id === id ? { ...s, text } : s));
-  };
+  function set(key: string, text: string) {
+    setValues((prev) => ({ ...prev, [key]: text }));
+  }
+
+  function setOtherValue(key: string, text: string) {
+    setOther((prev) => prev.map((s) => s.value === key ? { ...s, text } : s));
+  }
 
   async function save() {
     setSaving(true);
-    await fetch("/api/settings", {
+    const knownEntries = SECTIONS.flatMap((sec) =>
+      sec.keys.map((k) => ({ value: k, text: values[k] ?? "", lang: "uk" }))
+    );
+    const otherEntries = other.map((s) => ({ value: s.value, text: s.text, lang: s.lang }));
+
+    const res = await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings.map((s) => ({ value: s.value, text: s.text, lang: s.lang }))),
+      body: JSON.stringify([...knownEntries, ...otherEntries]),
     });
-    toast.success("Налаштування збережено!");
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(`Помилка збереження: ${data.error ?? "невідома помилка"}`);
+    } else {
+      toast.success("Налаштування збережено!");
+    }
     setSaving(false);
   }
-
-  const known = settings.filter((s) => SETTING_LABELS[s.value]);
-  const other = settings.filter((s) => !SETTING_LABELS[s.value]);
 
   return (
     <>
       <Header title="Налаштування" />
       <div className="p-6 max-w-2xl space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Основні налаштування</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            {known.map((s) => (
-              <div key={s.id} className="space-y-1.5">
-                <Label>{SETTING_LABELS[s.value]}</Label>
-                <Input value={s.text} onChange={(e) => updateValue(s.id, e.target.value)} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {SECTIONS.map((sec) => (
+          <Card key={sec.title}>
+            <CardHeader>
+              <CardTitle className="text-sm">{sec.title}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {sec.keys.map((k) => (
+                <div key={k} className="space-y-1.5">
+                  <Label>{LABELS[k]}</Label>
+                  <Input
+                    value={values[k] ?? ""}
+                    onChange={(e) => set(k, e.target.value)}
+                    placeholder={k}
+                    type={k.includes("secret") || k.includes("token") || k.includes("key") ? "password" : "text"}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
 
         {other.length > 0 && (
           <Card>
             <CardHeader><CardTitle className="text-sm">Інші налаштування</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               {other.map((s) => (
-                <div key={s.id} className="space-y-1.5">
+                <div key={s.value} className="space-y-1.5">
                   <Label className="font-mono text-xs text-gray-500">{s.value}</Label>
-                  <Input value={s.text} onChange={(e) => updateValue(s.id, e.target.value)} />
+                  <Input value={s.text} onChange={(e) => setOtherValue(s.value, e.target.value)} />
                 </div>
               ))}
             </CardContent>
