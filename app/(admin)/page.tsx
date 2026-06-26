@@ -4,6 +4,7 @@ import { ShoppingCart, Package, Users, FileText, TrendingUp, Warehouse } from "l
 import { formatDate } from "@/lib/utils";
 import { DashboardCharts } from "@/components/admin/dashboard-charts";
 import { StatCard } from "@/components/admin/stat-card";
+import { TranslateButton } from "@/components/admin/translate-button";
 
 export const dynamic = "force-dynamic";
 
@@ -197,7 +198,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <Header title="Дашборд" subtitle="Загальна статистика та аналітика" />
+      <Header title="Дашборд" subtitle="Загальна статистика та аналітика" actions={<TranslateButton />} />
       <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
 
         {/* KPI Cards */}

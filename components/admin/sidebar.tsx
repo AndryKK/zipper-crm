@@ -72,6 +72,7 @@ const navGroups = [
 export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState<string[]>(["Контент", "Система"]);
+  const [catalogNavOpen, setCatalogNavOpen] = useState(false);
 
   const toggleGroup = (label: string) => {
     setCollapsed((prev) =>
@@ -120,17 +121,38 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
                 <div>
                   {group.items.map(({ href, label, icon: Icon }) => {
                     const active = isActive(href);
+                    const hasCatalogDropdown = href === "/products" && catalogRoots && catalogRoots.length > 0;
                     return (
                       <F key={href}>
-                        <Link
-                          href={href}
-                          className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
-                        >
-                          <Icon size={15} style={{ flexShrink: 0 }} />
-                          <span>{label}</span>
-                        </Link>
-                        {href === "/products" && catalogRoots && catalogRoots.length > 0 && (
-                          <CatalogNav roots={catalogRoots} />
+                        {hasCatalogDropdown ? (
+                          <Link
+                            href={href}
+                            onClick={() => setCatalogNavOpen((v) => !v)}
+                            className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
+                          >
+                            <Icon size={15} style={{ flexShrink: 0 }} />
+                            <span style={{ flex: 1 }}>{label}</span>
+                            <ChevronDown
+                              size={12}
+                              style={{
+                                flexShrink: 0,
+                                transform: catalogNavOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                                transition: "transform 0.2s",
+                                color: catalogNavOpen ? "#a5b4fc" : "rgba(148,163,184,0.45)",
+                              }}
+                            />
+                          </Link>
+                        ) : (
+                          <Link
+                            href={href}
+                            className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
+                          >
+                            <Icon size={15} style={{ flexShrink: 0 }} />
+                            <span>{label}</span>
+                          </Link>
+                        )}
+                        {hasCatalogDropdown && catalogNavOpen && (
+                          <CatalogNav roots={catalogRoots!} />
                         )}
                       </F>
                     );
