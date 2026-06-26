@@ -27,18 +27,34 @@ export async function POST(_req: NextRequest) {
         return;
       }
 
-      // Всі lang=uk товари з непорожнім описом (включаючи кольорові варіанти)
-      const { data: products, error } = await supabaseServer
-        .from("products")
-        .select("id, text, descr")
-        .eq("lang", "uk")
-        .or("text.neq.,descr.neq.");
+      // Всі lang=uk товари з непорожнім описом (пагінація по 1000, бо Supabase ліміт)
+      const allProducts: { id: number; text: string | null; descr: string | null }[] = [];
+      const PAGE_SIZE = 1000;
+      let from = 0;
+      let fetchError: string | null = null;
 
-      if (error || !products?.length) {
-        send({ type: "error", message: error?.message || "Товарів не знайдено" });
+      while (true) {
+        const { data: page, error: pageError } = await supabaseServer
+          .from("products")
+          .select("id, text, descr")
+          .eq("lang", "uk")
+          .or("text.neq.,descr.neq.")
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (pageError) { fetchError = pageError.message; break; }
+        if (!page?.length) break;
+        allProducts.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+
+      if (fetchError || !allProducts.length) {
+        send({ type: "error", message: fetchError || "Товарів не знайдено" });
         controller.close();
         return;
       }
+
+      const products = allProducts;
 
       const toProcess = products.filter((p: any) => (p.text || "").trim() || (p.descr || "").trim());
       const total = toProcess.length;
