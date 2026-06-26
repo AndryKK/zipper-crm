@@ -8,6 +8,7 @@ export function StatCard({
   gradient,
   trend,
   sub,
+  href,
 }: {
   icon: React.FC<{ size?: number; color?: string }>;
   label: string;
@@ -15,12 +16,13 @@ export function StatCard({
   gradient: string;
   trend: { label: string; up: boolean } | null;
   sub: string;
+  href?: string;
 }) {
-  return (
+  const inner = (
     <div className="crm-card crm-stat-card animate-fade-in" style={{ padding: "20px", position: "relative", overflow: "hidden" }}>
       {/* Background circle */}
       <div
-        className={gradient}
+        className={`${gradient} stat-card-bg`}
         style={{
           position: "absolute",
           top: -12,
@@ -30,11 +32,12 @@ export function StatCard({
           borderRadius: "50%",
           opacity: 0.12,
           pointerEvents: "none",
+          transition: "transform 0.5s ease, opacity 0.4s ease",
         }}
       />
       {/* Icon badge */}
       <div
-        className={gradient}
+        className={`${gradient} stat-card-icon`}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -43,13 +46,24 @@ export function StatCard({
           height: 40,
           borderRadius: 10,
           marginBottom: 12,
+          transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)",
         }}
       >
         <Icon size={18} color="#fff" />
       </div>
 
       <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", lineHeight: 1, letterSpacing: "-0.02em" }}>
+      <div
+        className="stat-card-value"
+        style={{
+          fontSize: 26,
+          fontWeight: 800,
+          color: "var(--text)",
+          lineHeight: 1,
+          letterSpacing: "-0.02em",
+          transition: "transform 0.3s ease",
+        }}
+      >
         {value}
       </div>
       <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
@@ -73,4 +87,12 @@ export function StatCard({
       </div>
     </div>
   );
+  if (href) {
+    return (
+      <a href={href} style={{ textDecoration: "none", display: "block" }}>
+        {inner}
+      </a>
+    );
+  }
+  return inner;
 }

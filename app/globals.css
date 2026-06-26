@@ -188,9 +188,53 @@ body {
 /* Stat card lift on hover (CSS only — no JS handlers needed) */
 .crm-stat-card {
   cursor: default;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease;
 }
-.crm-stat-card:hover { transform: translateY(-2px); }
+
+/* Shine sweep pseudo-element */
+a > .crm-stat-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -80%;
+  width: 45%;
+  height: 200%;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.07), transparent);
+  transform: skewX(-15deg);
+  transition: left 0.55s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+a > .crm-stat-card {
+  cursor: pointer;
+}
+
+a > .crm-stat-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Shine sweep on hover */
+a > .crm-stat-card:hover::after {
+  left: 130%;
+}
+
+/* Background circle expands */
+a > .crm-stat-card:hover .stat-card-bg {
+  transform: scale(2.4) rotate(25deg);
+  opacity: 0.2 !important;
+}
+
+/* Icon lifts with spring */
+a > .crm-stat-card:hover .stat-card-icon {
+  transform: scale(1.13) translateY(-3px);
+}
+
+/* Value nudges right */
+a > .crm-stat-card:hover .stat-card-value {
+  transform: translateX(3px);
+}
 
 /* ─── Stat card gradient variants ─── */
 .stat-indigo  { background: linear-gradient(135deg, #6366f1, #4f46e5); }

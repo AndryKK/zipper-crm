@@ -153,6 +153,7 @@ export default async function DashboardPage() {
       gradient: "stat-indigo",
       trend: null,
       sub: "в каталозі (uk)",
+      href: "/products",
     },
     {
       label: "Замовлень",
@@ -161,6 +162,7 @@ export default async function DashboardPage() {
       gradient: "stat-emerald",
       trend: newOrders > 0 ? { label: `${newOrders} нових`, up: true } : null,
       sub: "всього",
+      href: "/orders",
     },
     {
       label: "Клієнтів",
@@ -169,6 +171,7 @@ export default async function DashboardPage() {
       gradient: "stat-purple",
       trend: null,
       sub: "зареєстровано",
+      href: "/users",
     },
     {
       label: "Дохід (30 днів)",
@@ -177,6 +180,7 @@ export default async function DashboardPage() {
       gradient: "stat-amber",
       trend: null,
       sub: "сума по позиціях замовлень",
+      href: "/orders",
     },
     {
       label: "Статей",
@@ -185,6 +189,7 @@ export default async function DashboardPage() {
       gradient: "stat-cyan",
       trend: null,
       sub: "опубліковано",
+      href: "/articles",
     },
     {
       label: "Складів",
@@ -193,6 +198,7 @@ export default async function DashboardPage() {
       gradient: "stat-rose",
       trend: null,
       sub: "активних",
+      href: "/warehouses",
     },
   ];
 
