@@ -1424,13 +1424,20 @@ function PhotosSection({
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     setUploading(true);
-    const fd = new FormData();
-    Array.from(files).forEach((f) => fd.append("files", f));
-    fd.append("gallery", "1");
-    const res = await fetch(`/api/products/${productId}/photos`, { method: "POST", body: fd });
-    const created: any[] = await res.json();
-    setPhotos((p: any[]) => [...p, ...created]);
-    setUploading(false);
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append("files", f));
+      fd.append("gallery", "1");
+      const res = await fetch(`/api/products/${productId}/photos`, { method: "POST", body: fd });
+      const body = await res.json();
+      if (!res.ok) { toast.error(body.error || "Помилка завантаження фото"); return; }
+      const created: any[] = Array.isArray(body) ? body.filter(Boolean) : [];
+      setPhotos((p: any[]) => [...p, ...created]);
+    } catch {
+      toast.error("Помилка з'єднання");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function doDeletePhoto(photoId: number) {

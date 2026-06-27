@@ -14,7 +14,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const gallery = formData.get("gallery") === "2";
 
   const folder = gallery ? "products2" : "products";
-  const table = gallery ? "products_photos2" : "products_photos";
+  const table  = gallery ? "products_photos2" : "products_photos";
+
+  /* Fetch the product to get lang and translation_id for the insert */
+  const { data: prod } = await supabaseServer
+    .from("products")
+    .select("id, lang, translation_id")
+    .eq("id", productId)
+    .single();
+
+  if (!prod) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
+
   const created = [];
 
   for (const file of files) {
@@ -23,7 +33,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const key = `${folder}/${filename}`;
 
     const publicUrl = await uploadToR2(key, bytes, file.type || "image/jpeg");
-    const { data: photo } = await supabaseServer.from(table).insert({ pid: productId, img: publicUrl }).select("*").single();
+
+    const { data: photo, error: insertError } = await supabaseServer
+      .from(table)
+      .insert({
+        pid: productId,
+        img: publicUrl,
+        lang: (prod as any).lang ?? "uk",
+        translation_id: (prod as any).translation_id ?? productId,
+        title: "",
+        priority: 20,
+      })
+      .select("*")
+      .single();
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
     created.push(photo);
   }
 
