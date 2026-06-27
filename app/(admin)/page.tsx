@@ -19,6 +19,7 @@ async function getStats() {
     { count: ordersCount },
     { count: usersCount },
     { count: articlesCount },
+    { count: newOrdersCount },
     { data: recentOrderRows },
     { data: monthOrderRows },
     { data: warehousesRaw },
@@ -27,6 +28,11 @@ async function getStats() {
     supabaseServer.from("orders").select("*", { count: "exact", head: true }),
     supabaseServer.from("users").select("*", { count: "exact", head: true }),
     supabaseServer.from("articles").select("*", { count: "exact", head: true }).eq("lang", "uk"),
+    /* Orders with status "Нове" only */
+    supabaseServer
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "Нове"),
     /* last 10 rows for the table display */
     supabaseServer
       .from("orders")
@@ -60,9 +66,7 @@ async function getStats() {
     items: (recentItems || []).filter((i: any) => i.oid === o.id),
   }));
 
-  const newOrders = recentOrders.filter(
-    (o: any) => !o.status || o.status === "Получен"
-  ).length;
+  const newOrders = newOrdersCount ?? 0;
 
   /* ── Revenue: sum all items from the last 30 days ── */
   const totalRevenue = (monthItems || []).reduce(
@@ -127,6 +131,7 @@ async function getStats() {
     chartData,
     statusData,
     warehouses: warehousesRaw || [],
+    warehousesCount: (warehousesRaw || []).length,
   };
 }
 
@@ -142,7 +147,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function DashboardPage() {
   const {
     productsCount, ordersCount, usersCount, articlesCount,
-    recentOrders, newOrders, totalRevenue, chartData, statusData, warehouses,
+    recentOrders, newOrders, totalRevenue, chartData, statusData, warehouses, warehousesCount,
   } = await getStats();
 
   const stats = [
@@ -193,7 +198,7 @@ export default async function DashboardPage() {
     },
     {
       label: "Складів",
-      value: warehouses.length.toString(),
+      value: warehousesCount.toString(),
       icon: Warehouse,
       gradient: "stat-rose",
       trend: null,
