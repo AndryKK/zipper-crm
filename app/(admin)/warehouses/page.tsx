@@ -1,58 +1,381 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/admin/header";
-import { Warehouse, Plus, Pencil, Trash2, CheckCircle, XCircle, Save, X } from "lucide-react";
+import {
+  Warehouse, Plus, Pencil, Trash2, Save, X,
+  MapPin, AlertTriangle, Boxes, Search,
+} from "lucide-react";
 import { toast } from "sonner";
 
-interface WarehouseRow {
-  id: number;
-  title: string;
-  address?: string;
-  priority: number;
-  active: number;
+/* ─── Types ─────────────────────────────────────────────────────── */
+interface WarehouseStat {
+  id: number; title: string; address?: string;
+  priority: number; active: number;
+  totalProducts: number; totalQty: number; totalInitial: number;
+  fillPct: number; lowStock: number;
+  distribution: { full: number; medium: number; low: number; empty: number };
+}
+interface InventoryRow {
+  id: number; product_id: number; warehouse_id: number;
+  quantity: number; reserved: number; initial_quantity: number; min_quantity: number;
+  product?: { id: number; title: string; pcode?: string };
 }
 
 const emptyForm = { title: "", address: "", priority: 0, active: 1 };
 
-export default function WarehousesPage() {
-  const [rows, setRows] = useState<WarehouseRow[]>([]);
+/* ─── Helpers ────────────────────────────────────────────────────── */
+function fillColor(p: number) { return p >= 70 ? "#10b981" : p >= 30 ? "#f59e0b" : "#ef4444"; }
+function fillGradient(p: number) {
+  return p >= 70 ? "linear-gradient(90deg,#10b981,#059669)"
+       : p >= 30 ? "linear-gradient(90deg,#f59e0b,#d97706)"
+                 : "linear-gradient(90deg,#ef4444,#dc2626)";
+}
+
+/* Count-up hook */
+function useCountUp(target: number, active: boolean, duration = 900) {
+  const [val, setVal] = useState(0);
+  const raf = useRef<number>(0);
+  useEffect(() => {
+    if (!active) { setVal(0); return; }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      setVal(Math.round((1 - Math.pow(1 - t, 3)) * target));
+      if (t < 1) raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [target, active, duration]);
+  return val;
+}
+
+/* ─── Warehouse Widget ───────────────────────────────────────────── */
+function WarehouseWidget({ w, onEdit, onDelete, onTabClick, animDelay }: {
+  w: WarehouseStat;
+  onEdit: (w: WarehouseStat) => void;
+  onDelete: (id: number) => void;
+  onTabClick: (id: number) => void;
+  animDelay: number;
+}) {
+  const [ready, setReady] = useState(false);
+  const color = fillColor(w.fillPct);
+  const gradient = fillGradient(w.fillPct);
+  const displayPct = useCountUp(w.fillPct, ready);
+  const total = w.distribution.full + w.distribution.medium + w.distribution.low + w.distribution.empty;
+
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), animDelay);
+    return () => clearTimeout(t);
+  }, [animDelay]);
+
+  return (
+    <div
+      className="crm-card"
+      style={{ padding: 0, overflow: "hidden", cursor: "pointer", transition: "transform 0.28s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.28s ease" }}
+      onClick={() => onTabClick(w.id)}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 14px 44px rgba(0,0,0,0.14)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = ""; (e.currentTarget as HTMLDivElement).style.boxShadow = ""; }}
+    >
+      <div style={{ height: 5, background: gradient }} />
+      <div style={{ padding: "22px 28px 24px" }}>
+
+        {/* Row 1: icon + name + status + % + actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Warehouse size={22} color={color} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{w.title}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20, background: w.active ? "rgba(16,185,129,0.12)" : "rgba(148,163,184,0.15)", color: w.active ? "#059669" : "var(--text-muted)" }}>
+                {w.active ? "Активний" : "Неактивний"}
+              </span>
+            </div>
+            {w.address && (
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                <MapPin size={12} color="var(--text-muted)" />
+                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{w.address}</span>
+              </div>
+            )}
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0, minWidth: 80 }}>
+            <div style={{ fontSize: 42, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums" }}>
+              {displayPct}%
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>наповнення</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }} onClick={(e) => e.stopPropagation()}>
+            <button className="btn-ghost" onClick={() => onEdit(w)} style={{ padding: "8px 12px" }} title="Редагувати"><Pencil size={14} /></button>
+            <button className="btn-ghost" onClick={() => onDelete(w.id)} style={{ padding: "8px 12px", color: "var(--danger)" }} title="Видалити"><Trash2 size={14} /></button>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ height: 12, background: "var(--border)", borderRadius: 8, overflow: "hidden", position: "relative" }}>
+            {[25, 50, 75].map((t) => (
+              <div key={t} style={{ position: "absolute", left: `${t}%`, top: 0, width: 1, height: "100%", background: "rgba(255,255,255,0.4)", zIndex: 2 }} />
+            ))}
+            <div style={{ height: "100%", width: `${ready ? w.fillPct : 0}%`, background: gradient, borderRadius: 8, transition: "width 0.9s cubic-bezier(0.34,1.56,0.64,1)", boxShadow: `0 0 10px ${color}55` }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, paddingLeft: "23%", paddingRight: "23%" }}>
+            {[25, 50, 75].map((t) => <span key={t} style={{ fontSize: 10, color: "var(--text-muted)" }}>{t}%</span>)}
+          </div>
+        </div>
+
+        {/* Distribution */}
+        {total > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", height: 6, borderRadius: 4, overflow: "hidden", gap: 2 }}>
+              {w.distribution.full   > 0 && <div style={{ flex: w.distribution.full,   background: "#10b981" }} />}
+              {w.distribution.medium > 0 && <div style={{ flex: w.distribution.medium, background: "#f59e0b" }} />}
+              {w.distribution.low    > 0 && <div style={{ flex: w.distribution.low,    background: "#ef4444" }} />}
+              {w.distribution.empty  > 0 && <div style={{ flex: w.distribution.empty,  background: "var(--border)" }} />}
+            </div>
+            <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+              {[
+                { label: "повні ≥70%",  val: w.distribution.full,   color: "#10b981" },
+                { label: "середні",     val: w.distribution.medium, color: "#f59e0b" },
+                { label: "низькі <30%", val: w.distribution.low,    color: "#ef4444" },
+                { label: "порожні",     val: w.distribution.empty,  color: "var(--text-muted)" },
+              ].filter((d) => d.val > 0).map((d) => (
+                <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}><b style={{ color: "var(--text)", fontWeight: 700 }}>{d.val}</b> {d.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stats footer */}
+        <div style={{ display: "flex", gap: 0, borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: total > 0 ? 0 : 18 }}>
+          {[
+            { value: w.totalProducts.toLocaleString("uk-UA"), label: "позицій" },
+            { value: w.totalQty.toLocaleString("uk-UA"),      label: "одиниць на складі" },
+            { value: String(w.lowStock),                       label: "під мінімумом", danger: w.lowStock > 0 },
+          ].map((s, i) => (
+            <div key={i} style={{ flex: 1, textAlign: "center", position: "relative" }}>
+              {i > 0 && <div style={{ position: "absolute", left: 0, top: "10%", height: "80%", width: 1, background: "var(--border)" }} />}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                {s.danger && <AlertTriangle size={12} color="#ef4444" />}
+                <span style={{ fontSize: 22, fontWeight: 800, color: s.danger ? "#ef4444" : "var(--text)" }}>{s.value}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Inventory Tab ─────────────────────────────────────────────── */
+function InventoryTab({ warehouseId }: { warehouseId: number }) {
+  const [rows, setRows]       = useState<InventoryRow[]>([]);
+  const [filtered, setFiltered] = useState<InventoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ]             = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm]   = useState<Partial<InventoryRow>>({});
+  const [saving, setSaving]   = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addProductId, setAddProductId] = useState("");
+  const [addInitial, setAddInitial] = useState("0");
+  const [addMin, setAddMin]   = useState("0");
+  const [addQty, setAddQty]   = useState("0");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/inventory?warehouse_id=${warehouseId}`);
+    setRows(await res.json());
+    setLoading(false);
+  }, [warehouseId]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!q) { setFiltered(rows); return; }
+    const lower = q.toLowerCase();
+    setFiltered(rows.filter((r) => r.product?.title?.toLowerCase().includes(lower) || r.product?.pcode?.toLowerCase().includes(lower)));
+  }, [q, rows]);
+
+  async function saveEdit() {
+    if (!editingId) return;
+    setSaving(true);
+    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingId, ...editForm }) });
+    setSaving(false);
+    if (res.ok) { toast.success("Залишки оновлено"); setEditingId(null); load(); }
+    else { const e = await res.json(); toast.error(e.error); }
+  }
+
+  async function addEntry() {
+    if (!addProductId) { toast.error("Вкажіть товар"); return; }
+    const res = await fetch("/api/inventory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: Number(addProductId), warehouse_id: warehouseId, quantity: Number(addQty), initial_quantity: Number(addInitial), min_quantity: Number(addMin) }) });
+    if (res.ok) { toast.success("Запис додано"); setShowAdd(false); setAddProductId(""); setAddInitial("0"); setAddMin("0"); setAddQty("0"); load(); }
+    else { const e = await res.json(); toast.error(e.error); }
+  }
+
+  const totalQty = filtered.reduce((s, r) => s + Number(r.quantity), 0);
+  const lowStock = filtered.filter((r) => Number(r.min_quantity) > 0 && Number(r.quantity) <= Number(r.min_quantity)).length;
+
+  return (
+    <div>
+      {/* Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 20, maxWidth: 560 }}>
+        {[{ label: "Позицій", val: filtered.length }, { label: "Всього одиниць", val: totalQty.toLocaleString("uk-UA") }, { label: "Під мінімумом", val: lowStock, danger: lowStock > 0 }].map((s: any, i) => (
+          <div key={i} className="crm-card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: s.danger ? "var(--danger)" : "var(--text)" }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
+        <div style={{ position: "relative", maxWidth: 360, flex: 1 }}>
+          <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+          <input className="crm-input" placeholder="Пошук за назвою або кодом..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 36 }} />
+        </div>
+        <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={14} /> Додати</button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="crm-card animate-scale-in" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Додати запис залишків</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px auto", gap: 10, alignItems: "end" }}>
+            {[{ label: "ID товару *", val: addProductId, set: setAddProductId, ph: "123" }, { label: "Поч. залишок", val: addInitial, set: setAddInitial }, { label: "Поточний", val: addQty, set: setAddQty }, { label: "Мінімум", val: addMin, set: setAddMin }].map((f: any) => (
+              <div key={f.label}>
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>{f.label}</label>
+                <input className="crm-input" type={f.ph ? "text" : "number"} value={f.val} onChange={(e) => f.set(e.target.value)} placeholder={f.ph} />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn-primary" onClick={addEntry}><Save size={13} /> Додати</button>
+              <button className="btn-ghost" onClick={() => setShowAdd(false)} style={{ padding: "8px 10px" }}><X size={13} /></button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="crm-card">
+        {loading ? (
+          <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>Завантаження...</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: "64px 24px", textAlign: "center" }}>
+            <Boxes size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>{q ? "Нічого не знайдено" : "Записів залишків немає"}</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="crm-table">
+              <thead>
+                <tr>
+                  <th>Товар</th>
+                  <th style={{ textAlign: "right" }}>Поч. залишок</th>
+                  <th style={{ textAlign: "right" }}>Поточний</th>
+                  <th style={{ textAlign: "right" }}>Резерв</th>
+                  <th style={{ textAlign: "right" }}>Доступний</th>
+                  <th style={{ textAlign: "right" }}>Мінімум</th>
+                  <th style={{ width: 180 }}>Наповнення</th>
+                  <th style={{ textAlign: "right" }}>Дії</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => {
+                  const available = Number(row.quantity) - Number(row.reserved);
+                  const isLow = Number(row.min_quantity) > 0 && Number(row.quantity) <= Number(row.min_quantity);
+                  const isEditing = editingId === row.id;
+                  const fillPct = Number(row.initial_quantity) > 0 ? Math.min(100, Math.round(Number(row.quantity) / Number(row.initial_quantity) * 100)) : 0;
+                  const barColor = fillPct >= 70 ? "#10b981" : fillPct >= 30 ? "#f59e0b" : "#ef4444";
+
+                  const editInput = (field: keyof InventoryRow) => (
+                    <input className="crm-input" type="number" value={editForm[field] as number} onChange={(e) => setEditForm({ ...editForm, [field]: Number(e.target.value) })} style={{ width: 80, textAlign: "right" }} />
+                  );
+
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{row.product?.title ?? `#${row.product_id}`}</div>
+                        {row.product?.pcode && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>{row.product.pcode}</div>}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{isEditing ? editInput("initial_quantity") : <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {isEditing ? editInput("quantity") : (
+                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isLow ? "var(--danger)" : "var(--text)" }}>
+                            {Number(row.quantity).toFixed(0)}{isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{isEditing ? editInput("reserved") : <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>{Number(row.reserved).toFixed(0)}</span>}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <span style={{ fontFamily: "monospace", fontWeight: 600, color: available < 0 ? "var(--danger)" : available === 0 ? "var(--warning)" : "var(--success)" }}>{available.toFixed(0)}</span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>{isEditing ? editInput("min_quantity") : <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>{Number(row.min_quantity).toFixed(0)}</span>}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${fillPct}%`, background: barColor, borderRadius: 3 }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: barColor, width: 32, textAlign: "right" }}>{fillPct}%</span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {isEditing ? (
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                            <button className="btn-primary" onClick={saveEdit} disabled={saving} style={{ padding: "5px 10px", fontSize: 12 }}><Save size={12} /> Зберегти</button>
+                            <button className="btn-ghost" onClick={() => setEditingId(null)} style={{ padding: "5px 8px" }}><X size={12} /></button>
+                          </div>
+                        ) : (
+                          <button className="btn-ghost" onClick={() => { setEditingId(row.id); setEditForm({ quantity: row.quantity, reserved: row.reserved, initial_quantity: row.initial_quantity, min_quantity: row.min_quantity }); }} style={{ padding: "5px 10px", fontSize: 12 }}>Змінити</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Page ─────────────────────────────────────────────────── */
+function WarehousesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "overview";
+
+  const [stats, setStats]     = useState<WarehouseStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [editRow, setEditRow] = useState<WarehouseStat | null>(null);
+  const [form, setForm]       = useState(emptyForm);
   const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(emptyForm);
+  const [saving, setSaving]   = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await fetch("/api/warehouses");
-    const data = await res.json();
-    setRows(data);
+    const res = await fetch("/api/warehouses/stats");
+    setStats(await res.json());
     setLoading(false);
   }
-
   useEffect(() => { load(); }, []);
 
-  function startEdit(row: WarehouseRow) {
-    setEditId(row.id);
-    setForm({ title: row.title, address: row.address || "", priority: row.priority, active: row.active });
-  }
+  function setTab(tab: string) { router.push(`/warehouses?tab=${tab}`, { scroll: false }); }
 
   async function saveEdit() {
-    const res = await fetch(`/api/warehouses/${editId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    if (res.ok) {
-      toast.success("Збережено");
-      setEditId(null);
-      load();
-    } else {
-      const e = await res.json();
-      toast.error(e.error);
-    }
+    if (!editRow) return;
+    setSaving(true);
+    const res = await fetch(`/api/warehouses/${editRow.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    setSaving(false);
+    if (res.ok) { toast.success("Збережено"); setEditRow(null); load(); }
+    else { const e = await res.json(); toast.error(e.error); }
   }
 
   async function deleteRow(id: number) {
@@ -64,253 +387,107 @@ export default function WarehousesPage() {
 
   async function createWarehouse() {
     if (!newForm.title.trim()) { toast.error("Вкажіть назву"); return; }
-    setCreating(true);
-    const res = await fetch("/api/warehouses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newForm),
-    });
-    setCreating(false);
-    if (res.ok) {
-      toast.success("Склад створено");
-      setShowCreate(false);
-      setNewForm(emptyForm);
-      load();
-    } else {
-      const e = await res.json();
-      toast.error(e.error);
-    }
+    setSaving(true);
+    const res = await fetch("/api/warehouses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newForm) });
+    setSaving(false);
+    if (res.ok) { toast.success("Склад створено"); setShowCreate(false); setNewForm(emptyForm); load(); }
+    else { const e = await res.json(); toast.error(e.error); }
   }
+
+  /* Build tabs: Overview + one per warehouse */
+  const tabs = [
+    { id: "overview", label: "Загальний огляд" },
+    ...stats.map((w) => ({ id: String(w.id), label: w.title })),
+  ];
+
+  const InlineForm = ({ f, setF, onSave, onCancel, label }: any) => (
+    <div className="crm-card animate-scale-in" style={{ padding: 20, marginBottom: 16 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>{label}</h3>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 100px 140px auto", gap: 12, alignItems: "end" }}>
+        <div><label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Назва *</label><input className="crm-input" value={f.title} onChange={(e: any) => setF({ ...f, title: e.target.value })} /></div>
+        <div><label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Адреса</label><input className="crm-input" value={f.address} onChange={(e: any) => setF({ ...f, address: e.target.value })} /></div>
+        <div><label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Порядок</label><input className="crm-input" type="number" value={f.priority} onChange={(e: any) => setF({ ...f, priority: Number(e.target.value) })} /></div>
+        <div style={{ paddingBottom: 4 }}><label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={f.active === 1} onChange={(e: any) => setF({ ...f, active: e.target.checked ? 1 : 0 })} /> Активний</label></div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn-primary" onClick={onSave} disabled={saving}><Save size={13} /> Зберегти</button>
+          <button className="btn-ghost" onClick={onCancel} style={{ padding: "8px 10px" }}><X size={13} /></button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
       <Header
         title="Склади"
         subtitle="Управління складськими приміщеннями"
-        actions={
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
-            <Plus size={14} /> Новий склад
-          </button>
-        }
+        actions={<button className="btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Новий склад</button>}
       />
 
       <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
 
-        {/* Create form */}
-        {showCreate && (
-          <div
-            className="crm-card animate-scale-in"
-            style={{ padding: 20, marginBottom: 20 }}
-          >
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>
-              Новий склад
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 100px 120px", gap: 12, alignItems: "end" }}>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  Назва *
-                </label>
-                <input
-                  className="crm-input"
-                  placeholder="Склад 1"
-                  value={newForm.title}
-                  onChange={(e) => setNewForm({ ...newForm, title: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  Адреса
-                </label>
-                <input
-                  className="crm-input"
-                  placeholder="вул. Прикладна, 1"
-                  value={newForm.address}
-                  onChange={(e) => setNewForm({ ...newForm, address: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  Порядок
-                </label>
-                <input
-                  className="crm-input"
-                  type="number"
-                  value={newForm.priority}
-                  onChange={(e) => setNewForm({ ...newForm, priority: Number(e.target.value) })}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn-primary"
-                  onClick={createWarehouse}
-                  disabled={creating}
-                  style={{ flex: 1 }}
-                >
-                  <Save size={13} /> Зберегти
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => { setShowCreate(false); setNewForm(emptyForm); }}
-                  style={{ padding: "8px 10px" }}
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── Tab bar ── */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "2px solid var(--border)", paddingBottom: 0 }}>
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setTab(tab.id)}
+                style={{
+                  padding: "10px 22px", fontSize: 13.5, fontWeight: 600,
+                  background: "none", border: "none", cursor: "pointer",
+                  color: isActive ? "var(--accent)" : "var(--text-muted)",
+                  borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+                  marginBottom: -2, transition: "color 0.15s, border-color 0.15s",
+                  display: "flex", alignItems: "center", gap: 7,
+                }}
+              >
+                {tab.id !== "overview" && <Warehouse size={13} />}
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
-        {/* Table */}
-        <div className="crm-card">
-          {loading ? (
-            <div style={{ padding: "48px", textAlign: "center", color: "var(--text-muted)" }}>
-              Завантаження...
-            </div>
-          ) : rows.length === 0 ? (
+        {/* ── Inline forms (edit / create) ── */}
+        {showCreate && <InlineForm f={newForm} setF={setNewForm} onSave={createWarehouse} onCancel={() => { setShowCreate(false); setNewForm(emptyForm); }} label="Новий склад" />}
+        {editRow    && <InlineForm f={form}    setF={setForm}    onSave={saveEdit}        onCancel={() => setEditRow(null)} label={`Редагувати: ${editRow.title}`} />}
+
+        {/* ── Tab content ── */}
+        {loading ? (
+          <div style={{ padding: 64, textAlign: "center", color: "var(--text-muted)" }}>Завантаження...</div>
+        ) : activeTab === "overview" ? (
+          stats.length === 0 ? (
             <div style={{ padding: "64px 24px", textAlign: "center" }}>
               <Warehouse size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
               <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Складів ще немає</p>
-              <button className="btn-primary" style={{ marginTop: 12 }} onClick={() => setShowCreate(true)}>
-                <Plus size={14} /> Створити перший склад
-              </button>
+              <button className="btn-primary" style={{ marginTop: 12 }} onClick={() => setShowCreate(true)}><Plus size={14} /> Створити перший склад</button>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="crm-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Назва</th>
-                    <th>Адреса</th>
-                    <th>Порядок</th>
-                    <th>Статус</th>
-                    <th style={{ textAlign: "right" }}>Дії</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: 12 }}>
-                        #{row.id}
-                      </td>
-                      <td>
-                        {editId === row.id ? (
-                          <input
-                            className="crm-input"
-                            value={form.title}
-                            onChange={(e) => setForm({ ...form, title: e.target.value })}
-                            style={{ maxWidth: 200 }}
-                          />
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                background: row.active ? "#10b981" : "#94a3b8",
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span style={{ fontWeight: 600 }}>{row.title}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ color: "var(--text-muted)" }}>
-                        {editId === row.id ? (
-                          <input
-                            className="crm-input"
-                            value={form.address}
-                            onChange={(e) => setForm({ ...form, address: e.target.value })}
-                            style={{ maxWidth: 240 }}
-                          />
-                        ) : (
-                          row.address || "—"
-                        )}
-                      </td>
-                      <td>
-                        {editId === row.id ? (
-                          <input
-                            className="crm-input"
-                            type="number"
-                            value={form.priority}
-                            onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
-                            style={{ maxWidth: 70 }}
-                          />
-                        ) : (
-                          row.priority
-                        )}
-                      </td>
-                      <td>
-                        {editId === row.id ? (
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
-                            <input
-                              type="checkbox"
-                              checked={form.active === 1}
-                              onChange={(e) => setForm({ ...form, active: e.target.checked ? 1 : 0 })}
-                            />
-                            Активний
-                          </label>
-                        ) : (
-                          <span className={`badge ${row.active ? "badge-green" : "badge-gray"}`}>
-                            {row.active ? "Активний" : "Неактивний"}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                          {editId === row.id ? (
-                            <>
-                              <button
-                                className="btn-primary"
-                                onClick={saveEdit}
-                                style={{ padding: "6px 12px", fontSize: 12 }}
-                              >
-                                <Save size={12} /> Зберегти
-                              </button>
-                              <button
-                                className="btn-ghost"
-                                onClick={() => setEditId(null)}
-                                style={{ padding: "6px 10px" }}
-                              >
-                                <X size={12} />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <a
-                                href={`/inventory?warehouse_id=${row.id}`}
-                                className="btn-ghost"
-                                style={{ padding: "6px 10px", fontSize: 12 }}
-                              >
-                                Залишки
-                              </a>
-                              <button
-                                className="btn-ghost"
-                                onClick={() => startEdit(row)}
-                                style={{ padding: "6px 10px" }}
-                              >
-                                <Pencil size={12} />
-                              </button>
-                              <button
-                                className="btn-ghost"
-                                onClick={() => deleteRow(row.id)}
-                                style={{ padding: "6px 10px", color: "var(--danger)" }}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {stats.map((w, i) => (
+                <WarehouseWidget
+                  key={w.id} w={w} animDelay={i * 120}
+                  onEdit={(row) => { setEditRow(row); setForm({ title: row.title, address: row.address || "", priority: row.priority, active: row.active }); }}
+                  onDelete={deleteRow}
+                  onTabClick={(id) => setTab(String(id))}
+                />
+              ))}
             </div>
-          )}
-        </div>
+          )
+        ) : (
+          <InventoryTab warehouseId={Number(activeTab)} />
+        )}
       </div>
     </>
+  );
+}
+
+export default function WarehousesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 64, textAlign: "center", color: "var(--text-muted)" }}>Завантаження...</div>}>
+      <WarehousesContent />
+    </Suspense>
   );
 }
