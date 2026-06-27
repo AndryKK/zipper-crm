@@ -381,11 +381,11 @@ export default function OrderDetailPage() {
                       <Package size={14} color="var(--text-muted)" />
                       <span style={{ fontSize: 13 }}>ТТН: <strong className="font-mono">{order.ttn}</strong></span>
                       <a
-                        href={`https://novaposhta.ua/tracking/?cargo_number=${order.ttn}`}
+                        href={`https://novaposhta.ua/tracking/${order.ttn}`}
                         target="_blank" rel="noreferrer"
-                        style={{ fontSize: 12, color: "#7c3aed", textDecoration: "underline" }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)", textDecoration: "none" }}
                       >
-                        Відстежити
+                        <Truck size={11} /> Відстежити
                       </a>
                     </div>
                   )}
@@ -484,7 +484,17 @@ export default function OrderDetailPage() {
               <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
               <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
               {order.ttn && (
-                <div><span className="text-gray-500">ТТН:</span> <span className="font-mono font-semibold">{order.ttn}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="text-gray-500">ТТН:</span>
+                  <span className="font-mono font-semibold">{order.ttn}</span>
+                  <a
+                    href={`https://novaposhta.ua/tracking/${order.ttn}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)", textDecoration: "none" }}
+                  >
+                    <Truck size={11} /> Відстежити
+                  </a>
+                </div>
               )}
               {order.doc_field_1 && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -535,7 +545,18 @@ export default function OrderDetailPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>ТТН Нова Пошта</Label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Label>ТТН Нова Пошта</Label>
+                  {ttn.trim() && (
+                    <a
+                      href={`https://novaposhta.ua/tracking/${ttn.trim()}`}
+                      target="_blank" rel="noreferrer"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "#7c3aed", textDecoration: "none" }}
+                    >
+                      <Truck size={11} /> Відстежити
+                    </a>
+                  )}
+                </div>
                 <Input
                   value={ttn}
                   onChange={(e) => setTtn(e.target.value)}
