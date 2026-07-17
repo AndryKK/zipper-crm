@@ -268,11 +268,13 @@ supabaseServer
 |-----------------|---------|------|
 | `id`            | integer | Первинний ключ |
 | `translationId` | integer | Група перекладів (uk/ru) |
-| `pid`           | integer | ID батьківського фільтра (`all_filters.id`) |
+| `pid`           | integer | **`all_filters.translation_id`** батьківської групи (НЕ `all_filters.id`!) — той самий `pid` в обох uk/ru рядках значення |
 | `lang`          | text    | Мова |
 | `title`         | text    | Назва значення |
 | `uri`           | text    | URL-slug значення |
 | `priority`      | integer | Порядок |
+
+> ⚠️ Приклади нижче підписані як "pid=X для ru / pid=Y для uk" — це історична помилка з часів, коли вважалося, що `pid` вказує на `all_filters.id` окремо по мові. Насправді `pid` завжди дорівнює `all_filters.translation_id` групи (спільний для uk/ru). Дивіться виправлене поле `pid` вище.
 
 ### Значення по групах (приклади)
 
@@ -308,9 +310,11 @@ const { data: filters } = await supabaseServer
   .order("priority", { ascending: true });
 
 // Отримати значення для вибраних груп
+// ⚠️ filterGroupIds має бути масивом translation_id груп (не all_filters.id!),
+// а "filter_id" — неіснуюча колонка в all_filters_filters, її не можна селектити.
 const { data: filterValues } = await supabaseServer
   .from("all_filters_filters")
-  .select("*, translationId:translation_id, filterId:filter_id")
+  .select("*, translationId:translation_id")
   .in("pid", filterGroupIds)
   .eq("lang", "uk")
   .order("priority", { ascending: true });
@@ -498,19 +502,20 @@ const { data: filterGroups } = await supabaseServer
   .eq("lang", "uk")
   .order("priority");
 
-const groupIds = filterGroups?.map(f => f.id) ?? [];
+// pid у all_filters_filters посилається на translation_id групи, не на id!
+const groupTranslationIds = filterGroups?.map(f => f.translation_id) ?? [];
 
 const { data: filterValues } = await supabaseServer
   .from("all_filters_filters")
   .select("*, translationId:translation_id")
-  .in("pid", groupIds)
+  .in("pid", groupTranslationIds)
   .eq("lang", "uk")
   .order("priority");
 
 // Зібрати дерево
 const filtersTree = filterGroups?.map(group => ({
   ...group,
-  values: filterValues?.filter(v => v.pid === group.id) ?? [],
+  values: filterValues?.filter(v => v.pid === group.translation_id) ?? [],
 }));
 ```
 

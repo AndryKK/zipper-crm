@@ -13,7 +13,7 @@ import { toast } from "sonner";
 interface WarehouseStat {
   id: number; title: string; address?: string;
   priority: number; active: number;
-  totalProducts: number; totalQty: number; totalInitial: number;
+  totalProducts: number; totalQty: number; totalMin: number;
   fillPct: number; lowStock: number;
   distribution: { full: number; medium: number; low: number; empty: number };
 }
@@ -173,33 +173,42 @@ function WarehouseWidget({ w, onEdit, onDelete, onTabClick, animDelay }: {
 }
 
 /* ─── Inventory Tab ─────────────────────────────────────────────── */
-function InventoryTab({ warehouseId }: { warehouseId: number }) {
+const PAGE_SIZE = 50;
+
+function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: WarehouseStat }) {
   const [rows, setRows]       = useState<InventoryRow[]>([]);
-  const [filtered, setFiltered] = useState<InventoryRow[]>([]);
+  const [total, setTotal]     = useState(0);
+  const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(false);
   const [q, setQ]             = useState("");
+  const [qInput, setQInput]   = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm]   = useState<Partial<InventoryRow>>({});
   const [saving, setSaving]   = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addProductId, setAddProductId] = useState("");
-  const [addInitial, setAddInitial] = useState("0");
   const [addMin, setAddMin]   = useState("0");
   const [addQty, setAddQty]   = useState("0");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/inventory?warehouse_id=${warehouseId}`);
-    setRows(await res.json());
+    const params = new URLSearchParams({ warehouse_id: String(warehouseId), page: String(page), limit: String(PAGE_SIZE) });
+    if (q) params.set("q", q);
+    const res = await fetch(`/api/inventory?${params}`);
+    const data = await res.json();
+    setRows(data.rows ?? []);
+    setTotal(data.total ?? 0);
     setLoading(false);
-  }, [warehouseId]);
+  }, [warehouseId, page, q]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [warehouseId, q]);
+
+  /* Debounce search input before it hits the server */
   useEffect(() => {
-    if (!q) { setFiltered(rows); return; }
-    const lower = q.toLowerCase();
-    setFiltered(rows.filter((r) => r.product?.title?.toLowerCase().includes(lower) || r.product?.pcode?.toLowerCase().includes(lower)));
-  }, [q, rows]);
+    const t = setTimeout(() => setQ(qInput), 300);
+    return () => clearTimeout(t);
+  }, [qInput]);
 
   async function saveEdit() {
     if (!editingId) return;
@@ -212,19 +221,18 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
 
   async function addEntry() {
     if (!addProductId) { toast.error("Вкажіть товар"); return; }
-    const res = await fetch("/api/inventory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: Number(addProductId), warehouse_id: warehouseId, quantity: Number(addQty), initial_quantity: Number(addInitial), min_quantity: Number(addMin) }) });
-    if (res.ok) { toast.success("Запис додано"); setShowAdd(false); setAddProductId(""); setAddInitial("0"); setAddMin("0"); setAddQty("0"); load(); }
+    const res = await fetch("/api/inventory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: Number(addProductId), warehouse_id: warehouseId, quantity: Number(addQty), min_quantity: Number(addMin) }) });
+    if (res.ok) { toast.success("Запис додано"); setShowAdd(false); setAddProductId(""); setAddMin("0"); setAddQty("0"); load(); }
     else { const e = await res.json(); toast.error(e.error); }
   }
 
-  const totalQty = filtered.reduce((s, r) => s + Number(r.quantity), 0);
-  const lowStock = filtered.filter((r) => Number(r.min_quantity) > 0 && Number(r.quantity) <= Number(r.min_quantity)).length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
       {/* Summary */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 20, maxWidth: 560 }}>
-        {[{ label: "Позицій", val: filtered.length }, { label: "Всього одиниць", val: totalQty.toLocaleString("uk-UA") }, { label: "Під мінімумом", val: lowStock, danger: lowStock > 0 }].map((s: any, i) => (
+        {[{ label: "Позицій", val: (stat?.totalProducts ?? total).toLocaleString("uk-UA") }, { label: "Всього одиниць", val: (stat?.totalQty ?? 0).toLocaleString("uk-UA") }, { label: "Під мінімумом", val: stat?.lowStock ?? 0, danger: (stat?.lowStock ?? 0) > 0 }].map((s: any, i) => (
           <div key={i} className="crm-card" style={{ padding: 16 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: s.danger ? "var(--danger)" : "var(--text)" }}>{s.val}</div>
@@ -236,7 +244,7 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
       <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
         <div style={{ position: "relative", maxWidth: 360, flex: 1 }}>
           <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-          <input className="crm-input" placeholder="Пошук за назвою або кодом..." value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 36 }} />
+          <input className="crm-input" placeholder="Пошук за назвою або кодом..." value={qInput} onChange={(e) => setQInput(e.target.value)} style={{ paddingLeft: 36 }} />
         </div>
         <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={14} /> Додати</button>
       </div>
@@ -245,8 +253,8 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
       {showAdd && (
         <div className="crm-card animate-scale-in" style={{ padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Додати запис залишків</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px auto", gap: 10, alignItems: "end" }}>
-            {[{ label: "ID товару *", val: addProductId, set: setAddProductId, ph: "123" }, { label: "Поч. залишок", val: addInitial, set: setAddInitial }, { label: "Поточний", val: addQty, set: setAddQty }, { label: "Мінімум", val: addMin, set: setAddMin }].map((f: any) => (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px auto", gap: 10, alignItems: "end" }}>
+            {[{ label: "ID товару *", val: addProductId, set: setAddProductId, ph: "123" }, { label: "Поточний", val: addQty, set: setAddQty }, { label: "Мінімум", val: addMin, set: setAddMin }].map((f: any) => (
               <div key={f.label}>
                 <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>{f.label}</label>
                 <input className="crm-input" type={f.ph ? "text" : "number"} value={f.val} onChange={(e) => f.set(e.target.value)} placeholder={f.ph} />
@@ -264,7 +272,7 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
       <div className="crm-card">
         {loading ? (
           <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>Завантаження...</div>
-        ) : filtered.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div style={{ padding: "64px 24px", textAlign: "center" }}>
             <Boxes size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
             <p style={{ color: "var(--text-muted)", fontSize: 14 }}>{q ? "Нічого не знайдено" : "Записів залишків немає"}</p>
@@ -285,11 +293,13 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row) => {
+                {rows.map((row) => {
                   const available = Number(row.quantity) - Number(row.reserved);
                   const isLow = Number(row.min_quantity) > 0 && Number(row.quantity) <= Number(row.min_quantity);
                   const isEditing = editingId === row.id;
-                  const fillPct = Number(row.initial_quantity) > 0 ? Math.min(100, Math.round(Number(row.quantity) / Number(row.initial_quantity) * 100)) : 0;
+                  const fillPct = Number(row.min_quantity) > 0
+                    ? Math.min(100, Math.round(Number(row.quantity) / Number(row.min_quantity) * 100))
+                    : (Number(row.quantity) > 0 ? 100 : 0);
                   const barColor = fillPct >= 70 ? "#10b981" : fillPct >= 30 ? "#f59e0b" : "#ef4444";
 
                   const editInput = (field: keyof InventoryRow) => (
@@ -341,6 +351,14 @@ function InventoryTab({ warehouseId }: { warehouseId: number }) {
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+          <button className="btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 14px", opacity: page <= 1 ? 0.5 : 1 }}>← Попередня</button>
+          <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Сторінка {page} з {totalPages}</span>
+          <button className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 14px", opacity: page >= totalPages ? 0.5 : 1 }}>Наступна →</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -362,7 +380,8 @@ function WarehousesContent() {
   async function load() {
     setLoading(true);
     const res = await fetch("/api/warehouses/stats");
-    setStats(await res.json());
+    const data = await res.json();
+    setStats(Array.isArray(data) ? data : []);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -477,7 +496,7 @@ function WarehousesContent() {
             </div>
           )
         ) : (
-          <InventoryTab warehouseId={Number(activeTab)} />
+          <InventoryTab warehouseId={Number(activeTab)} stat={stats.find((s) => String(s.id) === activeTab)} />
         )}
       </div>
     </>

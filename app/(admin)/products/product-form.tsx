@@ -45,6 +45,7 @@ interface Props {
   mainPhotos2?: any[];
   mainChars?: any[];
   productCategories?: number[];
+  productFilters?: number[];
   product?: any;
   categories: any[];
   measures: any[];
@@ -85,6 +86,7 @@ function EditForm({
   mainPhotos2 = [],
   mainChars = [],
   productCategories = [],
+  productFilters = [],
   categories,
   measures,
   filters,
@@ -189,7 +191,7 @@ function EditForm({
 
   // ── Categories ────────────────────────────────────────────────────
   const [selectedCategories, setSelectedCategories] = useState<number[]>(productCategories);
-  const [selectedFilters, setSelectedFilters] = useState<number[]>([]);
+  const [selectedFilters, setSelectedFilters] = useState<number[]>(productFilters);
   const [cascadeMain, setCascadeMain] = useState("0");
   const [cascadeSub, setCascadeSub] = useState("0");
   const [cascadeType, setCascadeType] = useState("0");
@@ -584,7 +586,14 @@ function EditForm({
         })
       );
 
-      await Promise.all([...allColorSaves, ...charsSaves]);
+      // Save filter-value assignments (shared across this translationId's lang variants)
+      const filtersSave = fetch(`/api/products/${baseVariant.id}/filters`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filterIds: selectedFilters }),
+      });
+
+      await Promise.all([...allColorSaves, ...charsSaves, filtersSave]);
       toast.success("Збережено!");
       router.refresh();
     } catch {
@@ -599,6 +608,7 @@ function EditForm({
     { id: "prices", label: "Ціни" },
     { id: "photos", label: "Фото" },
     { id: "categories", label: "Категорії" },
+    { id: "filters", label: "Фільтри" },
     { id: "chars", label: "Характеристики" },
     { id: "seo", label: "SEO" },
   ];
@@ -1042,14 +1052,20 @@ function EditForm({
       {/* ── Фільтри ──────────────────────────────────────────────── */}
       {activeTab === "filters" && (
         <div className="max-w-2xl space-y-4">
+          <p className="text-xs text-gray-400">
+            Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар.
+          </p>
+          {filters.length === 0 && (
+            <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
+          )}
           {filters.map((filter: any) => (
             <div key={filter.id} className="border rounded-md overflow-hidden">
               <div className="bg-gray-50 px-4 py-2 font-medium text-sm">{filter.title}</div>
               <div className="p-3 flex flex-wrap gap-2">
                 {filter.filters.map((ff: any) => (
                   <label key={ff.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={selectedFilters.includes(ff.id)}
-                      onChange={(e) => setSelectedFilters((p) => e.target.checked ? [...p, ff.id] : p.filter((x) => x !== ff.id))}
+                    <input type="checkbox" checked={selectedFilters.includes(ff.translationId)}
+                      onChange={(e) => setSelectedFilters((p) => e.target.checked ? [...p, ff.translationId] : p.filter((x) => x !== ff.translationId))}
                       className="h-4 w-4 rounded border-gray-300" />
                     {ff.title}
                   </label>

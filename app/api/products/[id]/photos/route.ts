@@ -16,7 +16,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const folder = gallery ? "products2" : "products";
   const table  = gallery ? "products_photos2" : "products_photos";
 
-  /* Fetch the product to get lang and translation_id for the insert */
+  /* Fetch the product to get lang and translation_id for the insert.
+     products_photos.pid is a translation_id reference (shared across a
+     product's language rows), not the row's own serial id — every reader
+     (legacy PHP site, new-shop) queries it that way. */
   const { data: prod } = await supabaseServer
     .from("products")
     .select("id, lang, translation_id")
@@ -25,6 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!prod) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
 
+  const trId = (prod as any).translation_id ?? productId;
   const created = [];
 
   for (const file of files) {
@@ -37,10 +41,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { data: photo, error: insertError } = await supabaseServer
       .from(table)
       .insert({
-        pid: productId,
+        pid: trId,
         img: publicUrl,
         lang: (prod as any).lang ?? "uk",
-        translation_id: (prod as any).translation_id ?? productId,
+        translation_id: trId,
         title: "",
         priority: 20,
       })

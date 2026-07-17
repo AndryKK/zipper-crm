@@ -8,6 +8,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const body = await req.json();
 
+  // all_filters_filters.pid references the parent group's translation_id,
+  // not its serial id — confirmed against the live site's catalog.php query.
+  const { data: group } = await supabaseServer
+    .from("all_filters")
+    .select("translation_id")
+    .eq("id", parseInt(id))
+    .single();
+  if (!group) return NextResponse.json({ error: "Фільтр не знайдено" }, { status: 404 });
+  const pid = (group as any).translation_id;
+
   const { data: maxTransRow } = await supabaseServer
     .from("all_filters_filters")
     .select("translation_id")
@@ -22,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const items = await Promise.all(activeLangs.map(async (l: any) => {
     const { data } = await supabaseServer.from("all_filters_filters").insert({
       translation_id: translationId,
-      pid: parseInt(id),
+      pid,
       lang: l.code,
       title: l.code === body.lang ? body.title : `[${l.code}] ${body.title}`,
     }).select("*").single();

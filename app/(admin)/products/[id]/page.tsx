@@ -73,6 +73,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     .eq("translation_id", baseTrId);
   const langVariants: any[] = langVars || [];
   const langIds = langVariants.map((p: any) => p.id);
+  // products_photos.pid is a translation_id reference, not the row's own id.
+  const langTrIds = [...new Set(langVariants.map((p: any) => p.translationId))];
 
   // BFS: знайти всі translationId кольорових груп
   const colorTrIds = await findColorGroup(langIds, baseTrId);
@@ -89,16 +91,17 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       (grouped[(p as any).translationId] ??= []).push(p);
     }
 
-    const allColorIds = (colorAllVars || []).map((p: any) => p.id);
+    // products_photos.pid references translation_id, not the row's own id.
+    const allColorTrIds = [...new Set((colorAllVars || []).map((p: any) => p.translationId))];
     const [{ data: cPhotos }, { data: cPhotos2 }] = await Promise.all([
-      supabaseServer.from("products_photos").select("*").in("pid", allColorIds).order("priority"),
-      supabaseServer.from("products_photos2").select("*").in("pid", allColorIds).order("priority"),
+      supabaseServer.from("products_photos").select("*").in("pid", allColorTrIds).order("priority"),
+      supabaseServer.from("products_photos2").select("*").in("pid", allColorTrIds).order("priority"),
     ]);
 
     colorGroups = Object.values(grouped).map((group) => ({
       langVariants: group,
-      photos: (cPhotos || []).filter((p: any) => group.some((v: any) => v.id === p.pid)),
-      photos2: (cPhotos2 || []).filter((p: any) => group.some((v: any) => v.id === p.pid)),
+      photos: (cPhotos || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid)),
+      photos2: (cPhotos2 || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid)),
     }));
   }
 
@@ -113,8 +116,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     { data: langs },
     { data: productCats },
   ] = await Promise.all([
-    supabaseServer.from("products_photos").select("*").in("pid", langIds).order("priority"),
-    supabaseServer.from("products_photos2").select("*").in("pid", langIds).order("priority"),
+    supabaseServer.from("products_photos").select("*").in("pid", langTrIds).order("priority"),
+    supabaseServer.from("products_photos2").select("*").in("pid", langTrIds).order("priority"),
     supabaseServer.from("products_chars").select("*").in("pid", langIds).order("priority"),
     supabaseServer.from("categories").select("*, translationId:translation_id").eq("lang", "uk").order("title"),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title"),
@@ -123,18 +126,28 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   ]);
 
   // Filters
+  // all_filters_filters.pid references all_filters.translation_id (NOT the
+  // serial id) — confirmed against the live site's catalog.php query.
   const { data: allFilters } = await supabaseServer.from("all_filters")
     .select("*, translationId:translation_id").eq("lang", "uk").order("priority");
   const filterList = allFilters || [];
   let filtersWithChildren: any[] = filterList;
   if (filterList.length) {
     const { data: filterItems } = await supabaseServer.from("all_filters_filters")
-      .select("*, translationId:translation_id, filterId:filter_id")
-      .in("pid", filterList.map((f: any) => f.id)).eq("lang", "uk").order("priority");
+      .select("*, translationId:translation_id")
+      .in("pid", filterList.map((f: any) => f.translation_id)).eq("lang", "uk").order("priority");
     const fm: Record<number, any[]> = {};
     for (const fi of filterItems || []) (fm[(fi as any).pid] ??= []).push(fi);
-    filtersWithChildren = filterList.map((f: any) => ({ ...f, filters: fm[f.id] || [] }));
+    filtersWithChildren = filterList.map((f: any) => ({ ...f, filters: fm[f.translation_id] || [] }));
   }
+
+  // Filter values already assigned to this product (all_filters_filters_items,
+  // keyed by translation_id — see app/api/products/[id]/filters/route.ts)
+  const { data: productFilterLinks } = await supabaseServer
+    .from("all_filters_filters_items")
+    .select("fid")
+    .eq("pid", baseTrId);
+  const productFilters = [...new Set((productFilterLinks || []).map((l: any) => l.fid))];
 
   return (
     <>
@@ -149,6 +162,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         categories={(categories || []) as any[]}
         measures={(measures || []) as any[]}
         filters={filtersWithChildren}
+        productFilters={productFilters}
         langs={(langs || []) as any[]}
         mode="edit"
       />

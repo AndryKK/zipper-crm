@@ -1,6 +1,8 @@
 import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
+import { getImgUrl } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
+import { ProductQuickView } from "./product-quick-view";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,8 @@ async function getTopSales() {
   const pids = sorted.map((s) => s.pid);
   const { data: products } = await supabaseServer
     .from("products")
-    .select("id, title, pcode, img")
-    .in("id", pids)
-    .eq("lang", "uk");
+    .select("id, title, pcode, img, price, price_sale, active")
+    .in("id", pids);
 
   const prodMap: Record<number, any> = {};
   for (const p of products || []) prodMap[p.id] = p;
@@ -76,7 +77,13 @@ export default async function TopSalesPage() {
                   {items.map((item) => {
                     const pct = Math.round((item.quantity / maxQty) * 100);
                     return (
-                      <tr key={item.pid}>
+                      <ProductQuickView
+                        key={item.pid}
+                        product={item.product}
+                        quantity={item.quantity}
+                        revenue={item.revenue}
+                        rank={item.rank}
+                      >
                         <td>
                           <div
                             style={{
@@ -98,14 +105,43 @@ export default async function TopSalesPage() {
                           </div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 600 }}>
-                            {item.product?.title ?? `#${item.pid}`}
-                          </div>
-                          {item.product?.pcode && (
-                            <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                              {item.product.pcode}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {item.product?.img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={getImgUrl(item.product.img, "products")}
+                                alt={item.product.title}
+                                style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "var(--bg)" }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 8,
+                                  flexShrink: 0,
+                                  background: "var(--bg)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: 11,
+                                  color: "var(--text-muted)",
+                                }}
+                              >
+                                —
+                              </div>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 600 }}>
+                                {item.product?.title ?? `#${item.pid}`}
+                              </div>
+                              {item.product?.pcode && (
+                                <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                  {item.product.pcode}
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
                         </td>
                         <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "monospace" }}>
                           {item.quantity}
@@ -136,7 +172,7 @@ export default async function TopSalesPage() {
                             {pct}%
                           </div>
                         </td>
-                      </tr>
+                      </ProductQuickView>
                     );
                   })}
                 </tbody>

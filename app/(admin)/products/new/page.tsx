@@ -22,13 +22,15 @@ export default async function NewProductPage() {
     .order("priority", { ascending: true });
 
   const filterList = allFilters || [];
-  const filterIds = filterList.map((f: any) => f.id);
+  // all_filters_filters.pid references all_filters.translation_id (NOT the
+  // serial id) — confirmed against the live site's catalog.php query.
+  const filterTranslationIds = filterList.map((f: any) => f.translation_id);
   let filtersWithChildren: any[] = filterList;
-  if (filterIds.length) {
+  if (filterTranslationIds.length) {
     const { data: filterItems } = await supabaseServer
       .from("all_filters_filters")
-      .select("*, translationId:translation_id, filterId:filter_id")
-      .in("pid", filterIds)
+      .select("*, translationId:translation_id")
+      .in("pid", filterTranslationIds)
       .eq("lang", "uk")
       .order("priority", { ascending: true });
     const filtersMap: Record<number, any[]> = {};
@@ -36,7 +38,7 @@ export default async function NewProductPage() {
       if (!filtersMap[fi.pid]) filtersMap[fi.pid] = [];
       filtersMap[fi.pid].push(fi);
     }
-    filtersWithChildren = filterList.map((f: any) => ({ ...f, filters: filtersMap[f.id] || [] }));
+    filtersWithChildren = filterList.map((f: any) => ({ ...f, filters: filtersMap[f.translation_id] || [] }));
   }
 
   return (
