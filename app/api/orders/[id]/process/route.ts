@@ -67,7 +67,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   /* ════════════════════════════════════════════════════════════════════
      STEP 2 — формування рахунку
   ══════════════════════════════════════════════════════════════════════ */
-  const invoiceNumber = `ЗМ-${orderId}`;
+  const invoiceNumber = String(orderId);
   const { error: invErr } = await supabaseServer
     .from("orders").update({ doc_field_1: invoiceNumber }).eq("id", orderId);
 

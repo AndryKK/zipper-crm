@@ -12,8 +12,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     .eq("id", parseInt(id))
     .single();
   if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id));
-  return NextResponse.json({ ...order, items: items || [] });
+  const [{ data: items }, { data: returns }] = await Promise.all([
+    supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id)),
+    supabaseServer.from("orders_returns").select("*").eq("oid", parseInt(id)).order("date", { ascending: false }),
+  ]);
+  return NextResponse.json({ ...order, items: items || [], returns: returns || [] });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

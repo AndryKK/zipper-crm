@@ -506,6 +506,7 @@ model Order {
   callme       Int?     @default(0)
 
   items        OrderItem[]
+  returns      OrderReturn[]
 
   @@map("orders")
 }
@@ -525,16 +526,26 @@ model OrderItem {
 }
 
 model OrderReturn {
-  id       Int       @id @default(autoincrement())
-  date     DateTime  @default(now())
-  login    String?   @db.Char(50)
-  person   String?   @db.Char(40)
-  phone    String?   @db.Char(15)
-  reason   String?   @db.Text
-  status   String?   @db.Char(20)
-  notes    String?   @db.Text
-  title    String?   @db.Char(255)
-  quantity String?   @db.Char(255)
+  id          Int        @id @default(autoincrement())
+  date        DateTime   @default(now())
+  login       String?    @db.Char(50)
+  person      String?    @db.Char(40)
+  phone       String?    @db.Char(15)
+  reason      String?    @db.Text
+  status      String?    @db.Char(20)
+  notes       String?    @db.Text
+  title       String?    @db.Char(255)
+  quantity    String?    @db.Char(255)
+
+  // Added for proper product/warehouse linkage (legacy rows leave these null).
+  oid         Int?
+  product     Int?
+  warehouseId Int?       @map("warehouse_id")
+  qty         Int?
+  restocked   Boolean    @default(false)
+
+  order       Order?     @relation(fields: [oid], references: [id], onDelete: SetNull)
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   @@map("orders_returns")
 }
@@ -558,6 +569,7 @@ model Warehouse {
   createdAt DateTime    @default(now()) @map("created_at")
 
   inventory Inventory[]
+  returns   OrderReturn[]
 
   @@map("warehouses")
 }

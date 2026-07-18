@@ -8,9 +8,13 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
+  const isWebhook = req.nextUrl.pathname.startsWith("/api/webhooks/");
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 
-  if (isApiAuth) return NextResponse.next();
+  // Webhooks (e.g. Supabase Database Webhooks) never carry an admin session
+  // cookie — they authenticate via their own shared-secret header instead,
+  // checked inside the route handler itself.
+  if (isApiAuth || isWebhook) return NextResponse.next();
   if (isApiRoute && !isLoggedIn) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

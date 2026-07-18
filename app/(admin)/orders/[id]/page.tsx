@@ -14,7 +14,7 @@ import { formatDate } from "@/lib/utils";
 import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
-  Truck, MapPin, Star,
+  Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
 } from "lucide-react";
 
 const PIPELINE = [
@@ -67,6 +67,25 @@ export default function OrderDetailPage() {
   const [confirmLog,  setConfirmLog]  = useState<StepLog[] | null>(null);
   const [ttnInputVal, setTtnInputVal] = useState("");
   const [ttnError,    setTtnError]    = useState("");
+
+  // Client edit
+  const [editingClient, setEditingClient] = useState(false);
+  const [clientDraft, setClientDraft] = useState({ person: "", phone: "", login: "", addr_delivery: "", pay_method: "" });
+  const [savingClient, setSavingClient] = useState(false);
+
+  // Returns
+  const [returnProduct, setReturnProduct] = useState("");
+  const [returnQty, setReturnQty] = useState("1");
+  const [returnReason, setReturnReason] = useState("");
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+
+  // Items edit
+  const [editingItems, setEditingItems] = useState(false);
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemSearching, setItemSearching] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [itemSearchResults, setItemSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,6 +185,128 @@ export default function OrderDetailPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrder((prev: any) => ({ ...prev, status: newStatus }));
     toast.success(`Статус: «${newStatus}»`);
+  }
+
+  function startEditClient() {
+    setClientDraft({
+      person: order.person ?? "",
+      phone: order.phone ?? "",
+      login: order.login ?? "",
+      addr_delivery: order.addr_delivery ?? "",
+      pay_method: order.pay_method ?? "",
+    });
+    setEditingClient(true);
+  }
+
+  async function saveClient() {
+    setSavingClient(true);
+    const res = await fetch(`/api/orders/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(clientDraft),
+    });
+    setSavingClient(false);
+    if (!res.ok) { toast.error("Не вдалося зберегти дані клієнта"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({ ...prev, ...clientDraft }));
+    setEditingClient(false);
+    toast.success("Дані клієнта оновлено");
+  }
+
+  function updateItemField(itemId: number, field: "price" | "quantity", value: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({
+      ...prev,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, [field]: value } : i)),
+    }));
+  }
+
+  async function saveItem(itemId: number) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const item = order.items.find((i: any) => i.id === itemId);
+    if (!item) return;
+    const price = parseFloat(item.price);
+    const quantity = parseInt(item.quantity);
+    if (!Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity < 1) {
+      toast.error("Некоректна ціна або кількість");
+      return;
+    }
+    setSavingItemId(itemId);
+    const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ price, quantity }),
+    });
+    setSavingItemId(null);
+    if (!res.ok) { toast.error("Не вдалося зберегти товар"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({
+      ...prev,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, price, quantity } : i)),
+    }));
+    toast.success("Товар оновлено");
+  }
+
+  async function deleteItem(itemId: number) {
+    setSavingItemId(itemId);
+    const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, { method: "DELETE" });
+    setSavingItemId(null);
+    if (!res.ok) { toast.error("Не вдалося видалити товар"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({ ...prev, items: prev.items.filter((i: any) => i.id !== itemId) }));
+    toast.success("Товар видалено");
+  }
+
+  async function searchProducts(q: string) {
+    setItemSearch(q);
+    if (!q.trim()) { setItemSearchResults([]); return; }
+    setItemSearching(true);
+    const data = await apiFetch<{ items: { id: number; title: string; pcode: string | null; price: number }[] }>(
+      `/api/products?q=${encodeURIComponent(q)}&lang=uk&limit=8`
+    );
+    setItemSearching(false);
+    setItemSearchResults(data?.items ?? []);
+  }
+
+  async function addItem(product: { id: number; title: string; price: number }) {
+    const res = await fetch(`/api/orders/${params.id}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product: product.id, price: product.price, quantity: 1 }),
+    });
+    if (!res.ok) { toast.error("Не вдалося додати товар"); return; }
+    const item = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({ ...prev, items: [...(prev.items ?? []), item] }));
+    setItemSearch("");
+    setItemSearchResults([]);
+    toast.success(`Додано: ${product.title}`);
+  }
+
+  async function submitReturn() {
+    const product = parseInt(returnProduct);
+    const qty = parseInt(returnQty);
+    if (!Number.isFinite(product) || !Number.isFinite(qty) || qty < 1) {
+      toast.error("Оберіть товар і вкажіть кількість");
+      return;
+    }
+    setSubmittingReturn(true);
+    const res = await fetch(`/api/orders/${params.id}/returns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product, qty, reason: returnReason.trim() || undefined }),
+    });
+    setSubmittingReturn(false);
+    if (!res.ok) { toast.error("Не вдалося оформити повернення"); return; }
+    const ret = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({ ...prev, returns: [ret, ...(prev.returns ?? [])] }));
+    setReturnProduct("");
+    setReturnQty("1");
+    setReturnReason("");
+    toast.success("Повернення оформлено, товар зараховано на склад");
   }
 
   if (!order) return (
@@ -293,7 +434,13 @@ export default function OrderDetailPage() {
                         onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
                         style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
                       >
-                        Відкрити PDF
+                        Рахунок
+                      </button>
+                      <button
+                        onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
+                        style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.22)", cursor: "pointer" }}
+                      >
+                        Накладна
                       </button>
                     </div>
                   )}
@@ -460,12 +607,18 @@ export default function OrderDetailPage() {
                 ))}
               </div>
               {processLog && order.doc_field_1 && (
-                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
-                    <FileText size={14} /> Завантажити рахунок
+                    <FileText size={14} /> Рахунок-фактура
+                  </button>
+                  <button
+                    onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
+                  >
+                    <ClipboardList size={14} /> Накладна
                   </button>
                 </div>
               )}
@@ -477,12 +630,64 @@ export default function OrderDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Client info */}
           <Card>
-            <CardHeader><CardTitle className="text-sm">Клієнт</CardTitle></CardHeader>
+            <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <CardTitle className="text-sm">Клієнт</CardTitle>
+              {!editingClient ? (
+                <button
+                  onClick={startEditClient}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
+                >
+                  <Pencil size={12} /> Редагувати
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => setEditingClient(false)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(148,163,184,0.15)", color: "#64748b", border: "none", cursor: "pointer" }}
+                  >
+                    <X size={12} /> Скасувати
+                  </button>
+                  <button
+                    onClick={saveClient} disabled={savingClient}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#6366f1", color: "#fff", border: "none", cursor: "pointer" }}
+                  >
+                    {savingClient ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти
+                  </button>
+                </div>
+              )}
+            </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
-              <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
-              <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
-              <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
+              {editingClient ? (
+                <div className="space-y-2.5">
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Ім&apos;я</Label>
+                    <Input value={clientDraft.person} onChange={(e) => setClientDraft((d) => ({ ...d, person: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Телефон</Label>
+                    <Input value={clientDraft.phone} onChange={(e) => setClientDraft((d) => ({ ...d, phone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Логін</Label>
+                    <Input value={clientDraft.login} onChange={(e) => setClientDraft((d) => ({ ...d, login: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Адреса</Label>
+                    <Input value={clientDraft.addr_delivery} onChange={(e) => setClientDraft((d) => ({ ...d, addr_delivery: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Спосіб оплати</Label>
+                    <Input value={clientDraft.pay_method} onChange={(e) => setClientDraft((d) => ({ ...d, pay_method: e.target.value }))} />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
+                  <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
+                  <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
+                  <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
+                </>
+              )}
               {order.ttn && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span className="text-gray-500">ТТН:</span>
@@ -505,6 +710,12 @@ export default function OrderDetailPage() {
                     style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
                   >
                     <FileText size={12} /> PDF
+                  </button>
+                  <button
+                    onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.1)", color: "#059669", border: "none", cursor: "pointer" }}
+                  >
+                    <ClipboardList size={12} /> Накладна
                   </button>
                 </div>
               )}
@@ -578,8 +789,22 @@ export default function OrderDetailPage() {
 
         {/* ── ITEMS TABLE ───────────────────────────────────────────────── */}
         <Card>
-          <CardHeader><CardTitle className="text-sm">Товари замовлення</CardTitle></CardHeader>
-          <CardContent style={{ padding: 0 }}>
+          <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <CardTitle className="text-sm">Товари замовлення</CardTitle>
+            <button
+              onClick={() => setEditingItems((v) => !v)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: editingItems ? "rgba(148,163,184,0.15)" : "rgba(99,102,241,0.1)", color: editingItems ? "#64748b" : "#6366f1", border: "none", cursor: "pointer" }}
+            >
+              {editingItems ? <><X size={12} /> Завершити редагування</> : <><Pencil size={12} /> Редагувати</>}
+            </button>
+          </CardHeader>
+          <CardContent style={{ padding: editingItems ? "0 16px 16px" : 0 }}>
+            {editingItems && step >= 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 12, borderRadius: 8, background: "rgba(245,158,11,0.1)", fontSize: 12.5, color: "#92400e" }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                Замовлення вже оплачено — зміна кількості тут не перерахує автоматично залишки на складі (списання відбулось один раз при підтвердженні оплати).
+              </div>
+            )}
             <table className="crm-table">
               <thead>
                 <tr>
@@ -588,6 +813,7 @@ export default function OrderDetailPage() {
                   <th style={{ textAlign: "right" }}>Ціна</th>
                   <th style={{ textAlign: "right" }}>К-сть</th>
                   <th style={{ textAlign: "right" }}>Сума</th>
+                  {editingItems && <th style={{ textAlign: "right" }}></th>}
                 </tr>
               </thead>
               <tbody>
@@ -595,35 +821,151 @@ export default function OrderDetailPage() {
                   <tr key={item.id}>
                     <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>#{item.product}</td>
                     <td style={{ color: "var(--text-muted)" }}>{item.type ?? "—"}</td>
-                    <td style={{ textAlign: "right" }}>{item.price.toFixed(2)} грн</td>
-                    <td style={{ textAlign: "right" }}>{item.quantity}</td>
-                    <td className="font-medium" style={{ textAlign: "right" }}>{(item.price * item.quantity).toFixed(2)} грн</td>
+                    {editingItems ? (
+                      <>
+                        <td style={{ textAlign: "right" }}>
+                          <Input
+                            type="number" step="0.01" value={item.price}
+                            onChange={(e) => updateItemField(item.id, "price", e.target.value)}
+                            style={{ width: 90, textAlign: "right", marginLeft: "auto" }}
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <Input
+                            type="number" step="1" value={item.quantity}
+                            onChange={(e) => updateItemField(item.id, "quantity", e.target.value)}
+                            style={{ width: 70, textAlign: "right", marginLeft: "auto" }}
+                          />
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{ textAlign: "right" }}>{item.price.toFixed(2)} грн</td>
+                        <td style={{ textAlign: "right" }}>{item.quantity}</td>
+                      </>
+                    )}
+                    <td className="font-medium" style={{ textAlign: "right" }}>{(Number(item.price) * Number(item.quantity)).toFixed(2)} грн</td>
+                    {editingItems && (
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                          <button
+                            onClick={() => saveItem(item.id)} disabled={savingItemId === item.id}
+                            style={{ padding: 5, borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#059669", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Зберегти"
+                          >
+                            {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check size={14} />}
+                          </button>
+                          <button
+                            onClick={() => deleteItem(item.id)} disabled={savingItemId === item.id}
+                            style={{ padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Видалити"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
+                  <td colSpan={editingItems ? 5 : 4} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
                   <td className="font-bold text-lg" style={{ textAlign: "right", borderBottom: "none" }}>{orderTotal.toFixed(2)} грн</td>
                 </tr>
               </tfoot>
             </table>
+
+            {editingItems && (
+              <div style={{ marginTop: 14, position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Search size={14} color="var(--text-muted)" />
+                  <Input
+                    value={itemSearch}
+                    onChange={(e) => searchProducts(e.target.value)}
+                    placeholder="Пошук товару за назвою або артикулом, щоб додати рядок…"
+                  />
+                  {itemSearching && <Loader2 className="h-4 w-4 animate-spin" style={{ flexShrink: 0 }} />}
+                </div>
+                {itemSearchResults.length > 0 && (
+                  <div style={{ marginTop: 6, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                    {itemSearchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => addItem(p)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "8px 12px", background: "var(--bg)", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", textAlign: "left", fontSize: 13 }}
+                      >
+                        <span>
+                          {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
+                          {p.title}
+                        </span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#6366f1", fontWeight: 600, flexShrink: 0, marginLeft: 10 }}>
+                          <Plus size={13} /> {p.price?.toFixed?.(2) ?? p.price} грн
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {order.returns?.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle className="text-sm text-red-600">Повернення</CardTitle></CardHeader>
-            <CardContent>
-              {order.returns.map((ret: { id: number; reason: string | null; date: string; status: string | null }) => (
-                <div key={ret.id} className="border-b last:border-0 py-2 text-sm">
-                  <span className="text-gray-500">#{ret.id}</span> — {ret.reason ?? "Без причини"} ({formatDate(ret.date)})
-                  {ret.status && <span className="ml-2 text-gray-400">[{ret.status}]</span>}
+        <Card>
+          <CardHeader><CardTitle className="text-sm text-red-600">Повернення</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {order.returns?.length > 0 ? (
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              order.returns.map((ret: any) => (
+                <div key={ret.id} className="border-b last:border-0 py-2 text-sm" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div>
+                    <span className="text-gray-500">#{ret.id}</span>{" "}
+                    {ret.product ? <>товар #{ret.product} × {ret.qty}</> : (ret.title ?? "")}
+                    {ret.reason ? <> — {ret.reason}</> : null}
+                    {" "}({formatDate(ret.date)})
+                  </div>
+                  {ret.restocked && (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#059669", background: "rgba(16,185,129,0.1)", padding: "2px 8px", borderRadius: 6, flexShrink: 0 }}>
+                      Повернено на склад
+                    </span>
+                  )}
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+              ))
+            ) : (
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Повернень по цьому замовленню ще не було.</p>
+            )}
+
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+              <div className="space-y-1">
+                <Label style={{ fontSize: 12 }}>Товар</Label>
+                <select
+                  value={returnProduct}
+                  onChange={(e) => setReturnProduct(e.target.value)}
+                  className="crm-select"
+                  style={{ height: 36, borderRadius: 8, border: "1px solid var(--border)", padding: "0 8px", background: "var(--bg)" }}
+                >
+                  <option value="">Оберіть товар…</option>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {order.items?.map((item: any) => (
+                    <option key={item.id} value={item.product}>#{item.product} (замовлено {item.quantity})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label style={{ fontSize: 12 }}>К-сть</Label>
+                <Input type="number" min={1} value={returnQty} onChange={(e) => setReturnQty(e.target.value)} style={{ width: 80 }} />
+              </div>
+              <div className="space-y-1" style={{ flex: 1, minWidth: 160 }}>
+                <Label style={{ fontSize: 12 }}>Причина</Label>
+                <Input value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="напр. брак" />
+              </div>
+              <Button onClick={submitReturn} disabled={submittingReturn} variant="outline">
+                {submittingReturn ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                Оформити повернення
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

@@ -12,6 +12,7 @@ import { apiFetch } from "@/lib/api";
 type Section = {
   title: string;
   keys: string[];
+  description?: string;
 };
 
 const LABELS: Record<string, string> = {
@@ -24,10 +25,15 @@ const LABELS: Record<string, string> = {
   recaptcha0siteks:      "reCAPTCHA Site Key",
   recaptcha0secrets:     "reCAPTCHA Secret Key",
   // Реквізити постачальника
-  supplier_name:         "Назва / ПІБ (Постачальник)",
+  supplier_name:         "Назва / ПІБ",
   supplier_account:      "Р/р (IBAN)",
   supplier_bank:         "Банк",
   supplier_edrpou:       "ЄДРПОУ / ІПН",
+  supplier2_name:        "Назва / ПІБ",
+  supplier2_account:     "Р/р (IBAN)",
+  supplier2_bank:        "Банк",
+  supplier2_edrpou:      "ЄДРПОУ / ІПН",
+  supplier_threshold:    "Поріг суми замовлення (грн)",
   // Nova Poshta
   np_api_key:            "API ключ",
   np_sender_ref:         "Ref відправника (Counterparty)",
@@ -41,7 +47,13 @@ const LABELS: Record<string, string> = {
 
 const SECTIONS: Section[] = [
   { title: "Загальні", keys: ["site_title", "form_email", "sale_discount", "search_length", "search_results_number", "recaptcha0siteks", "recaptcha0secrets"] },
-  { title: "Реквізити постачальника (для рахунків)", keys: ["supplier_name", "supplier_account", "supplier_bank", "supplier_edrpou"] },
+  { title: "Постачальник 1 (сума в межах порогу)", keys: ["supplier_name", "supplier_account", "supplier_bank", "supplier_edrpou"] },
+  { title: "Постачальник 2 (сума перевищує поріг)", keys: ["supplier2_name", "supplier2_account", "supplier2_bank", "supplier2_edrpou"] },
+  {
+    title: "Поріг автоматичного вибору постачальника",
+    keys: ["supplier_threshold"],
+    description: "Якщо сума замовлення перевищує це значення, у рахунку-фактурі та видатковій накладній автоматично використовуються реквізити Постачальника 2. За замовчуванням — 3000 грн.",
+  },
   { title: "Nova Poshta", keys: ["np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_phone"] },
   { title: "Viber", keys: ["viber_token"] },
 ];
@@ -102,6 +114,9 @@ export default function SettingsPage() {
           <Card key={sec.title}>
             <CardHeader>
               <CardTitle className="text-sm">{sec.title}</CardTitle>
+              {sec.description && (
+                <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>{sec.description}</p>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               {sec.keys.map((k) => (
@@ -110,8 +125,8 @@ export default function SettingsPage() {
                   <Input
                     value={values[k] ?? ""}
                     onChange={(e) => set(k, e.target.value)}
-                    placeholder={k}
-                    type={k.includes("secret") || k.includes("token") || k.includes("key") ? "password" : "text"}
+                    placeholder={k === "supplier_threshold" ? "3000" : k}
+                    type={k === "supplier_threshold" ? "number" : k.includes("secret") || k.includes("token") || k.includes("key") ? "password" : "text"}
                   />
                 </div>
               ))}

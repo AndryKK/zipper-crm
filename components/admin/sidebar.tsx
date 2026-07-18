@@ -19,6 +19,7 @@ const navGroups = [
     label: "Головне",
     items: [
       { href: "/", label: "Дашборд", icon: LayoutDashboard },
+      { href: "/orders", label: "Замовлення", icon: ShoppingCart },
       { href: "/top-sales", label: "Топ продажів", icon: TrendingUp },
     ],
   },
@@ -41,7 +42,6 @@ const navGroups = [
   {
     label: "Продажі",
     items: [
-      { href: "/orders", label: "Замовлення", icon: ShoppingCart },
       { href: "/users", label: "Клієнти", icon: Users },
       { href: "/user-categories", label: "Ранги клієнтів", icon: Star },
     ],

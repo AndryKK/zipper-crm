@@ -103,67 +103,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
 
   /* ════════════════════════════════════════════════════════════════════
-     STEP 2 — списання зі складу
+     STEP 2 — склад
+     Товар вже зарезервовано (списано) на кроці появи товару в замовленні —
+     див. /api/webhooks/inventory-sync — тож тут нічого не списуємо повторно,
+     лише інформуємо.
   ══════════════════════════════════════════════════════════════════════ */
-  const { data: warehouses } = await supabaseServer
-    .from("warehouses").select("id, title, priority")
-    .eq("active", 1).order("priority", { ascending: true }).limit(2);
-
-  const wh0 = warehouses?.[0];
-  const wh1 = warehouses?.[1];
-
-  if (!wh0) {
-    log.push({ step: "Списання зі складу", status: "skipped", msg: "Жодного складу не налаштовано" });
-  } else {
-    const productIds = items.map((i: { product: number }) => i.product);
-    const { data: inventory } = await supabaseServer
-      .from("inventory").select("product_id, warehouse_id, quantity")
-      .in("product_id", productIds)
-      .in("warehouse_id", [wh0.id, wh1?.id].filter(Boolean));
-
-    const invMap: Record<string, number> = {};
-    for (const row of inventory ?? []) invMap[`${row.product_id}_${row.warehouse_id}`] = Number(row.quantity);
-
-    const deductLog: string[] = [];
-    let hasError = false;
-
-    for (const item of items as { product: number; quantity: number }[]) {
-      let remaining = item.quantity;
-
-      const avail0 = invMap[`${item.product}_${wh0.id}`] ?? 0;
-      if (avail0 > 0 && remaining > 0) {
-        const take0 = Math.min(avail0, remaining);
-        await supabaseServer.from("inventory")
-          .update({ quantity: avail0 - take0 })
-          .eq("product_id", item.product).eq("warehouse_id", wh0.id);
-        remaining -= take0;
-        deductLog.push(`#${item.product}: -${take0} з «${wh0.title}»`);
-      }
-
-      if (remaining > 0 && wh1) {
-        const avail1 = invMap[`${item.product}_${wh1.id}`] ?? 0;
-        if (avail1 > 0) {
-          const take1 = Math.min(avail1, remaining);
-          await supabaseServer.from("inventory")
-            .update({ quantity: avail1 - take1 })
-            .eq("product_id", item.product).eq("warehouse_id", wh1.id);
-          remaining -= take1;
-          deductLog.push(`#${item.product}: -${take1} з «${wh1.title}»`);
-        }
-      }
-
-      if (remaining > 0) {
-        deductLog.push(`#${item.product}: НЕ ВИСТАЧАЄ ${remaining} шт`);
-        hasError = true;
-      }
-    }
-
-    log.push({
-      step:   "Списання зі складу",
-      status: hasError ? "warn" : "ok",
-      msg:    deductLog.join("; ") || "Товари списано",
-    });
-  }
+  log.push({ step: "Склад", status: "ok", msg: "Товар вже зарезервовано під це замовлення при його появі" });
 
   /* ── Оновити статус → "Оплачено" ────────────────────────────────── */
   await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", orderId);
