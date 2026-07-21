@@ -3,20 +3,55 @@ import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
+import { Crown } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-const SITE_LABEL: Record<string, { label: string; color: string }> = {
-  premium: { label: "Premium", color: "#d97706" },
-  ru: { label: "RU (.com.ua)", color: "#2563eb" },
-  uk: { label: "UA (.in.ua)", color: "#059669" },
-};
+function sitePillStyle(bg: string, color: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 10px 3px 8px",
+    borderRadius: 999,
+    fontSize: 11.5,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+    background: bg,
+    color,
+    lineHeight: 1.6,
+  };
+}
 
-function siteInfo(type: string | null, isPremiumUser: boolean) {
-  if (isPremiumUser) return SITE_LABEL.premium;
-  if (type === "ru") return SITE_LABEL.ru;
-  if (type === "uk") return SITE_LABEL.uk;
-  return null;
+function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser: boolean }) {
+  if (isPremiumUser) {
+    return (
+      <span
+        style={{
+          ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)", "#fff"),
+          boxShadow: "0 1px 2px rgba(217,119,6,0.35)",
+        }}
+      >
+        <Crown size={12} strokeWidth={2.5} />
+        Premium
+      </span>
+    );
+  }
+  if (type === "ru") {
+    return (
+      <span style={sitePillStyle("rgba(190,18,60,0.1)", "#be123c")}>
+        <span style={{ fontSize: 13 }}>🇷🇺</span> RU · .in.ua
+      </span>
+    );
+  }
+  if (type === "uk") {
+    return (
+      <span style={sitePillStyle("rgba(0,87,183,0.1)", "#0057b7")}>
+        <span style={{ fontSize: 13 }}>🇺🇦</span> UA · .com.ua
+      </span>
+    );
+  }
+  return <span style={{ color: "var(--text-muted)" }}>—</span>;
 }
 
 function orderStatusClass(status: string | null): string {
@@ -94,7 +129,6 @@ export default async function OrdersPage({
             <tbody>
               {allOrders.map((order: any) => {
                 const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
-                const site = siteInfo(order.type, premiumLogins.has(order.login));
                 return (
                   <tr key={order.id}>
                     <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
@@ -102,16 +136,7 @@ export default async function OrdersPage({
                     <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
                     <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
                     <td>
-                      {site ? (
-                        <span
-                          className="text-xs font-medium"
-                          style={{ color: site.color, whiteSpace: "nowrap" }}
-                        >
-                          {site.label}
-                        </span>
-                      ) : (
-                        <span style={{ color: "var(--text-muted)" }}>—</span>
-                      )}
+                      <SiteBadge type={order.type} isPremiumUser={premiumLogins.has(order.login)} />
                     </td>
                     <td className="text-center">{(order.items || []).length}</td>
                     <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
