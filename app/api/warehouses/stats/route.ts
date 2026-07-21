@@ -20,9 +20,10 @@ async function fetchAllInventory() {
 }
 
 /* Falls back to computing stats in JS from `inventory` directly when the
- * `warehouse_stats` view hasn't been created yet (run
- * scripts/create-warehouse-stats-view.sql in the Supabase SQL editor to
- * switch to the faster DB-side aggregation). */
+ * `warehouse_stats` materialized view hasn't been created yet (run
+ * scripts/create-warehouse-stats-view.sql in the Supabase SQL editor —
+ * it also schedules a daily pg_cron refresh, so this slow path should only
+ * ever be hit on a project where that script hasn't run at all). */
 async function computeStatsFallback() {
   const [{ data: warehouses }, inventory] = await Promise.all([
     supabaseServer.from("warehouses").select("*").order("priority"),

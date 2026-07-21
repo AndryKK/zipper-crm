@@ -9,7 +9,15 @@ import {
 import { toast } from "sonner";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 
+const PAGE_SIZE = 50;
+
 interface WarehouseOption { id: number; title: string; }
+interface WarehouseStat {
+  id: number;
+  totalProducts: number;
+  totalQty: number;
+  lowStock: number;
+}
 interface InventoryRow {
   id: number;
   product_id: number;
@@ -29,9 +37,12 @@ function InventoryContent() {
 
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>(warehouseIdParam || "");
+  const [stats, setStats] = useState<WarehouseStat[]>([]);
   const [rows, setRows] = useState<InventoryRow[]>([]);
-  const [filteredRows, setFilteredRows] = useState<InventoryRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<InventoryRow>>({});
@@ -54,26 +65,34 @@ function InventoryContent() {
     }
   }
 
+  // The daily-refreshed warehouse_stats materialized view — cheap regardless
+  // of how many inventory rows exist, unlike summing the full row set here.
+  async function loadStats() {
+    const res = await fetch("/api/warehouses/stats");
+    if (res.ok) setStats(await res.json());
+  }
+
   const loadInventory = useCallback(async () => {
     if (!selectedWarehouse) return;
     setLoading(true);
-    const res = await fetch(`/api/inventory?warehouse_id=${selectedWarehouse}`);
+    const params = new URLSearchParams({ warehouse_id: selectedWarehouse, page: String(page), limit: String(PAGE_SIZE) });
+    if (q) params.set("q", q);
+    const res = await fetch(`/api/inventory?${params}`);
     const data = await res.json();
-    setRows(data);
+    setRows(data.rows ?? []);
+    setTotal(data.total ?? 0);
     setLoading(false);
-  }, [selectedWarehouse]);
+  }, [selectedWarehouse, page, q]);
 
-  useEffect(() => { loadWarehouses(); }, []);
+  useEffect(() => { loadWarehouses(); loadStats(); }, []);
   useEffect(() => { loadInventory(); }, [loadInventory]);
+  useEffect(() => { setPage(1); }, [selectedWarehouse, q]);
 
+  /* Debounce search input before it hits the server */
   useEffect(() => {
-    if (!q) { setFilteredRows(rows); return; }
-    const lower = q.toLowerCase();
-    setFilteredRows(rows.filter((r) =>
-      r.product?.title?.toLowerCase().includes(lower) ||
-      r.product?.pcode?.toLowerCase().includes(lower)
-    ));
-  }, [q, rows]);
+    const t = setTimeout(() => setQ(qInput), 300);
+    return () => clearTimeout(t);
+  }, [qInput]);
 
   function startEdit(row: InventoryRow) {
     setEditingId(row.id);
@@ -129,6 +148,7 @@ function InventoryContent() {
       setAddMin("0");
       setAddQty("0");
       loadInventory();
+      loadStats();
     } else {
       const e = await res.json();
       toast.error(e.error);
@@ -136,8 +156,15 @@ function InventoryContent() {
   }
 
   const currentWarehouse = warehouses.find((w) => String(w.id) === selectedWarehouse);
-  const totalQty = filteredRows.reduce((s, r) => s + Number(r.quantity), 0);
-  const lowStock = filteredRows.filter((r) => Number(r.quantity) <= Number(r.min_quantity) && Number(r.min_quantity) > 0).length;
+  const currentStat = stats.find((s) => String(s.id) === selectedWarehouse);
+  const summary = currentStat
+    ? { positions: currentStat.totalProducts, totalQty: currentStat.totalQty, lowStock: currentStat.lowStock }
+    : stats.reduce((acc, s) => ({
+        positions: acc.positions + s.totalProducts,
+        totalQty: acc.totalQty + s.totalQty,
+        lowStock: acc.lowStock + s.lowStock,
+      }), { positions: 0, totalQty: 0, lowStock: 0 });
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
@@ -153,7 +180,8 @@ function InventoryContent() {
 
       <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
 
-        {/* Summary cards */}
+        {/* Summary cards — from the daily-refreshed warehouse_stats view, not
+            computed from the (possibly huge) row set on this page */}
         <div
           style={{
             display: "grid",
@@ -164,16 +192,16 @@ function InventoryContent() {
         >
           <div className="crm-card" style={{ padding: 16 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Позицій</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{filteredRows.length}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{summary.positions.toLocaleString("uk-UA")}</div>
           </div>
           <div className="crm-card" style={{ padding: 16 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Всього одиниць</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{totalQty.toFixed(0)}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{summary.totalQty.toLocaleString("uk-UA")}</div>
           </div>
           <div className="crm-card" style={{ padding: 16 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Під мінімумом</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: lowStock > 0 ? "var(--danger)" : "var(--success)" }}>
-              {lowStock}
+            <div style={{ fontSize: 28, fontWeight: 800, color: summary.lowStock > 0 ? "var(--danger)" : "var(--success)" }}>
+              {summary.lowStock}
             </div>
           </div>
         </div>
@@ -232,8 +260,8 @@ function InventoryContent() {
             <input
               className="crm-input"
               placeholder="Пошук за назвою або кодом..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
               style={{ paddingLeft: 36 }}
             />
           </div>
@@ -309,7 +337,7 @@ function InventoryContent() {
             <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>
               Завантаження...
             </div>
-          ) : filteredRows.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div style={{ padding: "64px 24px", textAlign: "center" }}>
               <Boxes size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
               <p style={{ color: "var(--text-muted)", fontSize: 14 }}>
@@ -332,7 +360,7 @@ function InventoryContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((row) => {
+                  {rows.map((row) => {
                     const available = Number(row.quantity) - Number(row.reserved);
                     const isLow = Number(row.quantity) <= Number(row.min_quantity) && Number(row.min_quantity) > 0;
                     const isEditing = editingId === row.id;
@@ -482,6 +510,14 @@ function InventoryContent() {
             </div>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+            <button className="btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 14px", opacity: page <= 1 ? 0.5 : 1 }}>← Попередня</button>
+            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Сторінка {page} з {totalPages} ({total.toLocaleString("uk-UA")} записів)</span>
+            <button className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 14px", opacity: page >= totalPages ? 0.5 : 1 }}>Наступна →</button>
+          </div>
+        )}
       </div>
     </>
   );

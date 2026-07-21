@@ -41,7 +41,15 @@ OLD_DATABASE_URL=... NEW_DATABASE_URL=... node scripts/clone-to-new-supabase.mjs
 
 Детальніше про сам механізм — [`docs/setup-inventory-sync.md`](./setup-inventory-sync.md).
 
-## 4. Змінні середовища
+## 4. Швидкі підсумки складу — [`scripts/create-warehouse-stats-view.sql`](../scripts/create-warehouse-stats-view.sql)
+
+Створює матеріалізовану в'юшку `warehouse_stats` (карточки на сторінках
+"Склади"/"Залишки") + щоденний `pg_cron`-рефреш о 05:00 UTC. Без цього
+кроку ці сторінки working, але замість швидкого запиту до в'юшки підуть по
+повільному fallback-шляху (потягнуть увесь `inventory` в JS) — саме це й
+викликало зависання на проєкті, коли `inventory` виросла до ~19к рядків.
+
+## 5. Змінні середовища
 
 Оновити в `.env` (локально) і в Vercel → Settings → Environment Variables
 (прод) під новий проєкт:
@@ -50,7 +58,7 @@ OLD_DATABASE_URL=... NEW_DATABASE_URL=... node scripts/clone-to-new-supabase.mjs
 - `INVENTORY_WEBHOOK_SECRET` — можна лишити те саме значення або згенерувати
   нове (тоді не забути так само оновити його в SQL-функціях, крок 3).
 
-## 5. Перевірка
+## 6. Перевірка
 
 Те саме, що в кінці [`docs/setup-inventory-sync.md`](./setup-inventory-sync.md#як-перевірити-що-спрацювало) —
 змінити кількість товару в будь-якому замовленні і перевірити, що залишок
