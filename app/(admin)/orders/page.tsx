@@ -6,6 +6,19 @@ import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const SITE_LABEL: Record<string, { label: string; color: string }> = {
+  premium: { label: "Premium", color: "#d97706" },
+  ru: { label: "RU (.com.ua)", color: "#2563eb" },
+  uk: { label: "UA (.in.ua)", color: "#059669" },
+};
+
+function siteInfo(type: string | null, isPremiumUser: boolean) {
+  if (isPremiumUser) return SITE_LABEL.premium;
+  if (type === "ru") return SITE_LABEL.ru;
+  if (type === "uk") return SITE_LABEL.uk;
+  return null;
+}
+
 function orderStatusClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("завершен") || s.includes("завершено")) return "badge badge-green";
@@ -45,6 +58,14 @@ export default async function OrdersPage({
     ? await supabaseServer.from("orders_item").select("*").in("oid", orderIds)
     : { data: [] };
 
+  const logins = Array.from(new Set((orderRows || []).map((o: any) => o.login).filter(Boolean)));
+  const { data: loginUsers } = logins.length > 0
+    ? await supabaseServer.from("users").select("login, password").in("login", logins)
+    : { data: [] };
+  const premiumLogins = new Set(
+    (loginUsers || []).filter((u: any) => u.password === "SUPABASE_AUTH").map((u: any) => u.login)
+  );
+
   const allOrders = (orderRows || []).map((o: any) => ({
     ...o,
     items: (allItems || []).filter((i: any) => i.oid === o.id),
@@ -62,6 +83,7 @@ export default async function OrdersPage({
                 <th>Клієнт</th>
                 <th>Телефон</th>
                 <th>Адреса</th>
+                <th>Сайт</th>
                 <th>Товарів</th>
                 <th>Сума</th>
                 <th>Дата</th>
@@ -72,12 +94,25 @@ export default async function OrdersPage({
             <tbody>
               {allOrders.map((order: any) => {
                 const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+                const site = siteInfo(order.type, premiumLogins.has(order.login));
                 return (
                   <tr key={order.id}>
                     <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
                     <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
                     <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
                     <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
+                    <td>
+                      {site ? (
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: site.color, whiteSpace: "nowrap" }}
+                        >
+                          {site.label}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                      )}
+                    </td>
                     <td className="text-center">{(order.items || []).length}</td>
                     <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
                     <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
@@ -96,7 +131,7 @@ export default async function OrdersPage({
               })}
               {allOrders.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
+                  <td colSpan={10} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Замовлень немає
                   </td>
                 </tr>
