@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
+import { auth } from "@/lib/auth";
 
 const SELECT = `
   *,
@@ -88,15 +89,24 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
+  const session = await auth();
   const body = await req.json();
-  const { id, quantity, reserved, initial_quantity, min_quantity } = body;
+  const { id, quantity, reserved, initial_quantity, min_quantity, note } = body;
 
   if (!id) return NextResponse.json({ error: "id обов'язковий" }, { status: 400 });
+
+  const { data: before } = await supabaseServer
+    .from("inventory")
+    .select("product_id, warehouse_id, quantity")
+    .eq("id", Number(id))
+    .single();
+
+  const newQuantity = Number(quantity ?? 0);
 
   const { data, error } = await supabaseServer
     .from("inventory")
     .update({
-      quantity: Number(quantity ?? 0),
+      quantity: newQuantity,
       reserved: Number(reserved ?? 0),
       initial_quantity: Number(initial_quantity ?? 0),
       min_quantity: Number(min_quantity ?? 0),
@@ -107,5 +117,19 @@ export async function PUT(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (before && Number(before.quantity) !== newQuantity) {
+    await supabaseServer.from("inventory_history").insert({
+      product_id: before.product_id,
+      warehouse_id: before.warehouse_id,
+      quantity_before: before.quantity,
+      quantity_after: newQuantity,
+      delta: newQuantity - Number(before.quantity),
+      source: "manual",
+      changed_by: session?.user?.name ?? null,
+      note: note?.trim() || null,
+    });
+  }
+
   return NextResponse.json(data);
 }

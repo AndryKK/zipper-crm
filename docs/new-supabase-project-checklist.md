@@ -36,7 +36,7 @@ OLD_DATABASE_URL=... NEW_DATABASE_URL=... node scripts/clone-to-new-supabase.mjs
 
 **Перед запуском у новому проєкті обов'язково замінити** в тексті скрипта:
 - URL вебхука — якщо застосунок задеплоєний на іншому домені, а не
-  `zipper-new-shop.vercel.app`;
+  `zipper-crm.vercel.app`;
 - `<YOUR_WEBHOOK_SECRET>` — на актуальний `INVENTORY_WEBHOOK_SECRET`.
 
 Детальніше про сам механізм — [`docs/setup-inventory-sync.md`](./setup-inventory-sync.md).

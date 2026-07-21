@@ -16,7 +16,7 @@ Webhooks" у формі створення тригера (немає готов
 2. Відкрити [`setup-inventory-sync.sql`](./setup-inventory-sync.sql).
 3. **Перед запуском замінити** в тексті скрипта (2 функції, по 2 місця кожна —
    4 заміни разом):
-   - `<YOUR_WEBHOOK_URL>` → `https://zipper-new-shop.vercel.app/api/webhooks/inventory-sync`
+   - `<YOUR_WEBHOOK_URL>` → `https://zipper-crm.vercel.app/api/webhooks/inventory-sync`
    - `<YOUR_WEBHOOK_SECRET>` → значення `INVENTORY_WEBHOOK_SECRET` з `.env`
 4. Вставити відредагований текст у SQL Editor і натиснути **Run**.
 
@@ -30,7 +30,7 @@ Webhooks" у формі створення тригера (немає готов
 ## Крок 2 — задеплоїти код
 
 Усе, що написано сьогодні (сам вебхук-роут, форма повернень, фікс
-`proxy.ts`), поки що лише локально — на `zipper-new-shop.vercel.app` цього
+`proxy.ts`), поки що лише локально — на `zipper-crm.vercel.app` цього
 коду ще немає, доки не буде коміт + push (і Vercel не задеплоїть).
 
 ## Крок 3 — секрет у Vercel

@@ -8,6 +8,7 @@ import {
   MapPin, AlertTriangle, Boxes, Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface WarehouseStat {
@@ -184,6 +185,7 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
   const [qInput, setQInput]   = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm]   = useState<Partial<InventoryRow>>({});
+  const [editNote, setEditNote]   = useState("");
   const [saving, setSaving]   = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addProductId, setAddProductId] = useState("");
@@ -213,9 +215,9 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
   async function saveEdit() {
     if (!editingId) return;
     setSaving(true);
-    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingId, ...editForm }) });
+    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingId, ...editForm, note: editNote }) });
     setSaving(false);
-    if (res.ok) { toast.success("Залишки оновлено"); setEditingId(null); load(); }
+    if (res.ok) { toast.success("Залишки оновлено"); setEditingId(null); setEditNote(""); load(); }
     else { const e = await res.json(); toast.error(e.error); }
   }
 
@@ -315,9 +317,17 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                       <td style={{ textAlign: "right" }}>{isEditing ? editInput("initial_quantity") : <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>}</td>
                       <td style={{ textAlign: "right" }}>
                         {isEditing ? editInput("quantity") : (
-                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isLow ? "var(--danger)" : "var(--text)" }}>
-                            {Number(row.quantity).toFixed(0)}{isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
-                          </span>
+                          <InventoryHistoryDialog productId={row.product_id} warehouseId={row.warehouse_id}>
+                            {(openHistory) => (
+                              <button
+                                onClick={openHistory}
+                                title="Історія залишку"
+                                style={{ fontFamily: "monospace", fontWeight: 700, color: isLow ? "var(--danger)" : "var(--text)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}
+                              >
+                                {Number(row.quantity).toFixed(0)}{isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
+                              </button>
+                            )}
+                          </InventoryHistoryDialog>
                         )}
                       </td>
                       <td style={{ textAlign: "right" }}>{isEditing ? editInput("reserved") : <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>{Number(row.reserved).toFixed(0)}</span>}</td>
@@ -335,9 +345,14 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                       </td>
                       <td style={{ textAlign: "right" }}>
                         {isEditing ? (
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
+                            <input
+                              className="crm-input" placeholder="Примітка (не обов'язково)"
+                              value={editNote} onChange={(e) => setEditNote(e.target.value)}
+                              style={{ width: 140, fontSize: 12 }}
+                            />
                             <button className="btn-primary" onClick={saveEdit} disabled={saving} style={{ padding: "5px 10px", fontSize: 12 }}><Save size={12} /> Зберегти</button>
-                            <button className="btn-ghost" onClick={() => setEditingId(null)} style={{ padding: "5px 8px" }}><X size={12} /></button>
+                            <button className="btn-ghost" onClick={() => { setEditingId(null); setEditNote(""); }} style={{ padding: "5px 8px" }}><X size={12} /></button>
                           </div>
                         ) : (
                           <button className="btn-ghost" onClick={() => { setEditingId(row.id); setEditForm({ quantity: row.quantity, reserved: row.reserved, initial_quantity: row.initial_quantity, min_quantity: row.min_quantity }); }} style={{ padding: "5px 10px", fontSize: 12 }}>Змінити</button>

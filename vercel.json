@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-ttn-status",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}

@@ -16,7 +16,23 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id)),
     supabaseServer.from("orders_returns").select("*").eq("oid", parseInt(id)).order("date", { ascending: false }),
   ]);
-  return NextResponse.json({ ...order, items: items || [], returns: returns || [] });
+
+  // Products are stored per-language with each language row having its own
+  // id, and orders_item.product is that exact row id — match by id alone
+  // (no lang filter), same fix as the invoice/waybill product resolution.
+  const productIds = [...new Set((items ?? []).map((i) => i.product))];
+  const { data: products } = productIds.length
+    ? await supabaseServer.from("products").select("id, title, img, pcode").in("id", productIds)
+    : { data: [] };
+  const prodMap = new Map((products ?? []).map((p) => [p.id, p]));
+  const itemsWithProduct = (items ?? []).map((item) => ({
+    ...item,
+    productTitle: prodMap.get(item.product)?.title ?? null,
+    productImg: prodMap.get(item.product)?.img ?? null,
+    productPcode: prodMap.get(item.product)?.pcode ?? null,
+  }));
+
+  return NextResponse.json({ ...order, items: itemsWithProduct, returns: returns || [] });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

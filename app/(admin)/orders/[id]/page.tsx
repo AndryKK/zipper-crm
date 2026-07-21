@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
 import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
@@ -67,6 +68,7 @@ export default function OrderDetailPage() {
   const [confirmLog,  setConfirmLog]  = useState<StepLog[] | null>(null);
   const [ttnInputVal, setTtnInputVal] = useState("");
   const [ttnError,    setTtnError]    = useState("");
+  const [checkingNp,  setCheckingNp]  = useState(false);
 
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
@@ -185,6 +187,25 @@ export default function OrderDetailPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrder((prev: any) => ({ ...prev, status: newStatus }));
     toast.success(`Статус: «${newStatus}»`);
+  }
+
+  async function checkNpStatus() {
+    setCheckingNp(true);
+    try {
+      const res = await fetch(`/api/cron/sync-ttn-status?orderId=${params.id}`);
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      const entry = data.log?.[0];
+      if (!entry) { toast.info("Нема ТТН для перевірки"); return; }
+      if (entry.error) { toast.error(entry.error); return; }
+      if (entry.delivered) {
+        toast.success("Нова Пошта підтвердила отримання — статус оновлено");
+        await refreshOrder();
+      } else {
+        toast.info(`Статус НП: ${entry.status || "ще в дорозі"}`);
+      }
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setCheckingNp(false); }
   }
 
   function startEditClient() {
@@ -306,7 +327,24 @@ export default function OrderDetailPage() {
     setReturnProduct("");
     setReturnQty("1");
     setReturnReason("");
-    toast.success("Повернення оформлено, товар зараховано на склад");
+    toast.success("Повернення заявлено — товар повернеться на склад після підтвердження отримання");
+  }
+
+  async function setReturnStatus(returnId: number, newStatus: string) {
+    const res = await fetch(`/api/returns/${returnId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
+    const updated = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({
+      ...prev,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      returns: prev.returns.map((r: any) => (r.id === returnId ? updated : r)),
+    }));
+    toast.success(`Статус повернення: «${newStatus}»`);
   }
 
   if (!order) return (
@@ -536,13 +574,20 @@ export default function OrderDetailPage() {
                       </a>
                     </div>
                   )}
-                  <div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <Button
                       onClick={() => advanceStatus("Отримано")}
                       style={{ background: "linear-gradient(135deg,#06b6d4,#0891b2)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                     >
                       <MapPin size={16} />
                       Позначити отриманим
+                    </Button>
+                    <Button
+                      variant="outline" onClick={checkNpStatus} disabled={checkingNp}
+                      style={{ gap: 8, height: 42, fontSize: 14 }}
+                    >
+                      {checkingNp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={16} />}
+                      Перевірити статус НП
                     </Button>
                   </div>
                 </div>
@@ -556,7 +601,7 @@ export default function OrderDetailPage() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#0891b2" }}>Клієнт отримав замовлення</span>
                   </div>
                   <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                    Через 14 днів статус автоматично зміниться на «Завершено».
+                    Завершіть замовлення вручну, коли впевнені, що претензій по ньому вже не буде.
                   </p>
                   <div>
                     <Button
@@ -808,8 +853,7 @@ export default function OrderDetailPage() {
             <table className="crm-table">
               <thead>
                 <tr>
-                  <th>ID товару</th>
-                  <th>Тип</th>
+                  <th>Товар</th>
                   <th style={{ textAlign: "right" }}>Ціна</th>
                   <th style={{ textAlign: "right" }}>К-сть</th>
                   <th style={{ textAlign: "right" }}>Сума</th>
@@ -817,10 +861,32 @@ export default function OrderDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {order.items?.map((item: { id: number; product: number; type: string | null; price: number; quantity: number }) => (
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {order.items?.map((item: any) => (
                   <tr key={item.id}>
-                    <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>#{item.product}</td>
-                    <td style={{ color: "var(--text-muted)" }}>{item.type ?? "—"}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {item.productImg ? (
+                          <img
+                            src={item.productImg}
+                            alt=""
+                            style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)" }}
+                          />
+                        ) : (
+                          <div style={{ width: 36, height: 36, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Package size={16} color="var(--text-muted)" />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
+                            {item.productTitle ?? `Товар #${item.product}`}
+                          </div>
+                          <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {item.productPcode ? `${item.productPcode} · ` : ""}#{item.product}{item.type ? ` · ${item.type}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
                     {editingItems ? (
                       <>
                         <td style={{ textAlign: "right" }}>
@@ -870,7 +936,7 @@ export default function OrderDetailPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={editingItems ? 5 : 4} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
+                  <td colSpan={editingItems ? 4 : 3} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
                   <td className="font-bold text-lg" style={{ textAlign: "right", borderBottom: "none" }}>{orderTotal.toFixed(2)} грн</td>
                 </tr>
               </tfoot>
@@ -917,18 +983,30 @@ export default function OrderDetailPage() {
             {order.returns?.length > 0 ? (
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               order.returns.map((ret: any) => (
-                <div key={ret.id} className="border-b last:border-0 py-2 text-sm" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div key={ret.id} className="border-b last:border-0 py-2 text-sm" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div>
                     <span className="text-gray-500">#{ret.id}</span>{" "}
                     {ret.product ? <>товар #{ret.product} × {ret.qty}</> : (ret.title ?? "")}
                     {ret.reason ? <> — {ret.reason}</> : null}
                     {" "}({formatDate(ret.date)})
-                  </div>
-                  {ret.restocked && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#059669", background: "rgba(16,185,129,0.1)", padding: "2px 8px", borderRadius: 6, flexShrink: 0 }}>
-                      Повернено на склад
+                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: RETURN_STATUS_COLOR[ret.status ?? RETURN_STATUS.NEW] ?? "#6b7280" }}>
+                      [{ret.status ?? RETURN_STATUS.NEW}]
                     </span>
-                  )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                    {ret.restocked ? (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#059669", background: "rgba(16,185,129,0.1)", padding: "2px 8px", borderRadius: 6 }}>
+                        Повернено на склад
+                      </span>
+                    ) : ret.status !== RETURN_STATUS.REJECTED && ret.status !== RETURN_STATUS.CANCELLED ? (
+                      <button
+                        onClick={() => setReturnStatus(ret.id, RETURN_STATUS.RECEIVED)}
+                        style={{ fontSize: 11, fontWeight: 600, color: "#059669", background: "rgba(16,185,129,0.1)", padding: "2px 8px", borderRadius: 6, border: "none", cursor: "pointer" }}
+                      >
+                        Отримано на складі
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))
             ) : (
@@ -947,7 +1025,7 @@ export default function OrderDetailPage() {
                   <option value="">Оберіть товар…</option>
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {order.items?.map((item: any) => (
-                    <option key={item.id} value={item.product}>#{item.product} (замовлено {item.quantity})</option>
+                    <option key={item.id} value={item.product}>{item.productTitle ?? `Товар #${item.product}`} (замовлено {item.quantity})</option>
                   ))}
                 </select>
               </div>

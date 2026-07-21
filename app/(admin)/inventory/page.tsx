@@ -7,6 +7,7 @@ import {
   Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package,
 } from "lucide-react";
 import { toast } from "sonner";
+import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 
 interface WarehouseOption { id: number; title: string; }
 interface InventoryRow {
@@ -34,6 +35,7 @@ function InventoryContent() {
   const [q, setQ] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<InventoryRow>>({});
+  const [editNote, setEditNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   /* Add-new inline form */
@@ -89,12 +91,13 @@ function InventoryContent() {
     const res = await fetch("/api/inventory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingId, ...editForm }),
+      body: JSON.stringify({ id: editingId, ...editForm, note: editNote }),
     });
     setSaving(false);
     if (res.ok) {
       toast.success("Залишки оновлено");
       setEditingId(null);
+      setEditNote("");
       loadInventory();
     } else {
       const e = await res.json();
@@ -374,16 +377,24 @@ function InventoryContent() {
                               style={{ width: 80, textAlign: "right" }}
                             />
                           ) : (
-                            <span
-                              style={{
-                                fontFamily: "monospace",
-                                fontWeight: 700,
-                                color: isLow ? "var(--danger)" : "var(--text)",
-                              }}
-                            >
-                              {Number(row.quantity).toFixed(0)}
-                              {isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
-                            </span>
+                            <InventoryHistoryDialog productId={row.product_id} warehouseId={row.warehouse_id}>
+                              {(openHistory) => (
+                                <button
+                                  onClick={openHistory}
+                                  title="Історія залишку"
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontWeight: 700,
+                                    color: isLow ? "var(--danger)" : "var(--text)",
+                                    background: "none", border: "none", cursor: "pointer",
+                                    textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3,
+                                  }}
+                                >
+                                  {Number(row.quantity).toFixed(0)}
+                                  {isLow && <AlertTriangle size={11} style={{ marginLeft: 4, display: "inline" }} />}
+                                </button>
+                              )}
+                            </InventoryHistoryDialog>
                           )}
                         </td>
                         <td style={{ textAlign: "right" }}>
@@ -431,6 +442,11 @@ function InventoryContent() {
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                             {isEditing ? (
                               <>
+                                <input
+                                  className="crm-input" placeholder="Примітка"
+                                  value={editNote} onChange={(e) => setEditNote(e.target.value)}
+                                  style={{ width: 120, fontSize: 12 }}
+                                />
                                 <button
                                   className="btn-primary"
                                   onClick={saveEdit}
@@ -441,7 +457,7 @@ function InventoryContent() {
                                 </button>
                                 <button
                                   className="btn-ghost"
-                                  onClick={() => setEditingId(null)}
+                                  onClick={() => { setEditingId(null); setEditNote(""); }}
                                   style={{ padding: "5px 8px" }}
                                 >
                                   <X size={12} />

@@ -7,7 +7,7 @@ import {
   FileText, Newspaper, Image, Settings, Filter, UserCog,
   Ruler, DollarSign, Globe, MessageSquare, Briefcase, Star,
   FileSpreadsheet, ChevronDown, LogOut, Zap, Warehouse, Boxes,
-  TrendingUp,
+  TrendingUp, RotateCcw,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,7 @@ const navGroups = [
     label: "Продажі",
     items: [
       { href: "/users", label: "Клієнти", icon: Users },
+      { href: "/returns", label: "Повернення", icon: RotateCcw },
       { href: "/user-categories", label: "Ранги клієнтів", icon: Star },
     ],
   },

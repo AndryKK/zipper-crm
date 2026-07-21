@@ -9,8 +9,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const lang = searchParams.get("lang") ?? "uk";
   const q = searchParams.get("q") ?? "";
+  const ids = searchParams.get("ids");
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = parseInt(searchParams.get("limit") ?? "50");
+
+  // Direct id lookup (e.g. resolving a product referenced by an order/return)
+  // must NOT filter by lang — orders_item/orders_returns store the exact
+  // per-language row id, which may not be the "uk" row (see invoice route
+  // for the same fix).
+  if (ids) {
+    const idList = ids.split(",").map(Number).filter(Number.isFinite);
+    const { data: items } = idList.length
+      ? await supabaseServer.from("products").select("id, title, pcode").in("id", idList)
+      : { data: [] };
+    return NextResponse.json(items ?? []);
+  }
 
   let query = supabaseServer
     .from("products")

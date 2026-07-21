@@ -9,12 +9,13 @@ export default auth((req) => {
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
   const isWebhook = req.nextUrl.pathname.startsWith("/api/webhooks/");
+  const isCron = req.nextUrl.pathname.startsWith("/api/cron/");
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 
-  // Webhooks (e.g. Supabase Database Webhooks) never carry an admin session
-  // cookie — they authenticate via their own shared-secret header instead,
-  // checked inside the route handler itself.
-  if (isApiAuth || isWebhook) return NextResponse.next();
+  // Webhooks (e.g. Supabase Database Webhooks) and Vercel Cron invocations
+  // never carry an admin session cookie — they authenticate via their own
+  // shared-secret/Bearer header instead, checked inside the route handler.
+  if (isApiAuth || isWebhook || isCron) return NextResponse.next();
   if (isApiRoute && !isLoggedIn) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

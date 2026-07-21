@@ -341,20 +341,41 @@ model Slider {
   @@map("slider")
 }
 
+// Articles ("Статті") shown on /articles and /articles/{uri} on both PHP sites.
+// One row per language per article — rows are NOT linked by translationId having
+// a matching counterpart row in every language; many legacy articles (ru-only or
+// uk-only) have no translation at all, which is expected (articles.php falls back
+// to an empty string when a translation is missing, see articles.php ~line 30).
 model Article {
   id            Int       @id @default(autoincrement())
   translationId Int     @map("translation_id")
   lang          String    @db.VarChar(10)
   uri           String    @db.VarChar(255)
   title         String    @db.VarChar(255)
+  // Page <h1> on the article detail page (articles.php falls back to `heading`
+  // when `heading_contact`/SEOform's `core` override isn't set). Not editable in
+  // older CRM UIs — make sure it's filled in when adding a new article.
+  heading       String?   @db.VarChar(255)
   descr         String?   @db.Text
   text          String?   @db.Text
+  // Full R2 URL (e.g. https://pub-<hash>.r2.dev/articles/<file>.jpg), not a bare
+  // filename — CRM UI must render `img` directly as the <img src>.
   img           String?   @db.VarChar(255)
+  // Legacy/secondary image column — not read by either PHP site's articles.php or
+  // news.php templates. Present in the DB for historical reasons only.
+  img2          String?   @db.VarChar(255)
+  // Legacy column, not referenced by the PHP frontend for articles (unlike
+  // products/categories, where `pid` is a real parent-category FK). Safe to
+  // ignore; kept only for schema parity with the live table.
+  pid           Int?      @default(0)
   priority      Int       @default(0)
   data          DateTime  @default(now())
   seoTitle      String?   @db.VarChar(255) @map("seo_title")
   seoKey        String?   @db.VarChar(500) @map("seo_key")
   seoDescr      String?   @db.VarChar(500) @map("seo_descr")
+  // Legacy column, not read by SEOform() or articles.php — SEO override text
+  // actually comes from the `core` table (see includes/functions.php SEOform()).
+  seoText       String?   @db.Text @map("seo_text")
 
   photos        ArticlePhoto[]
 
@@ -362,12 +383,15 @@ model Article {
 }
 
 model ArticlePhoto {
-  id       Int     @id @default(autoincrement())
-  pid      Int
-  img      String  @db.VarChar(255)
-  priority Int     @default(0)
+  id            Int     @id @default(autoincrement())
+  pid           Int
+  img           String  @db.VarChar(255)
+  priority      Int     @default(0)
+  translationId Int?    @map("translation_id")
+  lang          String? @db.VarChar(10)
+  title         String? @db.VarChar(255)
 
-  article  Article @relation(fields: [pid], references: [id], onDelete: Cascade)
+  article       Article @relation(fields: [pid], references: [id], onDelete: Cascade)
 
   @@map("articles_photos")
 }
@@ -526,28 +550,56 @@ model OrderItem {
 }
 
 model OrderReturn {
-  id          Int        @id @default(autoincrement())
-  date        DateTime   @default(now())
-  login       String?    @db.Char(50)
-  person      String?    @db.Char(40)
-  phone       String?    @db.Char(15)
-  reason      String?    @db.Text
-  status      String?    @db.Char(20)
-  notes       String?    @db.Text
-  title       String?    @db.Char(255)
-  quantity    String?    @db.Char(255)
+  id           Int        @id @default(autoincrement())
+  date         DateTime   @default(now())
+  login        String?    @db.VarChar(50)
+  person       String?    @db.VarChar(40)
+  phone        String?    @db.VarChar(15)
+  reason       String?    @db.Text
+  status       String?    @db.VarChar(20)
+  notes        String?    @db.Text
+  title        String?    @db.VarChar(255)
+  quantity     String?    @db.VarChar(255)
 
-  // Added for proper product/warehouse linkage (legacy rows leave these null).
-  oid         Int?
-  product     Int?
-  warehouseId Int?       @map("warehouse_id")
-  qty         Int?
-  restocked   Boolean    @default(false)
+  // Legacy storefront-submitted fields (real rows go back to 2019 — the
+  // store's own return form writes these directly, not the oid/product/qty
+  // fields below).
+  addrDelivery String?    @db.Text @map("addr_delivery")
+  legacyOrder  Int?       @map("order")
+  dateOrder    String?    @db.VarChar(50) @map("date_order")
+  code         String?    @db.VarChar(50)
+  photo        String?    @db.VarChar(100)
+  submit       String?    @db.VarChar(50)
 
-  order       Order?     @relation(fields: [oid], references: [id], onDelete: SetNull)
-  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  // Added for proper product/warehouse linkage and the status workflow
+  // (legacy rows leave these null — see docs for the returns feature).
+  oid          Int?
+  product      Int?
+  warehouseId  Int?       @map("warehouse_id")
+  qty          Int?
+  restocked    Boolean    @default(false)
+
+  order        Order?     @relation(fields: [oid], references: [id], onDelete: SetNull)
+  warehouse    Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   @@map("orders_returns")
+}
+
+model InventoryHistory {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @map("product_id")
+  warehouseId     Int      @map("warehouse_id")
+  quantityBefore  Decimal  @db.Decimal(10, 2) @map("quantity_before")
+  quantityAfter   Decimal  @db.Decimal(10, 2) @map("quantity_after")
+  delta           Decimal  @db.Decimal(10, 2)
+  source          String   @db.VarChar(30)
+  changedBy       String?  @db.VarChar(100) @map("changed_by")
+  note            String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@map("inventory_history")
 }
 
 model Doc {
@@ -570,6 +622,7 @@ model Warehouse {
 
   inventory Inventory[]
   returns   OrderReturn[]
+  history   InventoryHistory[]
 
   @@map("warehouses")
 }

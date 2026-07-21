@@ -43,6 +43,28 @@ export interface NpTtnParams {
   description: string;
 }
 
+export interface NpStatus {
+  status: string;
+  statusCode: string;
+  isDelivered: boolean;
+}
+
+// Nova Poshta has no push webhook for arbitrary API keys — this is a
+// poll-on-demand check of a single TTN's current status, used both by the
+// daily cron (app/api/cron/sync-ttn-status) and a manual "check now" button.
+export async function npGetStatus(apiKey: string, ttn: string, phone?: string): Promise<NpStatus | null> {
+  const r = await npCall(apiKey, "TrackingDocument", "getStatusDocuments", {
+    Documents: [{ DocumentNumber: ttn, Phone: phone ? phone.replace(/\D/g, "") : undefined }],
+  });
+  if (!r.success || !r.data?.length) return null;
+  const d = r.data[0];
+  const status = d.Status ?? "";
+  // StatusCode 9 = "Отримано" per NP's documented codes, but we also match
+  // on the status text itself since code mappings have historically shifted.
+  const isDelivered = d.StatusCode === "9" || /отримано|видано/i.test(status);
+  return { status, statusCode: d.StatusCode ?? "", isDelivered };
+}
+
 export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { error: string }> {
   const today = new Date();
   const date = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;

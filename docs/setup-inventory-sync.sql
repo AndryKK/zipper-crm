@@ -22,7 +22,7 @@ ALTER TABLE orders_returns
 -- Webhooks feature does under the hood).
 --
 -- ⚠️ BEFORE RUNNING: replace both occurrences of
---   <YOUR_WEBHOOK_URL>    with  https://zipper-new-shop.vercel.app/api/webhooks/inventory-sync
+--   <YOUR_WEBHOOK_URL>    with  https://zipper-crm.vercel.app/api/webhooks/inventory-sync
 --   <YOUR_WEBHOOK_SECRET> with  the value of INVENTORY_WEBHOOK_SECRET in .env
 -- ─────────────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ security definer
 as $$
 begin
   perform net.http_post(
-    url     := 'https://zipper-new-shop.vercel.app/api/webhooks/inventory-sync',
+    url     := 'https://zipper-crm.vercel.app/api/webhooks/inventory-sync',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', '<YOUR_WEBHOOK_SECRET>'),
     body    := jsonb_build_object(
       'type', TG_OP,
@@ -60,7 +60,7 @@ security definer
 as $$
 begin
   perform net.http_post(
-    url     := 'https://zipper-new-shop.vercel.app/api/webhooks/inventory-sync',
+    url     := 'https://zipper-crm.vercel.app/api/webhooks/inventory-sync',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', '<YOUR_WEBHOOK_SECRET>'),
     body    := jsonb_build_object(
       'type', 'UPDATE',

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, deductOrderItems } from "@/lib/inventory";
 
 const CANCELLED_STATUS = "Скасовано";
+// Statuses reached before the order physically leaves the warehouse — an
+// order cancelled while still in one of these auto-restocks. Once it's
+// "Відправлено" (or later), the goods are already out; restocking only
+// happens when a return is confirmed received back (see the returns flow).
+const PRE_SHIPMENT_STATUSES = new Set(["Новий", "В роботі", "Оплачено"]);
+const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSES.has(status);
 
 type OrdersItemRow = { oid: number; product: number; quantity: number };
 type OrdersRow = { id: number; status: string | null };
@@ -32,22 +38,23 @@ export async function POST(req: NextRequest) {
 
   if (payload.table === "orders_item") {
     if (payload.type === "INSERT") {
-      await deductStock(payload.record.product, payload.record.quantity, warehouseId);
+      await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_created" });
     } else if (payload.type === "UPDATE") {
-      // Return the previous quantity, then deduct the corrected one — also
-      // correctly handles the (rare) case where the product itself changed.
-      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId);
-      await deductStock(payload.record.product, payload.record.quantity, warehouseId);
+      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
+      await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
     } else if (payload.type === "DELETE") {
-      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId);
+      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_deleted" });
     }
   } else if (payload.table === "orders" && payload.type === "UPDATE") {
     const wasCancelled = payload.old_record.status === CANCELLED_STATUS;
     const isCancelled = payload.record.status === CANCELLED_STATUS;
-    if (isCancelled && !wasCancelled) {
-      await restockOrderItems(payload.record.id, warehouseId);
-    } else if (wasCancelled && !isCancelled) {
-      await deductOrderItems(payload.record.id, warehouseId);
+
+    if (isCancelled && !wasCancelled && isPreShipment(payload.old_record.status)) {
+      // Cancelled before it shipped — nothing physically left the warehouse yet.
+      await restockOrderItems(payload.record.id, warehouseId, { source: "order_cancelled" });
+    } else if (wasCancelled && !isCancelled && isPreShipment(payload.record.status)) {
+      // Reactivated back into a pre-shipment state — re-reserve the stock.
+      await deductOrderItems(payload.record.id, warehouseId, { source: "order_uncancelled" });
     }
   }
 
