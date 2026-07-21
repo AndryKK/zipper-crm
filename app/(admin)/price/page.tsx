@@ -1,15 +1,54 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Upload, Download, Loader2, FileSpreadsheet } from "lucide-react";
+import { Upload, Download, Loader2, FileSpreadsheet, RefreshCw, ExternalLink } from "lucide-react";
+
+type PriceListDoc = {
+  id: number;
+  title: string;
+  file: string;
+  lang: string;
+  translation_id: number;
+  date: string | null;
+};
 
 export default function PricePage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
+
+  const [priceListDocs, setPriceListDocs] = useState<PriceListDoc[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const loadPriceListDocs = useCallback(async () => {
+    setLoadingDocs(true);
+    const res = await fetch("/api/price-lists");
+    const data = await res.json();
+    setPriceListDocs(data.docs ?? []);
+    setLoadingDocs(false);
+  }, []);
+
+  useEffect(() => {
+    loadPriceListDocs();
+  }, [loadPriceListDocs]);
+
+  async function regeneratePriceLists() {
+    setRegenerating(true);
+    const res = await fetch("/api/price-lists", { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      const total = (data.log ?? []).reduce((sum: number, l: any) => sum + (l.products ?? 0), 0);
+      toast.success(`Прайс-листи оновлено: ${total} товарів у ${(data.log ?? []).filter((l: any) => !l.skipped).length} файлах`);
+      loadPriceListDocs();
+    } else {
+      toast.error(data.error ?? "Помилка генерації");
+    }
+    setRegenerating(false);
+  }
 
   async function importPrice() {
     if (!file) return;
@@ -75,6 +114,46 @@ export default function PricePage() {
             <Button onClick={exportPrice} variant="outline" className="w-full">
               <Download className="h-4 w-4 mr-2" />Завантажити прайс XLSX
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" />Публічні прайс-листи по категоріях</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Файли, які клієнти завантажують на сторінці «Прайс» обох сайтів (по категорії, по мові).
+              Оновіть після зміни цін чи асортименту — стара версія лишається доступною, поки не згенерується нова.
+            </p>
+            <Button onClick={regeneratePriceLists} disabled={regenerating} className="w-full">
+              {regenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Оновити прайс-листи зараз
+            </Button>
+            {loadingDocs ? (
+              <p className="text-sm text-gray-400">Завантаження…</p>
+            ) : priceListDocs.length === 0 ? (
+              <p className="text-sm text-gray-400">Ще не згенеровано жодного файлу.</p>
+            ) : (
+              <div className="border rounded-md divide-y">
+                {priceListDocs.map((d) => (
+                  <a
+                    key={d.id}
+                    href={d.file}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    <span>
+                      {d.title}
+                      <span className="text-gray-400 ml-2">[{d.lang}]</span>
+                    </span>
+                    <span className="flex items-center gap-2 text-gray-400 text-xs">
+                      {d.date ? new Date(d.date).toLocaleString("uk-UA") : ""}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

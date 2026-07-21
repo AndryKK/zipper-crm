@@ -16,7 +16,7 @@ export default function EditArticlePage() {
   const router = useRouter();
   const isNew = params.id === "new";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [form, setForm] = useState<any>({ title: "", uri: "", descr: "", text: "", seoTitle: "", seoKey: "", seoDescr: "", lang: "uk", priority: 0 });
+  const [form, setForm] = useState<any>({ title: "", uri: "", descr: "", text: "", img: "", heading: "", seoTitle: "", seoKey: "", seoDescr: "", lang: "uk", priority: 0 });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -54,6 +54,22 @@ export default function EditArticlePage() {
           <div className="space-y-1.5">
             <Label>URI</Label>
             <Input value={form.uri} onChange={(e) => set("uri", e.target.value)} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Заголовок на сторінці (H1)</Label>
+            <Input value={form.heading ?? ""} onChange={(e) => set("heading", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Зображення (URL)</Label>
+            <div className="flex items-center gap-2">
+              {form.img && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.img} alt="" style={{ height: 36, width: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+              )}
+              <Input value={form.img ?? ""} onChange={(e) => set("img", e.target.value)} />
+            </div>
           </div>
         </div>
         <div className="space-y-1.5">

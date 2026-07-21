@@ -19,7 +19,7 @@ export function ArticleRow({ article }: { article: any }) {
       <td>
         {article.img ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/img/upload-files/articles/${article.img}`} alt="" style={{ height: 40, width: 40, borderRadius: 6, objectFit: "cover" }} />
+          <img src={article.img} alt="" style={{ height: 40, width: 40, borderRadius: 6, objectFit: "cover" }} />
         ) : (
           <div style={{ height: 40, width: 40, borderRadius: 6, background: "var(--bg)" }} />
         )}
