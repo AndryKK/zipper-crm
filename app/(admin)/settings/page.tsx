@@ -41,6 +41,7 @@ const LABELS: Record<string, string> = {
   np_sender_city_ref:    "Ref міста відправника",
   np_sender_warehouse_ref: "Ref відділення відправника",
   np_sender_phone:       "Телефон відправника",
+  np_demo_mode:          "Демо-режим",
   // Viber
   viber_token:           "Bot Token",
 };
@@ -54,7 +55,11 @@ const SECTIONS: Section[] = [
     keys: ["supplier_threshold"],
     description: "Якщо сума замовлення перевищує це значення, у рахунку-фактурі та видатковій накладній автоматично використовуються реквізити Постачальника 2. За замовчуванням — 3000 грн.",
   },
-  { title: "Nova Poshta", keys: ["np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_phone"] },
+  {
+    title: "Nova Poshta",
+    keys: ["np_demo_mode", "np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_phone"],
+    description: "У демо-режимі при оплаті замовлення генерується випадковий 14-значний номер ТТН замість реального звернення до API Нової Пошти — зручно для перевірки решти функцій без справжньої відправки.",
+  },
   { title: "Viber", keys: ["viber_token"] },
 ];
 
@@ -119,17 +124,32 @@ export default function SettingsPage() {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {sec.keys.map((k) => (
-                <div key={k} className="space-y-1.5">
-                  <Label>{LABELS[k]}</Label>
-                  <Input
-                    value={values[k] ?? ""}
-                    onChange={(e) => set(k, e.target.value)}
-                    placeholder={k === "supplier_threshold" ? "3000" : k}
-                    type={k === "supplier_threshold" ? "number" : k.includes("secret") || k.includes("token") || k.includes("key") ? "password" : "text"}
-                  />
-                </div>
-              ))}
+              {sec.keys.map((k) =>
+                k === "np_demo_mode" ? (
+                  <label
+                    key={k}
+                    style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={values[k] === "1"}
+                      onChange={(e) => set(k, e.target.checked ? "1" : "0")}
+                      style={{ width: 16, height: 16, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: 13.5 }}>{LABELS[k]} — генерувати випадковий ТТН замість реального</span>
+                  </label>
+                ) : (
+                  <div key={k} className="space-y-1.5">
+                    <Label>{LABELS[k]}</Label>
+                    <Input
+                      value={values[k] ?? ""}
+                      onChange={(e) => set(k, e.target.value)}
+                      placeholder={k === "supplier_threshold" ? "3000" : k}
+                      type={k === "supplier_threshold" ? "number" : k.includes("secret") || k.includes("token") || k.includes("key") ? "password" : "text"}
+                    />
+                  </div>
+                )
+              )}
             </CardContent>
           </Card>
         ))}

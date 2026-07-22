@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { sendViberMessage } from "@/lib/viber";
+// Viber sending is temporarily disabled — see STEP 3 below. Uncomment this
+// import together with the code in STEP 3 to turn it back on.
+// import { sendViberMessage } from "@/lib/viber";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -83,7 +85,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   /* ════════════════════════════════════════════════════════════════════
      STEP 3 — відправка на Viber з посиланням для відстеження
+     Тимчасово вимкнено. Щоб увімкнути назад: розкоментувати імпорт
+     sendViberMessage вгорі файлу та блок нижче.
   ══════════════════════════════════════════════════════════════════════ */
+  log.push({ step: "Viber повідомлення", status: "skipped", msg: "Тимчасово вимкнено" });
+  /*
   const viberToken = getSetting(settings, "viber_token");
   const siteUrl    = process.env.NEXTAUTH_URL ?? "";
 
@@ -117,6 +123,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       log.push({ step: "Viber повідомлення", status: "error", msg: viber.error ?? "Невідома помилка" });
     }
   }
+  */
 
   /* ── Оновити статус → "В роботі" ────────────────────────────────── */
   await supabaseServer.from("orders").update({ status: "В роботі" }).eq("id", orderId);

@@ -7,20 +7,17 @@ import { Crown } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-const SITE_BADGE_WIDTH = 92;
+const SITE_BADGE_WIDTH = 30;
 
 function sitePillStyle(bg: string): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
     width: SITE_BADGE_WIDTH,
-    padding: "4px 0",
+    height: 20,
+    padding: 0,
     borderRadius: 999,
-    fontSize: 11.5,
-    fontWeight: 600,
-    whiteSpace: "nowrap",
     background: bg,
     lineHeight: 1,
   };
@@ -53,14 +50,13 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
   if (isPremiumUser) {
     return (
       <span
+        title="Замовлення з Zipper Premium"
         style={{
           ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)"),
-          color: "#fff",
           boxShadow: "0 1px 2px rgba(217,119,6,0.35)",
         }}
       >
-        <Crown size={12} strokeWidth={2.5} />
-        Premium
+        <Crown size={13} color="#fff" strokeWidth={2.5} />
       </span>
     );
   }
@@ -147,7 +143,7 @@ export default async function OrdersPage({
                 <th>Клієнт</th>
                 <th>Телефон</th>
                 <th>Адреса</th>
-                <th>Сайт</th>
+                <th style={{ textAlign: "center" }}>Сайт</th>
                 <th>Товарів</th>
                 <th>Сума</th>
                 <th>Дата</th>
@@ -164,7 +160,7 @@ export default async function OrdersPage({
                     <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
                     <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
                     <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
-                    <td>
+                    <td style={{ textAlign: "center" }}>
                       <SiteBadge type={order.type} isPremiumUser={premiumLogins.has(order.login)} />
                     </td>
                     <td className="text-center">{(order.items || []).length}</td>

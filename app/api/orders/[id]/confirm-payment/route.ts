@@ -10,6 +10,15 @@ function getSetting(settings: { value: string; text: string }[], key: string) {
   return settings.find((s) => s.value === key)?.text?.trim() ?? "";
 }
 
+// Демо-режим (Налаштування → Nova Poshta → "np_demo_mode") — генерує
+// випадковий 14-значний номер замість звернення до реального API НП, щоб
+// можна було перевіряти решту функцій без справжньої відправки.
+function randomDemoTtn(): string {
+  let s = "";
+  for (let i = 0; i < 14; i++) s += Math.floor(Math.random() * 10);
+  return s;
+}
+
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,12 +43,27 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   /* ════════════════════════════════════════════════════════════════════
      STEP 1 — формування ТТН Нова Пошта
   ══════════════════════════════════════════════════════════════════════ */
+  const npDemoMode         = getSetting(settings, "np_demo_mode") === "1";
   const npApiKey           = getSetting(settings, "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
   const npSenderRef        = getSetting(settings, "np_sender_ref");
   const npSenderContactRef = getSetting(settings, "np_sender_contact_ref");
   const npSenderCityRef    = getSetting(settings, "np_sender_city_ref");
   const npSenderWhRef      = getSetting(settings, "np_sender_warehouse_ref");
   const npSenderPhone      = getSetting(settings, "np_sender_phone");
+
+  if (npDemoMode) {
+    if (order.ttn) {
+      log.push({ step: "Формування ТТН", status: "skipped", msg: `ТТН вже існує: ${order.ttn}` });
+    } else {
+      const demoTtn = randomDemoTtn();
+      await supabaseServer.from("orders").update({ ttn: demoTtn }).eq("id", orderId);
+      log.push({
+        step: "Формування ТТН", status: "ok",
+        msg: `[ДЕМО-РЕЖИМ] Згенеровано випадковий ТТН ${demoTtn} — реального звернення до Нової Пошти не було`,
+        data: { ttn: demoTtn, demo: true },
+      });
+    }
+  } else {
 
   const missing = [
     !npApiKey           && "np_api_key",
@@ -100,6 +124,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     } catch (e) {
       log.push({ step: "Формування ТТН", status: "error", msg: (e as Error).message });
     }
+  }
   }
 
   /* ════════════════════════════════════════════════════════════════════

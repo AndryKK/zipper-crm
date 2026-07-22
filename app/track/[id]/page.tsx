@@ -1,12 +1,13 @@
 import { supabaseServer } from "@/lib/supabase";
 import { formatDate } from "@/lib/utils";
 
+// "Отримано" used to be its own step, separate from "Завершено" — merged
+// into one: once the parcel is delivered, the order is done.
 const PIPELINE = [
   { status: "В роботі",    label: "Опрацювання",  sublabel: "Рахунок надіслано",    color: "#d97706" },
   { status: "Оплачено",    label: "Оплата",        sublabel: "Оплату підтверджено",  color: "#2563eb" },
   { status: "Відправлено", label: "Відправлено",   sublabel: "Посилка у дорозі",     color: "#7c3aed" },
-  { status: "Отримано",    label: "Отримано",      sublabel: "Доставлено",           color: "#0891b2" },
-  { status: "Завершено",   label: "Завершено",     sublabel: "Замовлення закрито",   color: "#059669" },
+  { status: "Завершено",   label: "Отримано",      sublabel: "Замовлення закрито",   color: "#059669" },
 ];
 
 export default async function TrackPage({ params }: { params: Promise<{ id: string }> }) {
@@ -118,8 +119,7 @@ export default async function TrackPage({ params }: { params: Promise<{ id: stri
                   {step === 0 && "Замовлення в роботі — очікується оплата"}
                   {step === 1 && "Оплату підтверджено — готується до відправки"}
                   {step === 2 && "Посилка у дорозі"}
-                  {step === 3 && "Посилка доставлена до відділення"}
-                  {step === 4 && "Замовлення успішно виконано"}
+                  {step === 3 && "Замовлення отримано — успішно виконано"}
                 </div>
               )}
             </>

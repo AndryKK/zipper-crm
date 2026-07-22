@@ -18,12 +18,14 @@ import {
   Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
 } from "lucide-react";
 
+// "Отримано" used to be its own pipeline step with a separate manual/14-day
+// wait before "Завершено" — collapsed into one: once the client has the
+// parcel, the order is done, nothing further to wait on.
 const PIPELINE = [
   { status: "В роботі",    label: "Опрацювання",  sublabel: "Рахунок + Viber",     color: "#d97706" },
   { status: "Оплачено",    label: "Оплата",        sublabel: "Підтверджено",         color: "#2563eb" },
   { status: "Відправлено", label: "Відправлено",   sublabel: "ТТН відстеження",      color: "#7c3aed" },
-  { status: "Отримано",    label: "Отримано",      sublabel: "Клієнт отримав",       color: "#0891b2" },
-  { status: "Завершено",   label: "Завершено",     sublabel: "Авто через 14 днів",   color: "#059669" },
+  { status: "Завершено",   label: "Завершено",     sublabel: "Клієнт отримав",       color: "#059669" },
 ];
 
 const ALL_STATUSES = [
@@ -31,7 +33,6 @@ const ALL_STATUSES = [
   { label: "В роботі",    color: "#d97706" },
   { label: "Оплачено",    color: "#2563eb" },
   { label: "Відправлено", color: "#7c3aed" },
-  { label: "Отримано",    color: "#0891b2" },
   { label: "Завершено",   color: "#059669" },
   { label: "Скасовано",   color: "#dc2626" },
 ];
@@ -576,11 +577,11 @@ export default function OrderDetailPage() {
                   )}
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <Button
-                      onClick={() => advanceStatus("Отримано")}
-                      style={{ background: "linear-gradient(135deg,#06b6d4,#0891b2)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                      onClick={() => advanceStatus("Завершено")}
+                      style={{ background: "linear-gradient(135deg,#10b981,#059669)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                     >
                       <MapPin size={16} />
-                      Позначити отриманим
+                      Позначити отриманим / завершити
                     </Button>
                     <Button
                       variant="outline" onClick={checkNpStatus} disabled={checkingNp}
@@ -593,30 +594,8 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
-              {/* Step 3 — Отримано */}
+              {/* Step 3 — Завершено (клієнт отримав — це вже фінальний крок) */}
               {step === 3 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(8,145,178,0.1)" }}>
-                    <CheckCircle2 size={16} color="#0891b2" />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#0891b2" }}>Клієнт отримав замовлення</span>
-                  </div>
-                  <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                    Завершіть замовлення вручну, коли впевнені, що претензій по ньому вже не буде.
-                  </p>
-                  <div>
-                    <Button
-                      onClick={() => advanceStatus("Завершено")}
-                      style={{ background: "linear-gradient(135deg,#10b981,#059669)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
-                    >
-                      <Star size={16} />
-                      Завершити зараз
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 4 — Завершено */}
-              {step === 4 && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(5,150,105,0.1)" }}>
                   <Star size={16} color="#059669" />
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#059669" }}>Замовлення успішно завершено</span>

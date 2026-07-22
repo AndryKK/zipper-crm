@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
       const result = await npGetStatus(apiKey, order.ttn, order.phone ?? undefined);
       if (!result) { log.push({ orderId: order.id, ttn: order.ttn, error: "Немає відповіді від НП" }); continue; }
       if (result.isDelivered) {
-        await supabaseServer.from("orders").update({ status: "Отримано" }).eq("id", order.id);
+        // "Отримано" used to be a separate step with a further manual/14-day
+        // wait before "Завершено" — merged into one: once NP confirms
+        // delivery, the order is done, no extra step needed.
+        await supabaseServer.from("orders").update({ status: "Завершено" }).eq("id", order.id);
       }
       log.push({ orderId: order.id, ttn: order.ttn, status: result.status, delivered: result.isDelivered });
     } catch (e) {
