@@ -36,6 +36,16 @@ export async function GET(req: Request) {
   };
   const sortKey = searchParams.get("sort_by") ?? "";
   const sortColumn = SORTABLE[sortKey];
+  // "available" (quantity - reserved) and "fillpct" (quantity / initial_quantity)
+  // aren't real columns — PostgREST can't ORDER BY a computed expression, so
+  // these are sorted here: pull just the numbers needed for every matching
+  // row (cheap — a handful of int columns, not the full product embed),
+  // sort in JS, then fetch the full embedded data only for the one page of
+  // ids that ends up in view. Sorts the WHOLE filtered set, not just
+  // whatever page happened to load first (a page-local sort looked broken
+  // whenever that page's rows were all tied at the same value, e.g. all 0%
+  // right after the full stock reset).
+  const isComputedSort = sortKey === "available" || sortKey === "fillpct";
 
   let productIds: number[] | null = null;
   if (q) {
@@ -125,10 +135,57 @@ export async function GET(req: Request) {
     return { totalQty, lowStock, positions: matched.length };
   }
 
+  async function computedSortPage(p: number) {
+    const values: { id: number; value: number }[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      let q2 = supabaseServer.from("inventory").select("id, quantity, reserved, initial_quantity");
+      if (warehouseId) q2 = q2.eq("warehouse_id", Number(warehouseId));
+      if (productId) q2 = q2.eq("product_id", Number(productId));
+      if (productIds) q2 = q2.in("product_id", productIds);
+      const { data, error } = await q2.range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      for (const r of data as { id: number; quantity: number; reserved: number; initial_quantity: number }[]) {
+        const qty = Math.max(0, Number(r.quantity));
+        const value = sortKey === "available"
+          ? Number(r.quantity) - Number(r.reserved)
+          : Number(r.initial_quantity) > 0
+            ? Math.min(100, (qty / Number(r.initial_quantity)) * 100)
+            : (qty > 0 ? 100 : 0);
+        values.push({ id: r.id, value });
+      }
+      if (data.length < pageSize) break;
+    }
+    values.sort((a, b) => (sortDir ? a.value - b.value : b.value - a.value));
+
+    const total = values.length;
+    const pageIds = values.slice((p - 1) * limit, (p - 1) * limit + limit).map((v) => v.id);
+    if (pageIds.length === 0) return { rows: [], total };
+
+    const { data: pageRows, error } = await supabaseServer.from("inventory").select(SELECT).in("id", pageIds);
+    if (error) throw new Error(error.message);
+    const byId = new Map((pageRows || []).map((r: any) => [r.id, r]));
+    const orderedRows = pageIds.map((id) => byId.get(id)).filter(Boolean);
+    return { rows: orderedRows, total };
+  }
+
   /* Paginated mode, used by the /warehouses inventory tab — a warehouse can
    * hold thousands of products, too many to load and render in one table. */
   if (page) {
     const p = Math.max(1, Number(page));
+    if (isComputedSort) {
+      try {
+        const { rows: sortedRows, total } = await computedSortPage(p);
+        return NextResponse.json({
+          rows: await attachSiblingTitles(sortedRows),
+          total,
+          aggregate: await computeFilteredAggregate(),
+        });
+      } catch (e) {
+        return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+      }
+    }
     const from = (p - 1) * limit;
     const { data, error, count } = await buildQuery(true).range(from, from + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

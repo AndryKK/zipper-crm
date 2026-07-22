@@ -324,9 +324,9 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                   <SortableTh label="Поч. залишок" sortKey="initial_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                   <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                   <SortableTh label="Резерв" sortKey="reserved" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
-                  <th style={{ textAlign: "right" }}>Доступний</th>
+                  <SortableTh label="Доступний" sortKey="available" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                   <SortableTh label="Мінімум" sortKey="min_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
-                  <th style={{ width: 180 }}>Наповнення</th>
+                  <SortableTh label="Наповнення" sortKey="fillpct" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} width={180} />
                   <th style={{ textAlign: "right" }}>Дії</th>
                 </tr>
               </thead>

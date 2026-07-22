@@ -9,6 +9,7 @@ export function SortableTh({
   currentDir,
   onSort,
   align,
+  width,
 }: {
   label: string;
   sortKey: string;
@@ -16,11 +17,12 @@ export function SortableTh({
   currentDir: "asc" | "desc";
   onSort: (key: string) => void;
   align?: "right";
+  width?: number;
 }) {
   const active = currentSort === sortKey;
   return (
     <th
-      style={{ textAlign: align, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+      style={{ textAlign: align, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap", width }}
       onClick={() => onSort(sortKey)}
       title="Сортувати"
     >
