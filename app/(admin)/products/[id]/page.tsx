@@ -7,6 +7,22 @@ export const dynamic = "force-dynamic";
 
 const SEL = "*, labelAction:label_action, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr";
 
+// products_photos/products_photos2 store one row PER LANGUAGE for every
+// physical photo (ru + uk both point at the same `img` URL) — each
+// storefront reads only its own lang's row. The CRM only needs to show and
+// manage one thumbnail per unique photo, so group by `img` and carry every
+// row id sharing it (`allIds`) forward for delete to remove all of them
+// together instead of leaving a stale copy in the other language.
+function dedupeByImg(rows: any[]): any[] {
+  const byImg = new Map<string, any>();
+  for (const r of rows) {
+    const existing = byImg.get(r.img);
+    if (existing) existing.allIds.push(r.id);
+    else byImg.set(r.img, { ...r, allIds: [r.id] });
+  }
+  return [...byImg.values()];
+}
+
 // BFS: знайти всі translationId кольорів, що входять у групу.
 // Стартує з translationId поточного товару і розширюється через products_colors.
 async function findColorGroup(startLangIds: number[], startTrId: number): Promise<number[]> {
@@ -100,8 +116,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
 
     colorGroups = Object.values(grouped).map((group) => ({
       langVariants: group,
-      photos: (cPhotos || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid)),
-      photos2: (cPhotos2 || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid)),
+      photos: dedupeByImg((cPhotos || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid))),
+      photos2: dedupeByImg((cPhotos2 || []).filter((p: any) => group.some((v: any) => v.translationId === p.pid))),
     }));
   }
 
@@ -155,8 +171,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       <ProductForm
         langVariants={langVariants}
         colorGroups={colorGroups}
-        mainPhotos={mainPhotos || []}
-        mainPhotos2={mainPhotos2 || []}
+        mainPhotos={dedupeByImg(mainPhotos || [])}
+        mainPhotos2={dedupeByImg(mainPhotos2 || [])}
         mainChars={mainChars || []}
         productCategories={[...new Set((productCats || []).map((c: any) => c.cid))]}
         categories={(categories || []) as any[]}

@@ -24,6 +24,21 @@ const AVAILABILITY_COLOR: Record<number, string> = {
   5: "#ef4444", // Немає в наявності
 };
 
+// products_photos/products_photos2 store one row PER LANGUAGE for every
+// physical photo (ru + uk both point at the same `img` URL). The gallery UI
+// only shows/manages one thumbnail per unique photo — see
+// app/(admin)/products/[id]/page.tsx's matching dedupeByImg, which produces
+// this same { ...row, allIds } shape for the initially-loaded photos.
+function dedupeByImg(rows: any[]): any[] {
+  const byImg = new Map<string, any>();
+  for (const r of rows) {
+    const existing = byImg.get(r.img);
+    if (existing) existing.allIds.push(r.id);
+    else byImg.set(r.img, { ...r, allIds: [r.id] });
+  }
+  return [...byImg.values()];
+}
+
 function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -1460,7 +1475,7 @@ function PhotosSection({
   setPhotos: (fn: ((prev: any[]) => any[]) | any[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
-  const [confirmPhoto, setConfirmPhoto] = useState<{ photoId: number } | null>(null);
+  const [confirmPhoto, setConfirmPhoto] = useState<{ allIds: number[] } | null>(null);
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
@@ -1472,7 +1487,10 @@ function PhotosSection({
       const res = await fetch(`/api/products/${productId}/photos`, { method: "POST", body: fd });
       const body = await res.json();
       if (!res.ok) { toast.error(body.error || "Помилка завантаження фото"); return; }
-      const created: any[] = Array.isArray(body) ? body.filter(Boolean) : [];
+      // The API creates one row per language (ru+uk) for each uploaded
+      // file — dedupe to the same one-thumbnail-per-photo shape as the
+      // initial page load.
+      const created: any[] = dedupeByImg(Array.isArray(body) ? body.filter(Boolean) : []);
       setPhotos((p: any[]) => [...p, ...created]);
     } catch {
       toast.error("Помилка з'єднання");
@@ -1481,13 +1499,13 @@ function PhotosSection({
     }
   }
 
-  async function doDeletePhoto(photoId: number) {
+  async function doDeletePhoto(allIds: number[]) {
     await fetch(`/api/products/${productId}/photos`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoId, gallery: false }),
+      body: JSON.stringify({ photoIds: allIds, gallery: false }),
     });
-    setPhotos((p: any[]) => p.filter((x: any) => x.id !== photoId));
+    setPhotos((p: any[]) => p.filter((x: any) => x.allIds?.[0] !== allIds[0]));
   }
 
   return (
@@ -1498,10 +1516,10 @@ function PhotosSection({
         <p className="text-sm font-medium text-gray-700 mb-3">Галерея (додаткові фото)</p>
         <div className="flex flex-wrap gap-3 mb-3">
           {photos.map((p: any) => (
-            <div key={p.id} className="relative group">
+            <div key={p.allIds?.[0] ?? p.id} className="relative group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={getImgUrl(p.img, "products")} alt="" className="h-24 w-24 rounded-md object-cover border" />
-              <button onClick={() => setConfirmPhoto({ photoId: p.id })}
+              <button onClick={() => setConfirmPhoto({ allIds: p.allIds ?? [p.id] })}
                 className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white">
                 <Trash2 className="h-3 w-3" />
               </button>
@@ -1523,7 +1541,7 @@ function PhotosSection({
         subMessage="Фото буде видалено з сервера. Цю дію не можна відмінити."
         destructive
         confirmLabel="Видалити"
-        onConfirm={() => doDeletePhoto(confirmPhoto.photoId)}
+        onConfirm={() => doDeletePhoto(confirmPhoto.allIds)}
         onCancel={() => setConfirmPhoto(null)}
       />
     )}

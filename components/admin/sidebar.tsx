@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, FolderTree, ShoppingCart, Users,
   FileText, Newspaper, Image, Settings, Filter, UserCog,
-  Ruler, DollarSign, Globe, MessageSquare, Briefcase, Star,
+  PackageCheck, DollarSign, Globe, MessageSquare, Briefcase, Star,
   FileSpreadsheet, ChevronDown, LogOut, Zap, Warehouse, Boxes,
   TrendingUp, RotateCcw,
 } from "lucide-react";
@@ -29,7 +29,7 @@ const navGroups = [
       { href: "/products", label: "Товари", icon: Package },
       { href: "/categories", label: "Категорії", icon: FolderTree },
       { href: "/filters", label: "Фільтри", icon: Filter },
-      { href: "/measures", label: "Одиниці виміру", icon: Ruler },
+      { href: "/measures", label: "Статус товару", icon: PackageCheck },
     ],
   },
   {
