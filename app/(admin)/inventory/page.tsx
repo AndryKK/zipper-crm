@@ -27,6 +27,7 @@ interface InventoryRow {
   initial_quantity: number;
   min_quantity: number;
   product?: { id: number; title: string; pcode?: string; lang: string };
+  product_uk?: { id: number; title: string } | null;
   warehouse?: { id: number; title: string };
 }
 
@@ -372,6 +373,11 @@ function InventoryContent() {
                             <div style={{ fontWeight: 600, fontSize: 13.5 }}>
                               {row.product?.title ?? `#${row.product_id}`}
                             </div>
+                            {row.product_uk && (
+                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {row.product_uk.title}
+                              </div>
+                            )}
                             {row.product?.pcode && (
                               <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
                                 {row.product.pcode}

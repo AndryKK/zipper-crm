@@ -22,6 +22,7 @@ interface InventoryRow {
   id: number; product_id: number; warehouse_id: number;
   quantity: number; reserved: number; initial_quantity: number; min_quantity: number;
   product?: { id: number; title: string; pcode?: string };
+  product_uk?: { id: number; title: string } | null;
 }
 
 const emptyForm = { title: "", address: "", priority: 0, active: 1 };
@@ -312,6 +313,7 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                     <tr key={row.id}>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{row.product?.title ?? `#${row.product_id}`}</div>
+                        {row.product_uk && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{row.product_uk.title}</div>}
                         {row.product?.pcode && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>{row.product.pcode}</div>}
                       </td>
                       <td style={{ textAlign: "right" }}>{isEditing ? editInput("initial_quantity") : <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>}</td>

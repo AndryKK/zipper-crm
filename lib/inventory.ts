@@ -29,6 +29,24 @@ export type AdjustOpts = {
   note?: string | null;
 };
 
+// Products come in ru/uk pairs sharing one physical stock (translation_id
+// links them — see the 2026-07-22 ru/uk inventory merge). `inventory` is
+// keyed by the *ru-language* id of the pair (translation_id always equals
+// that row's own id), so any productId coming from an order/return — which
+// could be either language's id depending on which storefront it was placed
+// on — must be resolved to that shared id before touching `inventory`.
+// Falls back to the id itself if the product has no translation pair (or
+// doesn't exist), which is also correct: translation_id = id for unpaired
+// products.
+export async function resolveInventoryProductId(productId: number): Promise<number> {
+  const { data } = await supabaseServer
+    .from("products")
+    .select("translation_id")
+    .eq("id", productId)
+    .maybeSingle();
+  return data?.translation_id ?? productId;
+}
+
 // Adds `delta` to inventory.quantity for (productId, warehouseId). Negative
 // delta deducts stock and is allowed to go below zero (reservations can
 // exceed what's physically counted until real stock levels are entered).
@@ -36,9 +54,11 @@ export type AdjustOpts = {
 // already used by confirm-payment/route.ts) — acceptable at this order volume.
 // Every adjustment is recorded in inventory_history for the audit trail.
 export async function adjustInventory(
-  productId: number, warehouseId: number, delta: number, opts: AdjustOpts
+  rawProductId: number, warehouseId: number, delta: number, opts: AdjustOpts
 ): Promise<void> {
   if (!delta) return;
+
+  const productId = await resolveInventoryProductId(rawProductId);
 
   const { data: row } = await supabaseServer
     .from("inventory")

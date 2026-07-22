@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { resolveInventoryProductId } from "@/lib/inventory";
 
 const SELECT = `
   *,
@@ -11,7 +12,10 @@ const SELECT = `
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const warehouseId = searchParams.get("warehouse_id");
-  const productId = searchParams.get("product_id");
+  // Resolve to the ru/uk pair's shared inventory key — see lib/inventory.ts.
+  const productId = searchParams.get("product_id")
+    ? await resolveInventoryProductId(Number(searchParams.get("product_id")))
+    : null;
   const q = searchParams.get("q");
   const page = searchParams.get("page");
   const limit = Number(searchParams.get("limit") ?? 50);
@@ -20,11 +24,15 @@ export async function GET(req: Request) {
   if (q) {
     const { data: matches, error } = await supabaseServer
       .from("products")
-      .select("id")
+      .select("id, translation_id")
       .or(`title.ilike.%${q}%,pcode.ilike.%${q}%`)
       .limit(1000);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    productIds = (matches || []).map((p: any) => p.id);
+    // `inventory` is keyed by translation_id (the ru/uk pair's shared id —
+    // see lib/inventory.ts), so a match on either language's title/pcode
+    // must resolve to that shared key, or a uk-only title search would find
+    // 0 rows even though the merged stock row exists under the ru id.
+    productIds = Array.from(new Set((matches || []).map((p: any) => p.translation_id ?? p.id)));
     if (productIds.length === 0) return NextResponse.json(page ? { rows: [], total: 0 } : []);
   }
 
@@ -36,6 +44,22 @@ export async function GET(req: Request) {
     return query.order("id", { ascending: true });
   }
 
+  /* Each inventory row is keyed by the ru side of a ru/uk pair (see
+   * lib/inventory.ts) — the FK join above only ever returns that ru product.
+   * Batch-fetch the uk sibling's title too so the UI can show both names for
+   * what is, physically, one merged stock row. */
+  async function attachSiblingTitles(rows: any[]): Promise<any[]> {
+    const ruIds = rows.filter((r) => r.product?.lang === "ru").map((r) => r.product.id);
+    if (ruIds.length === 0) return rows;
+    const { data: siblings } = await supabaseServer
+      .from("products")
+      .select("id, title, translation_id")
+      .eq("lang", "uk")
+      .in("translation_id", ruIds);
+    const byTranslationId = new Map((siblings || []).map((s: any) => [s.translation_id, s]));
+    return rows.map((r) => ({ ...r, product_uk: r.product?.lang === "ru" ? byTranslationId.get(r.product.id) ?? null : null }));
+  }
+
   /* Paginated mode, used by the /warehouses inventory tab — a warehouse can
    * hold thousands of products, too many to load and render in one table. */
   if (page) {
@@ -43,7 +67,7 @@ export async function GET(req: Request) {
     const from = (p - 1) * limit;
     const { data, error, count } = await buildQuery(true).range(from, from + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ rows: data || [], total: count ?? 0 });
+    return NextResponse.json({ rows: await attachSiblingTitles(data || []), total: count ?? 0 });
   }
 
   /* Legacy mode (no `page` param): return the full matching set. PostgREST
@@ -57,7 +81,7 @@ export async function GET(req: Request) {
     rows.push(...data);
     if (data.length < pageSize) break;
   }
-  return NextResponse.json(rows);
+  return NextResponse.json(await attachSiblingTitles(rows));
 }
 
 export async function POST(req: Request) {
@@ -68,11 +92,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "product_id та warehouse_id обов'язкові" }, { status: 400 });
   }
 
+  // Whichever language's product id was entered, store under the ru/uk
+  // pair's shared key so it lands on the same merged row — see lib/inventory.ts.
+  const resolvedProductId = await resolveInventoryProductId(Number(product_id));
+
   const { data, error } = await supabaseServer
     .from("inventory")
     .upsert(
       {
-        product_id: Number(product_id),
+        product_id: resolvedProductId,
         warehouse_id: Number(warehouse_id),
         quantity: Number(quantity ?? 0),
         reserved: Number(reserved ?? 0),
