@@ -17,7 +17,8 @@ type HistoryRow = {
 };
 
 const SOURCE_LABEL: Record<string, string> = {
-  manual: "Ручна зміна",
+  manual: "Ручне введення",
+  restock: "Поставка",
   order_created: "Нове замовлення",
   order_item_updated: "Зміна кількості в замовленні",
   order_item_deleted: "Видалення рядка замовлення",

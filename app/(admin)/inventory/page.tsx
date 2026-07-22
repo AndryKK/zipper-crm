@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
+import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
 
 const PAGE_SIZE = 50;
 
@@ -41,19 +42,24 @@ function InventoryContent() {
   const [stats, setStats] = useState<WarehouseStat[]>([]);
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [filteredAgg, setFilteredAgg] = useState<{ totalQty: number; lowStock: number; positions: number } | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<InventoryRow>>({});
   const [editNote, setEditNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [restockingId, setRestockingId] = useState<number | null>(null);
+  const [restockDelta, setRestockDelta] = useState("");
+  const [restockNote, setRestockNote] = useState("");
 
   /* Add-new inline form */
   const [showAdd, setShowAdd] = useState(false);
   const [addProductId, setAddProductId] = useState("");
-  const [addInitial, setAddInitial] = useState("0");
   const [addMin, setAddMin] = useState("0");
   const [addQty, setAddQty] = useState("0");
 
@@ -66,7 +72,7 @@ function InventoryContent() {
     }
   }
 
-  // The daily-refreshed warehouse_stats materialized view — cheap regardless
+  // The live warehouse_stats view — cheap regardless
   // of how many inventory rows exist, unlike summing the full row set here.
   async function loadStats() {
     const res = await fetch("/api/warehouses/stats");
@@ -78,16 +84,27 @@ function InventoryContent() {
     setLoading(true);
     const params = new URLSearchParams({ warehouse_id: selectedWarehouse, page: String(page), limit: String(PAGE_SIZE) });
     if (q) params.set("q", q);
+    if (sortBy) { params.set("sort_by", sortBy); params.set("sort_dir", sortDir); }
     const res = await fetch(`/api/inventory?${params}`);
     const data = await res.json();
     setRows(data.rows ?? []);
     setTotal(data.total ?? 0);
+    setFilteredAgg(data.aggregate ?? null);
     setLoading(false);
-  }, [selectedWarehouse, page, q]);
+  }, [selectedWarehouse, page, q, sortBy, sortDir]);
 
   useEffect(() => { loadWarehouses(); loadStats(); }, []);
   useEffect(() => { loadInventory(); }, [loadInventory]);
-  useEffect(() => { setPage(1); }, [selectedWarehouse, q]);
+  useEffect(() => { setPage(1); }, [selectedWarehouse, q, sortBy, sortDir]);
+
+  function handleSort(key: string) {
+    if (sortBy === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortDir("asc");
+    }
+  }
 
   /* Debounce search input before it hits the server */
   useEffect(() => {
@@ -100,7 +117,6 @@ function InventoryContent() {
     setEditForm({
       quantity: row.quantity,
       reserved: row.reserved,
-      initial_quantity: row.initial_quantity,
       min_quantity: row.min_quantity,
     });
   }
@@ -111,13 +127,37 @@ function InventoryContent() {
     const res = await fetch("/api/inventory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingId, ...editForm, note: editNote }),
+      body: JSON.stringify({ id: editingId, mode: "set", ...editForm, note: editNote }),
     });
     setSaving(false);
     if (res.ok) {
       toast.success("Залишки оновлено");
       setEditingId(null);
       setEditNote("");
+      loadInventory();
+    } else {
+      const e = await res.json();
+      toast.error(e.error);
+    }
+  }
+
+  // "Поставка" — adds a delivered quantity to what's already there, instead
+  // of overwriting it like "Змінити" does. Both reset initial_quantity to
+  // the resulting total — see app/api/inventory/route.ts.
+  async function saveRestock() {
+    if (!restockingId || !restockDelta) return;
+    setSaving(true);
+    const res = await fetch("/api/inventory", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: restockingId, mode: "restock", deltaQty: Number(restockDelta), note: restockNote }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      toast.success("Поставку додано");
+      setRestockingId(null);
+      setRestockDelta("");
+      setRestockNote("");
       loadInventory();
     } else {
       const e = await res.json();
@@ -137,7 +177,6 @@ function InventoryContent() {
         product_id: Number(addProductId),
         warehouse_id: Number(selectedWarehouse),
         quantity: Number(addQty),
-        initial_quantity: Number(addInitial),
         min_quantity: Number(addMin),
       }),
     });
@@ -145,7 +184,6 @@ function InventoryContent() {
       toast.success("Запис додано");
       setShowAdd(false);
       setAddProductId("");
-      setAddInitial("0");
       setAddMin("0");
       setAddQty("0");
       loadInventory();
@@ -158,7 +196,12 @@ function InventoryContent() {
 
   const currentWarehouse = warehouses.find((w) => String(w.id) === selectedWarehouse);
   const currentStat = stats.find((s) => String(s.id) === selectedWarehouse);
-  const summary = currentStat
+  // While a search filters the table, the cards must reflect just the
+  // filtered matches — otherwise "Всього одиниць" shows the whole
+  // warehouse's total next to a table with 1 result, which reads as a bug.
+  const summary = filteredAgg
+    ? { positions: filteredAgg.positions, totalQty: filteredAgg.totalQty, lowStock: filteredAgg.lowStock }
+    : currentStat
     ? { positions: currentStat.totalProducts, totalQty: currentStat.totalQty, lowStock: currentStat.lowStock }
     : stats.reduce((acc, s) => ({
         positions: acc.positions + s.totalProducts,
@@ -181,8 +224,10 @@ function InventoryContent() {
 
       <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
 
-        {/* Summary cards — from the daily-refreshed warehouse_stats view, not
-            computed from the (possibly huge) row set on this page */}
+        {/* Summary cards — from the live warehouse_stats view, not
+            computed from the (possibly huge) row set on this page. When a
+            search is active they switch to a live total over just the
+            filtered matches instead (see filteredAgg). */}
         <div
           style={{
             display: "grid",
@@ -192,11 +237,15 @@ function InventoryContent() {
           }}
         >
           <div className="crm-card" style={{ padding: 16 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Позицій</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+              Позицій{filteredAgg && " (за пошуком)"}
+            </div>
             <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{summary.positions.toLocaleString("uk-UA")}</div>
           </div>
           <div className="crm-card" style={{ padding: 16 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Всього одиниць</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+              Всього одиниць{filteredAgg && " (за пошуком)"}
+            </div>
             <div style={{ fontSize: 28, fontWeight: 800, color: "var(--text)" }}>{summary.totalQty.toLocaleString("uk-UA")}</div>
           </div>
           <div className="crm-card" style={{ padding: 16 }}>
@@ -271,10 +320,13 @@ function InventoryContent() {
         {/* Add entry form */}
         {showAdd && (
           <div className="crm-card animate-scale-in" style={{ padding: 20, marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 14 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
               Додати запис залишків
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px auto", gap: 10, alignItems: "end" }}>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+              "Поч. залишок" не вводиться окремо — введена тут кількість автоматично стає базою 100% наповнення.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px auto", gap: 10, alignItems: "end" }}>
               <div>
                 <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
                   ID товару *
@@ -285,17 +337,6 @@ function InventoryContent() {
                   placeholder="напр. 123"
                   value={addProductId}
                   onChange={(e) => setAddProductId(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  Поч. залишок
-                </label>
-                <input
-                  className="crm-input"
-                  type="number"
-                  value={addInitial}
-                  onChange={(e) => setAddInitial(e.target.value)}
                 />
               </div>
               <div>
@@ -350,13 +391,13 @@ function InventoryContent() {
               <table className="crm-table">
                 <thead>
                   <tr>
-                    <th>Товар</th>
-                    <th>Склад</th>
-                    <th style={{ textAlign: "right" }}>Поч. залишок</th>
-                    <th style={{ textAlign: "right" }}>Поточний</th>
-                    <th style={{ textAlign: "right" }}>Резерв</th>
+                    <SortableTh label="Товар" sortKey="title" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
+                    <SortableTh label="Склад" sortKey="warehouse" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
+                    <SortableTh label="Поч. залишок" sortKey="initial_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
+                    <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
+                    <SortableTh label="Резерв" sortKey="reserved" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <th style={{ textAlign: "right" }}>Доступний</th>
-                    <th style={{ textAlign: "right" }}>Мінімум</th>
+                    <SortableTh label="Мінімум" sortKey="min_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <th style={{ textAlign: "right" }}>Дії</th>
                   </tr>
                 </thead>
@@ -371,13 +412,8 @@ function InventoryContent() {
                         <td>
                           <div>
                             <div style={{ fontWeight: 600, fontSize: 13.5 }}>
-                              {row.product?.title ?? `#${row.product_id}`}
+                              {row.product_uk?.title ?? row.product?.title ?? `#${row.product_id}`}
                             </div>
-                            {row.product_uk && (
-                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                {row.product_uk.title}
-                              </div>
-                            )}
                             {row.product?.pcode && (
                               <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
                                 {row.product.pcode}
@@ -389,17 +425,12 @@ function InventoryContent() {
                           {row.warehouse?.title ?? `#${row.warehouse_id}`}
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          {isEditing ? (
-                            <input
-                              className="crm-input"
-                              type="number"
-                              value={editForm.initial_quantity}
-                              onChange={(e) => setEditForm({ ...editForm, initial_quantity: Number(e.target.value) })}
-                              style={{ width: 80, textAlign: "right" }}
-                            />
-                          ) : (
-                            <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>
-                          )}
+                          <span
+                            style={{ fontFamily: "monospace", color: "var(--text-muted)" }}
+                            title="Не редагується напряму — дорівнює значенню «Поточний» на момент останнього ручного збереження"
+                          >
+                            {Number(row.initial_quantity).toFixed(0)}
+                          </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
                           {isEditing ? (
@@ -497,14 +528,53 @@ function InventoryContent() {
                                   <X size={12} />
                                 </button>
                               </>
+                            ) : restockingId === row.id ? (
+                              <>
+                                <input
+                                  className="crm-input" type="number" placeholder="+к-сть"
+                                  value={restockDelta} onChange={(e) => setRestockDelta(e.target.value)}
+                                  style={{ width: 70, fontSize: 12, textAlign: "right" }}
+                                />
+                                <input
+                                  className="crm-input" placeholder="Примітка"
+                                  value={restockNote} onChange={(e) => setRestockNote(e.target.value)}
+                                  style={{ width: 110, fontSize: 12 }}
+                                />
+                                <button
+                                  className="btn-primary"
+                                  onClick={saveRestock}
+                                  disabled={saving || !restockDelta}
+                                  style={{ padding: "5px 10px", fontSize: 12 }}
+                                >
+                                  <Package size={12} /> Додати
+                                </button>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => { setRestockingId(null); setRestockDelta(""); setRestockNote(""); }}
+                                  style={{ padding: "5px 8px" }}
+                                >
+                                  <X size={12} />
+                                </button>
+                              </>
                             ) : (
-                              <button
-                                className="btn-ghost"
-                                onClick={() => startEdit(row)}
-                                style={{ padding: "5px 10px", fontSize: 12 }}
-                              >
-                                Змінити
-                              </button>
+                              <>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => setRestockingId(row.id)}
+                                  title="Поставка — додати кількість до поточної"
+                                  style={{ padding: "5px 10px", fontSize: 12 }}
+                                >
+                                  <Package size={12} /> Поставка
+                                </button>
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => startEdit(row)}
+                                  title="Ручне введення — задати точну кількість"
+                                  style={{ padding: "5px 10px", fontSize: 12 }}
+                                >
+                                  Змінити
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -518,12 +588,11 @@ function InventoryContent() {
         </div>
 
         {totalPages > 1 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
-            <button className="btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 14px", opacity: page <= 1 ? 0.5 : 1 }}>← Попередня</button>
-            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Сторінка {page} з {totalPages} ({total.toLocaleString("uk-UA")} записів)</span>
-            <button className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 14px", opacity: page >= totalPages ? 0.5 : 1 }}>Наступна →</button>
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", marginTop: 16 }}>
+            Сторінка {page} з {totalPages} ({total.toLocaleString("uk-UA")} записів)
           </div>
         )}
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
     </>
   );

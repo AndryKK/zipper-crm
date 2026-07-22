@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import {
   Warehouse, Plus, Pencil, Trash2, Save, X,
-  MapPin, AlertTriangle, Boxes, Search,
+  MapPin, AlertTriangle, Boxes, Search, Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
+import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface WarehouseStat {
@@ -180,14 +181,20 @@ const PAGE_SIZE = 50;
 function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: WarehouseStat }) {
   const [rows, setRows]       = useState<InventoryRow[]>([]);
   const [total, setTotal]     = useState(0);
+  const [filteredAgg, setFilteredAgg] = useState<{ totalQty: number; lowStock: number; positions: number } | null>(null);
   const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(false);
   const [q, setQ]             = useState("");
   const [qInput, setQInput]   = useState("");
+  const [sortBy, setSortBy]   = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm]   = useState<Partial<InventoryRow>>({});
   const [editNote, setEditNote]   = useState("");
   const [saving, setSaving]   = useState(false);
+  const [restockingId, setRestockingId] = useState<number | null>(null);
+  const [restockDelta, setRestockDelta] = useState("");
+  const [restockNote, setRestockNote]   = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [addProductId, setAddProductId] = useState("");
   const [addMin, setAddMin]   = useState("0");
@@ -197,15 +204,26 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
     setLoading(true);
     const params = new URLSearchParams({ warehouse_id: String(warehouseId), page: String(page), limit: String(PAGE_SIZE) });
     if (q) params.set("q", q);
+    if (sortBy) { params.set("sort_by", sortBy); params.set("sort_dir", sortDir); }
     const res = await fetch(`/api/inventory?${params}`);
     const data = await res.json();
     setRows(data.rows ?? []);
     setTotal(data.total ?? 0);
+    setFilteredAgg(data.aggregate ?? null);
     setLoading(false);
-  }, [warehouseId, page, q]);
+  }, [warehouseId, page, q, sortBy, sortDir]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [warehouseId, q]);
+  useEffect(() => { setPage(1); }, [warehouseId, q, sortBy, sortDir]);
+
+  function handleSort(key: string) {
+    if (sortBy === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortDir("asc");
+    }
+  }
 
   /* Debounce search input before it hits the server */
   useEffect(() => {
@@ -216,9 +234,20 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
   async function saveEdit() {
     if (!editingId) return;
     setSaving(true);
-    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingId, ...editForm, note: editNote }) });
+    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingId, mode: "set", ...editForm, note: editNote }) });
     setSaving(false);
     if (res.ok) { toast.success("Залишки оновлено"); setEditingId(null); setEditNote(""); load(); }
+    else { const e = await res.json(); toast.error(e.error); }
+  }
+
+  // "Поставка" — adds a delivered quantity instead of overwriting it like
+  // "Змінити" does. Both reset initial_quantity — see app/api/inventory/route.ts.
+  async function saveRestock() {
+    if (!restockingId || !restockDelta) return;
+    setSaving(true);
+    const res = await fetch("/api/inventory", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: restockingId, mode: "restock", deltaQty: Number(restockDelta), note: restockNote }) });
+    setSaving(false);
+    if (res.ok) { toast.success("Поставку додано"); setRestockingId(null); setRestockDelta(""); setRestockNote(""); load(); }
     else { const e = await res.json(); toast.error(e.error); }
   }
 
@@ -233,9 +262,15 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
 
   return (
     <div>
-      {/* Summary */}
+      {/* Summary — switches to a live total over just the filtered matches
+          while a search is active (see filteredAgg), otherwise the daily
+          warehouse_stats view for the whole warehouse. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 20, maxWidth: 560 }}>
-        {[{ label: "Позицій", val: (stat?.totalProducts ?? total).toLocaleString("uk-UA") }, { label: "Всього одиниць", val: (stat?.totalQty ?? 0).toLocaleString("uk-UA") }, { label: "Під мінімумом", val: stat?.lowStock ?? 0, danger: (stat?.lowStock ?? 0) > 0 }].map((s: any, i) => (
+        {[
+          { label: `Позицій${filteredAgg ? " (за пошуком)" : ""}`, val: (filteredAgg?.positions ?? stat?.totalProducts ?? total).toLocaleString("uk-UA") },
+          { label: `Всього одиниць${filteredAgg ? " (за пошуком)" : ""}`, val: (filteredAgg?.totalQty ?? stat?.totalQty ?? 0).toLocaleString("uk-UA") },
+          { label: "Під мінімумом", val: filteredAgg?.lowStock ?? stat?.lowStock ?? 0, danger: (filteredAgg?.lowStock ?? stat?.lowStock ?? 0) > 0 },
+        ].map((s: any, i) => (
           <div key={i} className="crm-card" style={{ padding: 16 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: s.danger ? "var(--danger)" : "var(--text)" }}>{s.val}</div>
@@ -285,12 +320,12 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
             <table className="crm-table">
               <thead>
                 <tr>
-                  <th>Товар</th>
-                  <th style={{ textAlign: "right" }}>Поч. залишок</th>
-                  <th style={{ textAlign: "right" }}>Поточний</th>
-                  <th style={{ textAlign: "right" }}>Резерв</th>
+                  <SortableTh label="Товар" sortKey="title" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Поч. залишок" sortKey="initial_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
+                  <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
+                  <SortableTh label="Резерв" sortKey="reserved" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                   <th style={{ textAlign: "right" }}>Доступний</th>
-                  <th style={{ textAlign: "right" }}>Мінімум</th>
+                  <SortableTh label="Мінімум" sortKey="min_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                   <th style={{ width: 180 }}>Наповнення</th>
                   <th style={{ textAlign: "right" }}>Дії</th>
                 </tr>
@@ -300,9 +335,15 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                   const available = Number(row.quantity) - Number(row.reserved);
                   const isLow = Number(row.min_quantity) > 0 && Number(row.quantity) <= Number(row.min_quantity);
                   const isEditing = editingId === row.id;
-                  const fillPct = Number(row.min_quantity) > 0
-                    ? Math.min(100, Math.round(Number(row.quantity) / Number(row.min_quantity) * 100))
-                    : (Number(row.quantity) > 0 ? 100 : 0);
+                  // % of initial_quantity (stock level when last fully
+                  // restocked), not min_quantity — min_quantity is the
+                  // critical/reorder threshold, not a "full" baseline.
+                  // Negative quantity (oversold) carries zero weight, same
+                  // as the warehouse-level totals — never a negative %.
+                  const clampedQty = Math.max(0, Number(row.quantity));
+                  const fillPct = Number(row.initial_quantity) > 0
+                    ? Math.min(100, Math.round(clampedQty / Number(row.initial_quantity) * 100))
+                    : (clampedQty > 0 ? 100 : 0);
                   const barColor = fillPct >= 70 ? "#10b981" : fillPct >= 30 ? "#f59e0b" : "#ef4444";
 
                   const editInput = (field: keyof InventoryRow) => (
@@ -312,11 +353,17 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                   return (
                     <tr key={row.id}>
                       <td>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{row.product?.title ?? `#${row.product_id}`}</div>
-                        {row.product_uk && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{row.product_uk.title}</div>}
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{row.product_uk?.title ?? row.product?.title ?? `#${row.product_id}`}</div>
                         {row.product?.pcode && <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>{row.product.pcode}</div>}
                       </td>
-                      <td style={{ textAlign: "right" }}>{isEditing ? editInput("initial_quantity") : <span style={{ fontFamily: "monospace" }}>{Number(row.initial_quantity).toFixed(0)}</span>}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <span
+                          style={{ fontFamily: "monospace", color: "var(--text-muted)" }}
+                          title="Не редагується напряму — дорівнює значенню «Поточний» на момент останнього ручного збереження"
+                        >
+                          {Number(row.initial_quantity).toFixed(0)}
+                        </span>
+                      </td>
                       <td style={{ textAlign: "right" }}>
                         {isEditing ? editInput("quantity") : (
                           <InventoryHistoryDialog productId={row.product_id} warehouseId={row.warehouse_id}>
@@ -356,8 +403,26 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
                             <button className="btn-primary" onClick={saveEdit} disabled={saving} style={{ padding: "5px 10px", fontSize: 12 }}><Save size={12} /> Зберегти</button>
                             <button className="btn-ghost" onClick={() => { setEditingId(null); setEditNote(""); }} style={{ padding: "5px 8px" }}><X size={12} /></button>
                           </div>
+                        ) : restockingId === row.id ? (
+                          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
+                            <input
+                              className="crm-input" type="number" placeholder="+к-сть"
+                              value={restockDelta} onChange={(e) => setRestockDelta(e.target.value)}
+                              style={{ width: 70, fontSize: 12, textAlign: "right" }}
+                            />
+                            <input
+                              className="crm-input" placeholder="Примітка"
+                              value={restockNote} onChange={(e) => setRestockNote(e.target.value)}
+                              style={{ width: 110, fontSize: 12 }}
+                            />
+                            <button className="btn-primary" onClick={saveRestock} disabled={saving || !restockDelta} style={{ padding: "5px 10px", fontSize: 12 }}><Package size={12} /> Додати</button>
+                            <button className="btn-ghost" onClick={() => { setRestockingId(null); setRestockDelta(""); setRestockNote(""); }} style={{ padding: "5px 8px" }}><X size={12} /></button>
+                          </div>
                         ) : (
-                          <button className="btn-ghost" onClick={() => { setEditingId(row.id); setEditForm({ quantity: row.quantity, reserved: row.reserved, initial_quantity: row.initial_quantity, min_quantity: row.min_quantity }); }} style={{ padding: "5px 10px", fontSize: 12 }}>Змінити</button>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                            <button className="btn-ghost" onClick={() => setRestockingId(row.id)} title="Поставка — додати кількість до поточної" style={{ padding: "5px 10px", fontSize: 12 }}><Package size={12} /> Поставка</button>
+                            <button className="btn-ghost" onClick={() => { setEditingId(row.id); setEditForm({ quantity: row.quantity, reserved: row.reserved, min_quantity: row.min_quantity }); }} title="Ручне введення — задати точну кількість" style={{ padding: "5px 10px", fontSize: 12 }}>Змінити</button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -370,12 +435,11 @@ function InventoryTab({ warehouseId, stat }: { warehouseId: number; stat?: Wareh
       </div>
 
       {totalPages > 1 && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
-          <button className="btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 14px", opacity: page <= 1 ? 0.5 : 1 }}>← Попередня</button>
-          <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Сторінка {page} з {totalPages}</span>
-          <button className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 14px", opacity: page >= totalPages ? 0.5 : 1 }}>Наступна →</button>
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", marginTop: 16 }}>
+          Сторінка {page} з {totalPages}
         </div>
       )}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

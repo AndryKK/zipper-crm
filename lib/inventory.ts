@@ -15,7 +15,8 @@ export async function getDefaultWarehouseId(): Promise<number | null> {
 }
 
 export type InventorySource =
-  | "manual"
+  | "manual"    // admin sets quantity to an exact value ("Ручне введення") — resets initial_quantity to that value
+  | "restock"   // admin adds a delivered quantity ("Поставка") — resets initial_quantity to the resulting total
   | "order_created"
   | "order_item_updated"
   | "order_item_deleted"
@@ -47,12 +48,17 @@ export async function resolveInventoryProductId(productId: number): Promise<numb
   return data?.translation_id ?? productId;
 }
 
-// Adds `delta` to inventory.quantity for (productId, warehouseId). Negative
-// delta deducts stock and is allowed to go below zero (reservations can
-// exceed what's physically counted until real stock levels are entered).
+// Adds `delta` to inventory.quantity for (productId, warehouseId). This is
+// the trigger/webhook-driven path (order created/updated/cancelled, returns)
+// — never called for direct manual admin edits, which go straight through
+// app/api/inventory/route.ts instead. Live `inventory.quantity` is clamped
+// at 0: an automatic deduction can never make the stored stock negative
+// (there's no such thing as -5 physical units on a shelf). The *attempted*
+// unclamped result is still recorded in inventory_history as quantity_after
+// so an oversell is visible in the audit trail even though it never shows
+// up as negative stock.
 // Not transactionally atomic (read-then-write via PostgREST, same pattern
 // already used by confirm-payment/route.ts) — acceptable at this order volume.
-// Every adjustment is recorded in inventory_history for the audit trail.
 export async function adjustInventory(
   rawProductId: number, warehouseId: number, delta: number, opts: AdjustOpts
 ): Promise<void> {
@@ -68,7 +74,8 @@ export async function adjustInventory(
     .maybeSingle();
 
   const before = row ? Number(row.quantity) : 0;
-  const after = before + delta;
+  const rawAfter = before + delta;
+  const after = Math.max(0, rawAfter);
 
   if (row) {
     await supabaseServer.from("inventory").update({ quantity: after }).eq("id", row.id);
@@ -82,7 +89,7 @@ export async function adjustInventory(
     product_id: productId,
     warehouse_id: warehouseId,
     quantity_before: before,
-    quantity_after: after,
+    quantity_after: rawAfter,
     delta,
     source: opts.source,
     changed_by: opts.changedBy ?? null,
