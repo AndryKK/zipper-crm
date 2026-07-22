@@ -13,6 +13,17 @@ import { Loader2, Plus, Trash2, X, Link2Off } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 
+// Matches measures.short_title's CSS-class convention from the storefront
+// (text-success/text-ends/text-muted/text-primary/text-danger) — keyed by
+// measures.translation_id, which is what products.package stores.
+const AVAILABILITY_COLOR: Record<number, string> = {
+  1: "#10b981", // В наявності
+  2: "#f59e0b", // Закінчується
+  3: "#6b7280", // Очікується
+  4: "#2563eb", // Під замовлення
+  5: "#ef4444", // Немає в наявності
+};
+
 function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -176,6 +187,20 @@ function EditForm({
     for (const cg of initialColorGroups) {
       const ukV = cg.langVariants.find((v: any) => v.lang === "uk") ?? cg.langVariants[0];
       if (ukV) map[ukV.translationId] = ukV.pcode ?? "";
+    }
+    return map;
+  });
+  // "В наявності" — products.package (references measures.translation_id).
+  // NOT products.active: `active` doesn't actually hide a product from the
+  // storefront (verified against the live site) — `package` is what
+  // product.php checks (via measures.can_be_added_to_cart) to show "Нема в
+  // наявності" and disable the buy button. See product-form.tsx's "В
+  // наявності" selector below and app/(admin)/products/page.tsx's list badge.
+  const [packageMap, setPackageMap] = useState<Record<number, number>>(() => {
+    const map: Record<number, number> = { [baseVariant.translationId]: baseVariant.package ?? 1 };
+    for (const cg of initialColorGroups) {
+      const ukV = cg.langVariants.find((v: any) => v.lang === "uk") ?? cg.langVariants[0];
+      if (ukV) map[ukV.translationId] = ukV.package ?? 1;
     }
     return map;
   });
@@ -561,6 +586,7 @@ function EditForm({
             body: JSON.stringify({
               ...pricePayload,
               active: parseInt(String(activeMap[trId] ?? 1)),
+              package: parseInt(String(packageMap[trId] ?? 1)),
               pcode: pcodes[trId] ?? "",
               title: textData.title ?? "",
               main_title: textData.main_title ?? "",
@@ -667,7 +693,6 @@ function EditForm({
               {allColors.map((color) => {
                 const isActiveColor = color.trId === activeColorTrId;
                 const pcode = pcodes[color.trId] || `tid:${color.trId}`;
-                const isVisible = (activeMap[color.trId] ?? 1) === 1;
                 const isDeletingThis = deletingColorTrId === color.trId;
                 return (
                   <div key={color.trId} style={{ display: "flex", alignItems: "center", gap: 2, borderRadius: 6, background: isActiveColor ? "#f0f0ff" : "transparent" }}>
@@ -685,7 +710,7 @@ function EditForm({
                     >
                       <span style={{
                         width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-                        background: isVisible ? "#10b981" : "#d1d5db",
+                        background: AVAILABILITY_COLOR[packageMap[color.trId] ?? 1] ?? "#6b7280",
                       }} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pcode}</span>
                       {color.isMain && <span style={{ fontSize: 9, opacity: 0.4 }}>★</span>}
@@ -749,17 +774,23 @@ function EditForm({
           />
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Статус:</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>В наявності:</span>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+            background: AVAILABILITY_COLOR[packageMap[activeColorTrId] ?? 1] ?? "#6b7280",
+          }} />
           <select
-            value={activeMap[activeColorTrId] ?? 1}
-            onChange={(e) => setActiveMap((p) => ({ ...p, [activeColorTrId]: parseInt(e.target.value) }))}
+            value={packageMap[activeColorTrId] ?? 1}
+            onChange={(e) => setPackageMap((p) => ({ ...p, [activeColorTrId]: parseInt(e.target.value) }))}
+            title="Визначає, чи показується товар доступним для купівлі на сайті (products.package)"
             style={{
               fontSize: 12, padding: "3px 8px", borderRadius: 5,
               border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", cursor: "pointer",
             }}
           >
-            <option value={1}>Активний</option>
-            <option value={0}>Прихований</option>
+            {measures.map((m: any) => (
+              <option key={m.translationId ?? m.translation_id} value={m.translationId ?? m.translation_id}>{m.title}</option>
+            ))}
           </select>
         </div>
         {!activeColorEntry?.isMain && (
@@ -840,17 +871,7 @@ function EditForm({
             <Input value={ld.uri} onChange={(e) => setLD(activeLang, "uri", e.target.value)} />
           </div>
           {activeColorEntry?.isMain && (
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label>Одиниці виміру</Label>
-                <Select value={String(common.measure)} onValueChange={(v) => setC("measure", v)}>
-                  <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">— Не вказано —</SelectItem>
-                    {measures.map((m: any) => (<SelectItem key={m.id} value={String(m.id)}>{m.title}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Мінімальна кількість</Label>
                 <Input type="number" value={common.minquantity} onChange={(e) => setC("minquantity", e.target.value)} />
@@ -916,7 +937,7 @@ function EditForm({
         <div className="grid gap-4 max-w-xl">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Ціна (грн) *</Label>
+              <Label>Ціна $ *</Label>
               <Input type="number" step="0.01" value={common.price} onChange={(e) => setC("price", e.target.value)} />
             </div>
             <div className="space-y-1.5">
@@ -1137,11 +1158,15 @@ function EditForm({
                   {(allLangData[color.trId] ?? {})["uk"]?.title || ukV?.title || "—"}
                 </span>
                 <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
                   fontSize: 11, padding: "2px 8px", borderRadius: 10, flexShrink: 0,
-                  background: (activeMap[color.trId] ?? 1) ? "#d1fae5" : "#fee2e2",
-                  color: (activeMap[color.trId] ?? 1) ? "#065f46" : "#991b1b",
+                  background: "var(--bg-secondary)",
                 }}>
-                  {(activeMap[color.trId] ?? 1) ? "Активний" : "Прихований"}
+                  <span style={{
+                    width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                    background: AVAILABILITY_COLOR[packageMap[color.trId] ?? 1] ?? "#6b7280",
+                  }} />
+                  {measures.find((m: any) => (m.translationId ?? m.translation_id) === (packageMap[color.trId] ?? 1))?.title ?? "—"}
                 </span>
                 <button
                   type="button"
@@ -1527,6 +1552,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     minquantity: product?.minquantity ?? 1,
     measure: product?.measure ? String(product.measure) : "0",
     active: product?.active ?? 1,
+    package: product?.package ?? 1,
     labelAction: product?.labelAction ?? 0,
     popular: product?.popular ?? 0,
     priority: product?.priority ?? 0,
@@ -1592,6 +1618,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
           minquantity: parseInt(String(form.minquantity)) || 0,
           priority: parseInt(String(form.priority)) || 0,
           active: parseInt(String(form.active)),
+          package: parseInt(String(form.package)),
           label_action: parseInt(String(form.labelAction)),
           popular: parseInt(String(form.popular)),
           seo_title: form.seoTitle, seo_key: form.seoKey, seo_descr: form.seoDescr,
@@ -1637,26 +1664,20 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
             <div className="space-y-1.5"><Label>Артикул</Label><Input value={form.pcode} onChange={(e) => set("pcode", e.target.value)} /></div>
             <div className="space-y-1.5"><Label>URI (slug)</Label><Input value={form.uri} onChange={(e) => set("uri", e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label>Одиниці виміру</Label>
-              <Select value={String(form.measure)} onValueChange={(v) => set("measure", v)}>
-                <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">— Не вказано —</SelectItem>
-                  {measures.map((m: any) => (<SelectItem key={m.id} value={String(m.id)}>{m.title}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Мінімальна кількість</Label><Input type="number" value={form.minquantity} onChange={(e) => set("minquantity", e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Пріоритет</Label><Input type="number" value={form.priority} onChange={(e) => set("priority", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label>Статус</Label>
-              <Select value={String(form.active)} onValueChange={(v) => set("active", parseInt(v))}>
+              <Label>В наявності</Label>
+              <Select value={String(form.package)} onValueChange={(v) => set("package", parseInt(v))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="1">Активний</SelectItem><SelectItem value="0">Прихований</SelectItem></SelectContent>
+                <SelectContent>
+                  {measures.map((m: any) => (
+                    <SelectItem key={m.translationId ?? m.translation_id} value={String(m.translationId ?? m.translation_id)}>{m.title}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -1688,7 +1709,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
       {activeTab === "prices" && (
         <div className="grid gap-4 max-w-xl">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label>Ціна (грн) *</Label><Input type="number" step="0.01" value={form.price} onChange={(e) => set("price", e.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Ціна $ *</Label><Input type="number" step="0.01" value={form.price} onChange={(e) => set("price", e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Акційна ціна</Label><Input type="number" step="0.01" value={form.price_sale} onChange={(e) => set("price_sale", e.target.value)} placeholder="Залишити порожнім" /></div>
           </div>
           <div className="border rounded-md p-4 space-y-3">

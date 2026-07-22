@@ -10,6 +10,19 @@ import { DeleteProductButton } from "./delete-product-button";
 
 export const dynamic = "force-dynamic";
 
+// products.active does NOT actually hide a product from the storefront
+// (verified against the live site) — products.package is what product.php
+// checks (via measures.can_be_added_to_cart) to show "Нема в наявності" and
+// disable the buy button. Keyed by measures.translation_id (1-5), which is
+// what `package` stores. See app/(admin)/products/product-form.tsx.
+const AVAILABILITY: Record<number, { title: string; variant: "success" | "warning" | "secondary" | "default" | "destructive"; dot: string; canBuy: boolean }> = {
+  1: { title: "В наявності", variant: "success", dot: "#10b981", canBuy: true },
+  2: { title: "Закінчується", variant: "warning", dot: "#f59e0b", canBuy: true },
+  3: { title: "Очікується", variant: "secondary", dot: "#6b7280", canBuy: false },
+  4: { title: "Під замовлення", variant: "default", dot: "#2563eb", canBuy: false },
+  5: { title: "Немає в наявності", variant: "destructive", dot: "#ef4444", canBuy: false },
+};
+
 export default async function ProductsPage({
   searchParams,
 }: {
@@ -213,10 +226,16 @@ export default async function ProductsPage({
                     {catMap.get(product.translation_id) ?? "—"}
                   </td>
                   <td>
-                    {product.active === 1
-                      ? <Badge variant="success"><Eye className="h-3 w-3 mr-1" />Активний</Badge>
-                      : <Badge variant="secondary"><EyeOff className="h-3 w-3 mr-1" />Прихований</Badge>
-                    }
+                    {(() => {
+                      const avail = AVAILABILITY[product.package as number] ?? AVAILABILITY[1];
+                      return (
+                        <Badge variant={avail.variant} className="inline-flex items-center gap-1">
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: avail.dot, flexShrink: 0 }} />
+                          {avail.canBuy ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                          {avail.title}
+                        </Badge>
+                      );
+                    })()}
                   </td>
                   <td>
                     <div className="flex items-center justify-end gap-1">
