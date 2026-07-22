@@ -7,20 +7,46 @@ import { Crown } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-function sitePillStyle(bg: string, color: string): React.CSSProperties {
+const SITE_BADGE_WIDTH = 92;
+
+function sitePillStyle(bg: string): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 5,
-    padding: "3px 10px 3px 8px",
+    width: SITE_BADGE_WIDTH,
+    padding: "4px 0",
     borderRadius: 999,
     fontSize: 11.5,
     fontWeight: 600,
     whiteSpace: "nowrap",
     background: bg,
-    color,
-    lineHeight: 1.6,
+    lineHeight: 1,
   };
+}
+
+// CSS-drawn flags instead of flag emoji — Windows (unlike macOS/iOS/Android)
+// has no flag glyphs in its emoji font and falls back to rendering the raw
+// two-letter region code, which read as ugly duplicate text next to the label.
+function FlagIcon({ variant }: { variant: "ua" | "ru" }) {
+  const gradient =
+    variant === "ua"
+      ? "linear-gradient(to bottom, #0057b7 50%, #ffd700 50%)"
+      : "linear-gradient(to bottom, #fff 33.33%, #0039a6 33.33%, #0039a6 66.66%, #d52b1e 66.66%)";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 18,
+        height: 13,
+        borderRadius: 2,
+        background: gradient,
+        border: "1px solid rgba(0,0,0,0.15)",
+        flexShrink: 0,
+      }}
+    />
+  );
 }
 
 function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser: boolean }) {
@@ -28,7 +54,8 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
     return (
       <span
         style={{
-          ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)", "#fff"),
+          ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)"),
+          color: "#fff",
           boxShadow: "0 1px 2px rgba(217,119,6,0.35)",
         }}
       >
@@ -39,19 +66,21 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
   }
   if (type === "ru") {
     return (
-      <span style={sitePillStyle("rgba(190,18,60,0.1)", "#be123c")}>
-        <span style={{ fontSize: 13 }}>🇷🇺</span> RU · .in.ua
+      <span title="Замовлення з zipper.in.ua (RU)" style={sitePillStyle("rgba(190,18,60,0.08)")}>
+        <FlagIcon variant="ru" />
       </span>
     );
   }
   if (type === "uk") {
     return (
-      <span style={sitePillStyle("rgba(0,87,183,0.1)", "#0057b7")}>
-        <span style={{ fontSize: 13 }}>🇺🇦</span> UA · .com.ua
+      <span title="Замовлення з zipper.com.ua (UA)" style={sitePillStyle("rgba(0,87,183,0.08)")}>
+        <FlagIcon variant="ua" />
       </span>
     );
   }
-  return <span style={{ color: "var(--text-muted)" }}>—</span>;
+  return (
+    <span style={{ ...sitePillStyle("transparent"), color: "var(--text-muted)" }}>—</span>
+  );
 }
 
 function orderStatusClass(status: string | null): string {
