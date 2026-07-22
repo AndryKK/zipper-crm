@@ -74,46 +74,23 @@ async function getStats() {
     0
   );
 
-  /* ── Build 30-day chart ── */
-  /* Index: order id → date string "YYYY-MM-DD" */
-  const orderDateMap: Record<number, string> = {};
-  for (const o of monthOrderRows || []) {
-    const day = o.date ? String(o.date).slice(0, 10) : null;
-    if (day) orderDateMap[o.id] = day;
-  }
-
-  /* orders count per day */
-  const ordersByDay: Record<string, number> = {};
-  for (const o of monthOrderRows || []) {
-    const day = orderDateMap[o.id];
-    if (day) ordersByDay[day] = (ordersByDay[day] || 0) + 1;
-  }
-
-  /* revenue per day */
-  const revenueByDay: Record<string, number> = {};
-  for (const item of monthItems || []) {
-    const day = orderDateMap[item.oid];
-    if (!day) continue;
-    revenueByDay[day] = (revenueByDay[day] || 0) + Number(item.price) * Number(item.quantity);
-  }
-
-  /* Generate one entry per calendar day for the last 30 days */
-  const chartData = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - (29 - i));
-    const dayStr = d.toISOString().slice(0, 10);
-    const label = d.toLocaleDateString("uk-UA", { day: "numeric", month: "short" });
-    return {
-      day: label,
-      orders: ordersByDay[dayStr] ?? 0,
-      revenue: Math.round(revenueByDay[dayStr] ?? 0),
-    };
-  });
-
-  /* ── Status breakdown (last 30 days) ── */
+  /* ── Status breakdown (last 30 days) ──
+   * Legacy data has old/Russian status text mixed in with the current
+   * Ukrainian pipeline (e.g. imported orders from before the CHAR-padding
+   * fix): "Завершен"/"Завершено" are the same state, just spelled
+   * differently depending on where the row came from. Normalize for
+   * display so the pie chart doesn't split one real status into two
+   * differently-colored slices. */
+  const STATUS_DISPLAY: Record<string, string> = {
+    "Завершен": "Завершено",
+    "Получен": "Отримано",
+    "В работе": "В роботі",
+    "new": "Новий",
+  };
   const statusMap: Record<string, number> = {};
   for (const o of monthOrderRows || []) {
-    const s = (o.status as string) || "Новий";
+    const raw = (o.status as string) || "Новий";
+    const s = STATUS_DISPLAY[raw] ?? raw;
     statusMap[s] = (statusMap[s] || 0) + 1;
   }
   const statusData = Object.entries(statusMap)
@@ -128,7 +105,6 @@ async function getStats() {
     recentOrders,
     newOrders,
     totalRevenue,
-    chartData,
     statusData,
     warehouses: warehousesRaw || [],
     warehousesCount: (warehousesRaw || []).length,
@@ -147,7 +123,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function DashboardPage() {
   const {
     productsCount, ordersCount, usersCount, articlesCount,
-    recentOrders, newOrders, totalRevenue, chartData, statusData, warehouses, warehousesCount,
+    recentOrders, newOrders, totalRevenue, statusData, warehouses, warehousesCount,
   } = await getStats();
 
   const stats = [
@@ -227,7 +203,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Charts */}
-        <DashboardCharts chartData={chartData} statusData={statusData} />
+        <DashboardCharts statusData={statusData} />
 
         {/* Recent orders table */}
         <div className="crm-card" style={{ marginTop: 20 }}>
