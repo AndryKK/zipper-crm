@@ -579,6 +579,15 @@ model OrderReturn {
   qty          Int?
   restocked    Boolean    @default(false)
 
+  // Return-shipment tracking (customer ships the item back via Nova Poshta)
+  // and refund bookkeeping — distinct from Order.ttn, which tracks the
+  // original outgoing delivery. Set once a manager confirms the return and
+  // gets the customer's tracking number; polled by the same
+  // sync-ttn-status cron used for outgoing orders (see lib/nova-poshta.ts).
+  ttn          String?    @db.VarChar(50)
+  refunded     Boolean    @default(false)
+  refundedAt   DateTime?  @map("refunded_at")
+
   order        Order?     @relation(fields: [oid], references: [id], onDelete: SetNull)
   warehouse    Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 

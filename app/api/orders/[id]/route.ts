@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { resolveLegacyReturns } from "@/lib/returns-resolve";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -14,8 +15,16 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const [{ data: items }, { data: returns }] = await Promise.all([
     supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id)),
-    supabaseServer.from("orders_returns").select("*").eq("oid", parseInt(id)).order("date", { ascending: false }),
+    // Legacy storefront returns aren't linked via `oid` at all — only via the
+    // free-text `order` field — so match either, then resolve legacy rows
+    // (auto-fills oid/product/qty from order/code/quantity) before returning.
+    supabaseServer
+      .from("orders_returns")
+      .select("*")
+      .or(`oid.eq.${parseInt(id)},order.eq.${parseInt(id)}`)
+      .order("date", { ascending: false }),
   ]);
+  const resolvedReturns = await resolveLegacyReturns(returns ?? []);
 
   // Products are stored per-language with each language row having its own
   // id, and orders_item.product is that exact row id — match by id alone
@@ -32,7 +41,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     productPcode: prodMap.get(item.product)?.pcode ?? null,
   }));
 
-  return NextResponse.json({ ...order, items: itemsWithProduct, returns: returns || [] });
+  return NextResponse.json({ ...order, items: itemsWithProduct, returns: resolvedReturns });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

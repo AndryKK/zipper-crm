@@ -33,6 +33,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
   if (body.product !== undefined) update.product = body.product === null ? null : parseInt(body.product);
   if (body.qty !== undefined) update.qty = body.qty === null ? null : parseInt(body.qty);
   if (body.notes !== undefined) update.notes = body.notes?.trim() || null;
+  if (body.ttn !== undefined) update.ttn = body.ttn?.trim() || null;
+  if (body.refunded !== undefined) {
+    update.refunded = !!body.refunded;
+    update.refunded_at = body.refunded ? new Date().toISOString() : null;
+  }
 
   const movingToReceived = body.status === RETURN_STATUS.RECEIVED && existing.status !== RETURN_STATUS.RECEIVED;
 

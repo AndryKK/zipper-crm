@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUSES, RETURN_STATUS_COLOR } from "@/lib/returns";
-import { Loader2, ImageIcon, ExternalLink } from "lucide-react";
+import { Loader2, ImageIcon, ExternalLink, Truck, Wallet } from "lucide-react";
 
 type ReturnRow = {
   id: number;
@@ -26,6 +26,9 @@ type ReturnRow = {
   product: number | null;
   qty: number | null;
   restocked: boolean;
+  ttn: string | null;
+  refunded: boolean;
+  refunded_at: string | null;
 };
 
 type Product = { id: number; title: string; pcode: string | null };
@@ -37,6 +40,8 @@ export default function ReturnsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [linkDraft, setLinkDraft] = useState<Record<number, { product: string; qty: string }>>({});
+  const [ttnDraft, setTtnDraft] = useState<Record<number, string>>({});
+  const [checkingNpId, setCheckingNpId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +81,48 @@ export default function ReturnsPage() {
     if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
     toast.success(`Статус: «${status}»`);
     load();
+  }
+
+  async function saveTtn(ret: ReturnRow) {
+    const ttn = (ttnDraft[ret.id] ?? ret.ttn ?? "").trim();
+    setBusyId(ret.id);
+    const res = await fetch(`/api/returns/${ret.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ttn }),
+    });
+    setBusyId(null);
+    if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
+    toast.success("ТТН збережено");
+    load();
+  }
+
+  async function toggleRefund(ret: ReturnRow) {
+    setBusyId(ret.id);
+    const res = await fetch(`/api/returns/${ret.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refunded: !ret.refunded }),
+    });
+    setBusyId(null);
+    if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
+    toast.success(ret.refunded ? "Позначено як не повернуто" : "Гроші повернено клієнту");
+    load();
+  }
+
+  async function checkNp(ret: ReturnRow) {
+    setCheckingNpId(ret.id);
+    try {
+      const res = await fetch(`/api/cron/sync-ttn-status?returnId=${ret.id}`);
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      const entry = data.returnLog?.[0];
+      if (!entry) { toast.info("Нема ТТН для перевірки"); return; }
+      if (entry.error) { toast.error(entry.error); return; }
+      if (entry.delivered) { toast.success("Нова Пошта підтвердила отримання — статус оновлено"); load(); }
+      else { toast.info(`Статус НП: ${entry.status || "ще в дорозі"}`); }
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setCheckingNpId(null); }
   }
 
   return (
@@ -163,9 +210,41 @@ export default function ReturnsPage() {
                           />
                         </div>
                       )}
+
+                      {/* TTN of the parcel the customer ships back — distinct from the
+                          order's own outgoing ttn. Once set, the sync-ttn-status cron
+                          (and the manual check here) polls it and bumps the return to
+                          ARRIVED when Nova Poshta reports it delivered. */}
+                      {r.status !== RETURN_STATUS.RECEIVED && r.status !== RETURN_STATUS.REJECTED && r.status !== RETURN_STATUS.CANCELLED && (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <Input
+                            placeholder="ТТН повернення" value={ttnDraft[r.id] ?? r.ttn ?? ""}
+                            onChange={(e) => setTtnDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+                            style={{ width: 150 }}
+                          />
+                          <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => saveTtn(r)}>Зберегти</Button>
+                          {r.ttn && (
+                            <Button size="sm" variant="outline" disabled={checkingNpId === r.id} onClick={() => checkNp(r)} title="Перевірити статус НП">
+                              {checkingNpId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck size={14} />}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        {r.status !== RETURN_STATUS.CONFIRMED && r.status !== RETURN_STATUS.RECEIVED && (
+                        {(r.status === RETURN_STATUS.CONFIRMED || r.status === RETURN_STATUS.ARRIVED) && (
+                          <Button
+                            size="sm" variant={r.refunded ? "outline" : "default"} disabled={busyId === r.id}
+                            onClick={() => toggleRefund(r)} style={{ gap: 6 }}
+                          >
+                            <Wallet size={14} /> {r.refunded ? "Гроші повернено" : "Повернути гроші"}
+                          </Button>
+                        )}
+                        {r.status !== RETURN_STATUS.CONFIRMED && r.status !== RETURN_STATUS.ARRIVED && r.status !== RETURN_STATUS.RECEIVED && (
                           <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setStatus(r, RETURN_STATUS.CONFIRMED)}>Підтвердити</Button>
+                        )}
+                        {r.status === RETURN_STATUS.CONFIRMED && (
+                          <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setStatus(r, RETURN_STATUS.ARRIVED)}>Прибуло на склад</Button>
                         )}
                         {r.status !== RETURN_STATUS.RECEIVED && (
                           <Button size="sm" disabled={busyId === r.id} onClick={() => setStatus(r, RETURN_STATUS.RECEIVED)}>

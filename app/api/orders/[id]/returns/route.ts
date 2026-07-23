@@ -2,19 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { RETURN_STATUS } from "@/lib/returns";
+import { resolveLegacyReturns } from "@/lib/returns-resolve";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const orderId = parseInt(id);
+  // Legacy storefront returns only carry the free-text `order` field, not
+  // `oid` — match either, then resolve legacy rows before returning.
   const { data: returns } = await supabaseServer
     .from("orders_returns")
     .select("*")
-    .eq("oid", parseInt(id))
+    .or(`oid.eq.${orderId},order.eq.${orderId}`)
     .order("date", { ascending: false });
 
-  return NextResponse.json(returns ?? []);
+  return NextResponse.json(await resolveLegacyReturns(returns ?? []));
 }
 
 // Creates a return REQUEST only — does not touch inventory. Stock only comes
