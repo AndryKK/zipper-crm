@@ -859,9 +859,24 @@ export default function OrderDetailPage() {
                       )}
                     </div>
                   ) : (
-                    /* TTN відсутній — показуємо поле вводу */
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <Label style={{ fontSize: 13 }}>Введіть номер ТТН перед відправкою</Label>
+                    /* TTN відсутній — можна спробувати згенерувати автоматично ще раз, або ввести вручну */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <Button
+                          variant="outline" onClick={generateTtnManually} disabled={generatingTtn}
+                          style={{ gap: 8 }}
+                        >
+                          {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
+                          {ttnGenError ? "Спробувати ще раз" : "Згенерувати ТТН автоматично"}
+                        </Button>
+                        {ttnGenError && (
+                          <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
+                            <XCircle size={12} /> {ttnGenError}
+                          </span>
+                        )}
+                      </div>
+
+                      <Label style={{ fontSize: 13 }}>Або введіть номер ТТН вручну</Label>
                       <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                         <div style={{ flex: 1 }}>
                           <Input
