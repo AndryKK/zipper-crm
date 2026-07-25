@@ -4,9 +4,13 @@
 -- scripts/create-warehouse-stats-view.sql (aggregate server-side, not in JS).
 --
 -- Site attribution matches app/(admin)/orders/page.tsx's "Сайт" badge logic:
---   premium (Zipper Premium / zipper-new-shop) — user.password = 'SUPABASE_AUTH'
 --   ru      (zipper.in.ua)  — orders.type = 'ru'
 --   ua      (zipper.com.ua) — orders.type = 'uk'
+--   premium (Zipper Premium / zipper-new-shop) — user.password = 'SUPABASE_AUTH',
+--           only when the order's own type is neither 'ru' nor 'uk' — a
+--           customer can have a Premium account and still place an order on
+--           the regular RU/UA storefronts, which should count as RU/UA, not
+--           Premium.
 CREATE OR REPLACE FUNCTION get_dashboard_chart_buckets(p_start timestamptz, p_bucket_unit text)
 RETURNS TABLE (
   bucket timestamptz,
@@ -17,9 +21,9 @@ RETURNS TABLE (
   SELECT
     date_trunc(p_bucket_unit, o.date) AS bucket,
     CASE
-      WHEN u.password = 'SUPABASE_AUTH' THEN 'premium'
       WHEN o.type = 'ru' THEN 'ru'
       WHEN o.type = 'uk' THEN 'ua'
+      WHEN u.password = 'SUPABASE_AUTH' THEN 'premium'
       ELSE 'other'
     END AS site,
     count(DISTINCT o.id) AS orders_count,

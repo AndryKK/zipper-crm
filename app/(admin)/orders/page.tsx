@@ -46,20 +46,14 @@ function FlagIcon({ variant }: { variant: "ua" | "ru" }) {
   );
 }
 
+// The order's own type ('ru'/'uk', set by whichever storefront actually
+// created it) always wins over the customer's account — a customer who also
+// has a Zipper Premium account (password === 'SUPABASE_AUTH') still gets
+// tagged RU/UA for an order that actually came from that site. "Premium"
+// only shows when the order itself carries neither a ru nor uk type (i.e.
+// it really did come from Zipper Premium, not just from a premium customer
+// shopping on the regular sites).
 function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser: boolean }) {
-  if (isPremiumUser) {
-    return (
-      <span
-        title="Замовлення з Zipper Premium"
-        style={{
-          ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)"),
-          boxShadow: "0 1px 2px rgba(217,119,6,0.35)",
-        }}
-      >
-        <Crown size={13} color="#fff" strokeWidth={2.5} />
-      </span>
-    );
-  }
   if (type === "ru") {
     return (
       <span title="Замовлення з zipper.in.ua (RU)" style={sitePillStyle("rgba(190,18,60,0.08)")}>
@@ -71,6 +65,19 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
     return (
       <span title="Замовлення з zipper.com.ua (UA)" style={sitePillStyle("rgba(0,87,183,0.08)")}>
         <FlagIcon variant="ua" />
+      </span>
+    );
+  }
+  if (isPremiumUser) {
+    return (
+      <span
+        title="Замовлення з Zipper Premium"
+        style={{
+          ...sitePillStyle("linear-gradient(135deg,#f59e0b,#d97706)"),
+          boxShadow: "0 1px 2px rgba(217,119,6,0.35)",
+        }}
+      >
+        <Crown size={13} color="#fff" strokeWidth={2.5} />
       </span>
     );
   }
@@ -87,6 +94,13 @@ function orderStatusClass(status: string | null): string {
   if (s.includes("в работ") || s.includes("в робот")) return "badge badge-amber";
   if (s.includes("скасован") || s.includes("отмен")) return "badge badge-red";
   return "badge badge-gray";
+}
+
+function orderRowClass(status: string | null): string {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
+  if (!s || s.includes("нов")) return "order-row--new";
+  return "";
 }
 
 export default async function OrdersPage({
@@ -155,7 +169,7 @@ export default async function OrdersPage({
               {allOrders.map((order: any) => {
                 const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
                 return (
-                  <tr key={order.id}>
+                  <tr key={order.id} className={orderRowClass(order.status)}>
                     <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
                     <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
                     <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
