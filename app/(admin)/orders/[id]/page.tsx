@@ -103,6 +103,13 @@ export default function OrderDetailPage() {
   const [codPreviewError, setCodPreviewError] = useState("");
   const [codLoadingPreview, setCodLoadingPreview] = useState(false);
   const [codSubmitting, setCodSubmitting] = useState(false);
+  const [codAmountInput, setCodAmountInput] = useState("");
+
+  // Передоплата — persisted on the order (`orders.prepayment`) so the
+  // накладений платіж amount always reflects what the customer still owes,
+  // not the full order total.
+  const [prepaymentInput, setPrepaymentInput] = useState("0");
+  const [savingPrepayment, setSavingPrepayment] = useState(false);
 
   // Manual control card gets scrolled into view + briefly highlighted when
   // an automated flow (postomat/COD) fails and a manager needs the escape
@@ -146,13 +153,14 @@ export default function OrderDetailPage() {
       setNotes(data.notes ?? "");
       setTtn(data.ttn ?? "");
       setResendEmail(data.login ?? "");
+      setPrepaymentInput(String(data.prepayment ?? 0));
     });
   }, [params.id]);
 
   async function refreshOrder() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updated = await apiFetch<any>(`/api/orders/${params.id}`);
-    if (updated) { setOrder(updated); setStatus(updated.status ?? ""); }
+    if (updated) { setOrder(updated); setStatus(updated.status ?? ""); setPrepaymentInput(String(updated.prepayment ?? 0)); }
   }
 
   async function save() {
@@ -237,24 +245,50 @@ export default function OrderDetailPage() {
     finally { setPostomatSubmitting(false); }
   }
 
+  async function savePrepayment() {
+    const value = parseFloat(prepaymentInput);
+    if (!Number.isFinite(value) || value < 0) { toast.error("Некоректна сума передоплати"); return; }
+    setSavingPrepayment(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prepayment: value }),
+      });
+      if (!res.ok) { toast.error("Не вдалося зберегти передоплату"); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setOrder((prev: any) => ({ ...prev, prepayment: value }));
+      toast.success("Передоплату збережено");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setSavingPrepayment(false); }
+  }
+
   async function openCodDialog() {
     setShowCodDialog(true);
     setCodPreview(null);
     setCodPreviewError("");
+    setCodAmountInput("");
     setCodLoadingPreview(true);
     try {
       const res = await fetch(`/api/orders/${params.id}/ttn/cod`);
       const data = await res.json();
       if (!res.ok) { setCodPreviewError(data.error ?? "Помилка"); return; }
       setCodPreview(data);
+      setCodAmountInput(String(data.codAmount));
     } catch { setCodPreviewError("Помилка з'єднання"); }
     finally { setCodLoadingPreview(false); }
   }
 
   async function confirmCod() {
+    const amount = parseFloat(codAmountInput);
+    if (!Number.isFinite(amount) || amount <= 0) { toast.error("Некоректна сума накладеного платежу"); return; }
     setCodSubmitting(true);
     try {
-      const res = await fetch(`/api/orders/${params.id}/ttn/cod`, { method: "POST" });
+      const res = await fetch(`/api/orders/${params.id}/ttn/cod`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codAmount: amount }),
+      });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
       setConfirmLog(data.log);
@@ -643,15 +677,33 @@ export default function OrderDetailPage() {
                         </Button>
                         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Оплата вже надійшла (переказ) — автоматично створить ТТН</span>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                        <Button
-                          variant="outline" onClick={openCodDialog}
-                          style={{ gap: 8, height: 42, fontSize: 14 }}
-                        >
-                          <Banknote size={16} />
-                          Відправити накладеним платежем
-                        </Button>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Отримувач сплачує {orderTotal.toFixed(2)} грн при отриманні</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                          <Button
+                            variant="outline" onClick={openCodDialog}
+                            style={{ gap: 8, height: 42, fontSize: 14 }}
+                          >
+                            <Banknote size={16} />
+                            Відправити накладеним платежем
+                          </Button>
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            Отримувач сплачує {Math.max(0, orderTotal - (parseFloat(prepaymentInput) || 0)).toFixed(2)} грн при отриманні
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Label style={{ fontSize: 12, color: "var(--text-muted)" }}>Врахувати передоплату, грн</Label>
+                          <Input
+                            type="number" step="0.01" min="0" value={prepaymentInput}
+                            onChange={(e) => setPrepaymentInput(e.target.value)}
+                            style={{ width: 110, height: 30, fontSize: 13 }}
+                          />
+                          <button
+                            onClick={savePrepayment} disabled={savingPrepayment}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
+                          >
+                            {savingPrepayment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти для замовлення
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -923,9 +975,18 @@ export default function OrderDetailPage() {
                   <div><span style={{ color: "var(--text-muted)" }}>Місто / відділення:</span> {String(codPreview.city)} — Відділення №{String(codPreview.warehouseNum)}</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вага:</span> {String(codPreview.weight)} кг</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вартість оголошена:</span> {Number(codPreview.cost).toFixed(2)} грн</div>
-                  <div style={{ paddingTop: 6, borderTop: "1px solid var(--border)" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Накладений платіж (сплатить отримувач):</span>{" "}
-                    <strong style={{ color: "#059669", fontSize: 15 }}>{Number(codPreview.codAmount).toFixed(2)} грн</strong>
+                  <div><span style={{ color: "var(--text-muted)" }}>Сума замовлення:</span> {Number(codPreview.orderTotal).toFixed(2)} грн</div>
+                  {Number(codPreview.prepayment) > 0 && (
+                    <div><span style={{ color: "var(--text-muted)" }}>Передоплата:</span> −{Number(codPreview.prepayment).toFixed(2)} грн</div>
+                  )}
+                  <div style={{ paddingTop: 6, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <Label style={{ margin: 0 }}>Накладений платіж (сплатить отримувач):</Label>
+                    <Input
+                      type="number" step="0.01" min="0.01" value={codAmountInput}
+                      onChange={(e) => setCodAmountInput(e.target.value)}
+                      style={{ width: 110, height: 30, fontSize: 13, fontWeight: 700, color: "#059669" }}
+                    />
+                    <span style={{ color: "var(--text-muted)" }}>грн</span>
                   </div>
                   {!!codPreview.demo && (
                     <div style={{ fontSize: 12, color: "#d97706" }}>Увімкнено демо-режим — реального звернення до Нової Пошти не буде, ТТН буде згенеровано випадково.</div>

@@ -536,6 +536,7 @@ model Order {
   ttn          String?  @db.Char(50)
   msg          String?  @db.Text
   callme       Int?     @default(0)
+  prepayment   Float    @default(0)
 
   items        OrderItem[]
   returns      OrderReturn[]

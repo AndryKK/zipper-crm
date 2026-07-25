@@ -143,6 +143,8 @@ export type ResolvePreview =
       isPostomat: boolean;
       weight: number;
       cost: number;
+      orderTotal: number;
+      prepayment: number;
       codAmount: number;
       demo: boolean;
     }
@@ -172,6 +174,9 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
   const settings = allSettings ?? [];
   const npDemoMode = getSetting(settings, "np_demo_mode") === "1";
 
+  const prepayment = Number(order.prepayment) || 0;
+  const codAmount = Math.max(0, orderTotal - prepayment);
+
   return {
     ok: true,
     recipientName: order.person ?? order.login ?? "Отримувач",
@@ -181,7 +186,9 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
     isPostomat: parsed.isPostomat,
     weight: 0.5,
     cost: orderTotal,
-    codAmount: orderTotal,
+    orderTotal,
+    prepayment,
+    codAmount,
     demo: npDemoMode,
   };
 }
