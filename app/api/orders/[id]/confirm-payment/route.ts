@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { npFindCityRef, npFindWarehouseRef, npCreateTtn, parseNpAddress } from "@/lib/nova-poshta";
-import { getOrderDocumentData } from "@/lib/order-documents";
-import { renderPaymentConfirmedEmail } from "@/lib/email-templates";
-import { sendEmail, isValidEmail } from "@/lib/email";
+import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
+import { isValidEmail } from "@/lib/email";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -43,8 +42,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     (s, i) => s + i.price * i.quantity, 0
   );
 
-  let finalTtn: string | null = order.ttn ?? null;
-
   /* ════════════════════════════════════════════════════════════════════
      STEP 1 — формування ТТН Нова Пошта
   ══════════════════════════════════════════════════════════════════════ */
@@ -62,7 +59,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     } else {
       const demoTtn = randomDemoTtn();
       await supabaseServer.from("orders").update({ ttn: demoTtn }).eq("id", orderId);
-      finalTtn = demoTtn;
       log.push({
         step: "Формування ТТН", status: "ok",
         msg: `[ДЕМО-РЕЖИМ] Згенеровано випадковий ТТН ${demoTtn} — реального звернення до Нової Пошти не було`,
@@ -122,7 +118,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
               log.push({ step: "Формування ТТН", status: "error", msg: result.error });
             } else {
               await supabaseServer.from("orders").update({ ttn: result.ttn }).eq("id", orderId);
-              finalTtn = result.ttn;
               log.push({ step: "Формування ТТН", status: "ok", msg: `ТТН ${result.ttn} створено`, data: { ttn: result.ttn } });
             }
           }
@@ -149,18 +144,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
   } else {
     try {
-      const doc = await getOrderDocumentData(orderId);
-      if (!doc) {
-        log.push({ step: "Email клієнту", status: "error", msg: "Не вдалося сформувати дані замовлення" });
-      } else {
-        const { subject, html } = renderPaymentConfirmedEmail(doc, finalTtn);
-        const result = await sendEmail({ to: order.login, toName: order.person ?? undefined, subject, html });
-        if (result.ok) {
-          log.push({ step: "Email клієнту", status: "ok", msg: `Лист-подяка надіслано на ${order.login}` });
-        } else {
-          log.push({ step: "Email клієнту", status: "error", msg: result.error });
-        }
-      }
+      const result = await sendPaymentConfirmedEmail(orderId);
+      log.push(
+        result.ok
+          ? { step: "Email клієнту", status: "ok", msg: `Лист-подяка надіслано на ${order.login}` }
+          : { step: "Email клієнту", status: "error", msg: result.error }
+      );
     } catch (e) {
       log.push({ step: "Email клієнту", status: "error", msg: (e as Error).message });
     }

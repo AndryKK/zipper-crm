@@ -17,6 +17,7 @@ import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
   Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
+  Mail, Send,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -78,6 +79,13 @@ export default function OrderDetailPage() {
   const [showStockConfirm, setShowStockConfirm] = useState(false);
   const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
 
+  // Resend email — lets a manager fix a typo'd address and resend either
+  // the payment-request or the payment-confirmed letter without re-running
+  // the whole process/confirm-payment pipeline (no TTN/status side-effects).
+  const [resendEmail, setResendEmail] = useState("");
+  const [editingResendEmail, setEditingResendEmail] = useState(false);
+  const [resendingKind, setResendingKind] = useState<"invoice" | "confirmed" | null>(null);
+
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
   const [clientDraft, setClientDraft] = useState({ person: "", phone: "", login: "", addr_delivery: "", pay_method: "" });
@@ -105,6 +113,7 @@ export default function OrderDetailPage() {
       setStatus(data.status ?? "");
       setNotes(data.notes ?? "");
       setTtn(data.ttn ?? "");
+      setResendEmail(data.login ?? "");
     });
   }, [params.id]);
 
@@ -167,6 +176,24 @@ export default function OrderDetailPage() {
       else          toast.success("Оплату підтверджено!");
     } catch { toast.error("Помилка з'єднання"); }
     finally  { setConfirming(false); }
+  }
+
+  async function resendEmailNow(kind: "invoice" | "confirmed") {
+    const email = resendEmail.trim();
+    if (!email) { toast.error("Введіть email отримувача"); return; }
+    setResendingKind(kind);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/resend-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка надсилання"); return; }
+      toast.success(kind === "invoice" ? "Рахунок і накладну надіслано повторно" : "Лист-подяку надіслано повторно");
+      setEditingResendEmail(false);
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setResendingKind(null); }
   }
 
   function validateTtn(value: string): string {
@@ -680,6 +707,63 @@ export default function OrderDetailPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* ── RESEND EMAIL ──────────────────────────────────────────────── */}
+        {!isCancelled && step >= 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Mail size={14} color="var(--accent)" />
+                Email клієнту
+              </CardTitle>
+            </CardHeader>
+            <CardContent style={{ paddingTop: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+              {editingResendEmail ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <Input
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                    placeholder="client@example.com"
+                    style={{ maxWidth: 320 }}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => setEditingResendEmail(false)}>Готово</Button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Адреса:</span>
+                  <strong>{resendEmail || "не вказано"}</strong>
+                  <button
+                    onClick={() => setEditingResendEmail(true)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: 0 }}
+                  >
+                    <Pencil size={12} /> Змінити
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => resendEmailNow("invoice")}
+                  disabled={resendingKind !== null}
+                >
+                  {resendingKind === "invoice" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={14} />}
+                  Надіслати рахунок повторно
+                </Button>
+                {step >= 1 && (
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={() => resendEmailNow("confirmed")}
+                    disabled={resendingKind !== null}
+                  >
+                    {resendingKind === "confirmed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={14} />}
+                    Надіслати лист-подяку повторно
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── PROCESS / CONFIRM LOG ─────────────────────────────────────── */}
         {(processLog || confirmLog) && (
