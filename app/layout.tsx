@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
@@ -14,18 +15,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="uk" className="h-full" data-theme="dark" suppressHydrationWarning>
-      <head>
-        {/* type switches to "text/plain" on client to suppress React 19 script warning;
-            on the server (SSR) it stays "text/javascript" so it runs before first paint */}
-        <script
-          type={typeof window === "undefined" ? "text/javascript" : "text/plain"}
-          suppressHydrationWarning
+      <body className={`${inter.className} h-full`}>
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("crm-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`,
           }}
         />
-      </head>
-      <body className={`${inter.className} h-full`}>
         <SessionProvider>
           {children}
           <Toaster

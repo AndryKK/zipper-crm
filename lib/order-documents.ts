@@ -151,6 +151,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
   ].filter(Boolean).join("<br/>");
 
   const recipientLines = [
+    order.person || "",
     order.phone || "",
     order.addr_delivery || "",
   ].filter(Boolean).join("<br/>");
