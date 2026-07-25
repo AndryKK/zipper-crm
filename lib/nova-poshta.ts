@@ -20,11 +20,15 @@ export async function npFindWarehouseRef(apiKey: string, cityRef: string, wareho
   return r.success && r.data?.length ? r.data[0].Ref : null;
 }
 
-// Parses "Дніпро — Відділення №31 (до 30 кг): вул. Робоча, 89"
-export function parseNpAddress(addr: string): { city: string; warehouseNum: number } | null {
-  const m = addr.match(/^(.+?)\s*[—–-]+\s*(?:Відділення|Поштомат|відділення)\s*№\s*(\d+)/i);
+// Parses "Дніпро — Відділення №31 (до 30 кг): вул. Робоча, 89". isPostomat
+// matters downstream: postomats are release-on-full-payment-only (Nova
+// Poshta doesn't support cash-on-delivery there) and want per-parcel
+// dimensions (OptionsSeat) rather than the flat Weight a regular warehouse
+// shipment uses.
+export function parseNpAddress(addr: string): { city: string; warehouseNum: number; isPostomat: boolean } | null {
+  const m = addr.match(/^(.+?)\s*[—–-]+\s*(Відділення|Поштомат|відділення|поштомат)\s*№\s*(\d+)/i);
   if (!m) return null;
-  return { city: m[1].trim(), warehouseNum: parseInt(m[2]) };
+  return { city: m[1].trim(), warehouseNum: parseInt(m[3]), isPostomat: /поштомат/i.test(m[2]) };
 }
 
 export interface NpTtnParams {
@@ -41,6 +45,14 @@ export interface NpTtnParams {
   weight: number;
   cost: number;
   description: string;
+  // Накладений платіж: adds BackwardDeliveryData so the recipient pays this
+  // amount in cash on pickup instead of it being collected upfront. Nova
+  // Poshta does not support this for postomat deliveries (parcel lockers
+  // only release once fully prepaid) — never set this alongside `seat`.
+  codAmount?: number;
+  // Postomat shipments need per-parcel dimensions (OptionsSeat) instead of
+  // just the flat Weight a regular warehouse-to-warehouse shipment uses.
+  seat?: { weight: number; length: number; width: number; height: number };
 }
 
 export interface NpStatus {
@@ -84,13 +96,13 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
   const contactRef = recRes.data?.[0]?.ContactPerson?.data?.[0]?.Ref;
   if (!recipientRef || !contactRef) return { error: "Не отримано ref отримувача" };
 
-  const docRes = await npCall(p.apiKey, "InternetDocument", "save", {
+  const docProps: Record<string, unknown> = {
     PayerType: "Sender",
     PaymentMethod: "Cash",
     DateTime: date,
     CargoType: "Cargo",
     VolumeGeneral: "0.001",
-    Weight: String(Math.max(0.1, p.weight)),
+    Weight: String(Math.max(0.1, p.seat?.weight ?? p.weight)),
     ServiceType: "WarehouseWarehouse",
     SeatsAmount: "1",
     Description: p.description || "Товари",
@@ -105,7 +117,26 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
     RecipientAddress: p.recipientWarehouseRef,
     ContactRecipient: contactRef,
     RecipientsPhone: p.recipientPhone.replace(/\D/g, ""),
-  });
+  };
+
+  if (p.codAmount) {
+    docProps.BackwardDeliveryData = [
+      { PayerType: "Recipient", CargoType: "Money", RedeliveryString: String(Math.max(1, Math.round(p.codAmount))) },
+    ];
+  }
+
+  if (p.seat) {
+    docProps.OptionsSeat = [
+      {
+        weight: p.seat.weight,
+        volumetricLength: p.seat.length,
+        volumetricWidth: p.seat.width,
+        volumetricHeight: p.seat.height,
+      },
+    ];
+  }
+
+  const docRes = await npCall(p.apiKey, "InternetDocument", "save", docProps);
 
   if (!docRes.success) return { error: docRes.errors?.join(", ") ?? "TTN error" };
   const ttn = docRes.data?.[0]?.IntDocNumber;

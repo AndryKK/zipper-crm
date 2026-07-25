@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { parseNpAddress } from "@/lib/nova-poshta";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
   Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
-  Mail, Send,
+  Mail, Send, Banknote, PackageSearch, SlidersHorizontal,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -85,6 +86,37 @@ export default function OrderDetailPage() {
   const [resendEmail, setResendEmail] = useState("");
   const [editingResendEmail, setEditingResendEmail] = useState(false);
   const [resendingKind, setResendingKind] = useState<"invoice" | "confirmed" | null>(null);
+
+  // Postomat shipping — Nova Poshta only releases postomat parcels once
+  // fully prepaid and wants real per-parcel dimensions (OptionsSeat), so it
+  // gets its own button + small form instead of the plain "Підтвердити
+  // оплату" flow, which is hidden entirely for postomat destinations.
+  const [showPostomatDialog, setShowPostomatDialog] = useState(false);
+  const [postomatForm, setPostomatForm] = useState({ weight: "1", length: "20", width: "15", height: "10" });
+  const [postomatSubmitting, setPostomatSubmitting] = useState(false);
+
+  // Cash-on-delivery ("накладений платіж") — resolve what would be sent to
+  // Nova Poshta first (read-only), show it for review, only then create the
+  // TTN. Not offered at all for postomat destinations (see above).
+  const [showCodDialog, setShowCodDialog] = useState(false);
+  const [codPreview, setCodPreview] = useState<Record<string, unknown> | null>(null);
+  const [codPreviewError, setCodPreviewError] = useState("");
+  const [codLoadingPreview, setCodLoadingPreview] = useState(false);
+  const [codSubmitting, setCodSubmitting] = useState(false);
+
+  // Manual control card gets scrolled into view + briefly highlighted when
+  // an automated flow (postomat/COD) fails and a manager needs the escape
+  // hatch instead of retrying the API.
+  const manualCardRef = useRef<HTMLDivElement>(null);
+  const [manualHighlight, setManualHighlight] = useState(false);
+
+  function goToManualControl() {
+    setShowPostomatDialog(false);
+    setShowCodDialog(false);
+    manualCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setManualHighlight(true);
+    setTimeout(() => setManualHighlight(false), 2200);
+  }
 
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
@@ -176,6 +208,63 @@ export default function OrderDetailPage() {
       else          toast.success("Оплату підтверджено!");
     } catch { toast.error("Помилка з'єднання"); }
     finally  { setConfirming(false); }
+  }
+
+  async function submitPostomat() {
+    const weight = parseFloat(postomatForm.weight);
+    const length = parseFloat(postomatForm.length);
+    const width  = parseFloat(postomatForm.width);
+    const height = parseFloat(postomatForm.height);
+    if (![weight, length, width, height].every((n) => Number.isFinite(n) && n > 0)) {
+      toast.error("Заповніть коректні габарити посилки"); return;
+    }
+    setPostomatSubmitting(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/ttn/postomat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weight, length, width, height }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      setConfirmLog(data.log);
+      setShowPostomatDialog(false);
+      await refreshOrder();
+      const hasError = data.log.some((l: StepLog) => l.status === "error");
+      if (hasError) toast.warning("Відправлено на поштомат з помилками");
+      else          toast.success("ТТН на поштомат створено!");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setPostomatSubmitting(false); }
+  }
+
+  async function openCodDialog() {
+    setShowCodDialog(true);
+    setCodPreview(null);
+    setCodPreviewError("");
+    setCodLoadingPreview(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/ttn/cod`);
+      const data = await res.json();
+      if (!res.ok) { setCodPreviewError(data.error ?? "Помилка"); return; }
+      setCodPreview(data);
+    } catch { setCodPreviewError("Помилка з'єднання"); }
+    finally { setCodLoadingPreview(false); }
+  }
+
+  async function confirmCod() {
+    setCodSubmitting(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/ttn/cod`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      setConfirmLog(data.log);
+      setShowCodDialog(false);
+      await refreshOrder();
+      const hasError = data.log.some((l: StepLog) => l.status === "error");
+      if (hasError) toast.warning("Відправлено накладеним платежем з помилками");
+      else          toast.success("ТТН з накладеним платежем створено!");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setCodSubmitting(false); }
   }
 
   async function resendEmailNow(kind: "invoice" | "confirmed") {
@@ -402,6 +491,8 @@ export default function OrderDetailPage() {
     (s: number, i: { price: number; quantity: number }) => s + i.price * i.quantity, 0
   ) ?? 0;
   const currentPipe = PIPELINE[Math.max(0, step)];
+  const npParsed    = order.addr_delivery ? parseNpAddress(order.addr_delivery) : null;
+  const isPostomat  = npParsed?.isPostomat ?? false;
 
   return (
     <>
@@ -527,16 +618,43 @@ export default function OrderDetailPage() {
                       </button>
                     </div>
                   )}
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                    <Button
-                      onClick={confirmPayment} disabled={confirming}
-                      style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
-                    >
-                      {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard size={16} />}
-                      Підтвердити оплату
-                    </Button>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Автоматично створить ТТН та спише зі складу</span>
-                  </div>
+                  {isPostomat ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      <Button
+                        onClick={() => setShowPostomatDialog(true)}
+                        style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                      >
+                        <PackageSearch size={16} />
+                        Відправити на поштомат
+                      </Button>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        Поштомат — видача лише після повної передоплати, накладений платіж тут неможливий
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                        <Button
+                          onClick={confirmPayment} disabled={confirming}
+                          style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                        >
+                          {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard size={16} />}
+                          Підтвердити оплату
+                        </Button>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Оплата вже надійшла (переказ) — автоматично створить ТТН</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                        <Button
+                          variant="outline" onClick={openCodDialog}
+                          style={{ gap: 8, height: 42, fontSize: 14 }}
+                        >
+                          <Banknote size={16} />
+                          Відправити накладеним платежем
+                        </Button>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Отримувач сплачує {orderTotal.toFixed(2)} грн при отриманні</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -645,6 +763,15 @@ export default function OrderDetailPage() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#059669" }}>Замовлення успішно завершено</span>
                 </div>
               )}
+
+              {step < 3 && (
+                <button
+                  onClick={goToManualControl}
+                  style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+                >
+                  <SlidersHorizontal size={12} /> Або керувати вручну (статус, ТТН) — минаючи автоматику
+                </button>
+              )}
             </CardContent>
           </Card>
         )}
@@ -705,6 +832,125 @@ export default function OrderDetailPage() {
                 <Zap size={15} /> Підтвердити і опрацювати
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── POSTOMAT SHIPPING ────────────────────────────────────────────── */}
+        <Dialog open={showPostomatDialog} onOpenChange={setShowPostomatDialog}>
+          <DialogContent style={{ maxWidth: 420 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <PackageSearch size={16} /> Відправка на поштомат
+              </DialogTitle>
+            </DialogHeader>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
+              Нова Пошта вимагає точні габарити посилки для поштоматів. Накладений платіж тут неможливий — видача лише після повної передоплати.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="space-y-1.5">
+                <Label>Вага, кг</Label>
+                <Input type="number" step="0.1" min="0.1" value={postomatForm.weight}
+                  onChange={(e) => setPostomatForm((p) => ({ ...p, weight: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Довжина, см</Label>
+                <Input type="number" step="1" min="1" value={postomatForm.length}
+                  onChange={(e) => setPostomatForm((p) => ({ ...p, length: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ширина, см</Label>
+                <Input type="number" step="1" min="1" value={postomatForm.width}
+                  onChange={(e) => setPostomatForm((p) => ({ ...p, width: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Висота, см</Label>
+                <Input type="number" step="1" min="1" value={postomatForm.height}
+                  onChange={(e) => setPostomatForm((p) => ({ ...p, height: e.target.value }))} />
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+              <button
+                onClick={goToManualControl}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+              >
+                <SlidersHorizontal size={12} /> Ввести ТТН вручну
+              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Button variant="outline" onClick={() => setShowPostomatDialog(false)}>Скасувати</Button>
+                <Button
+                  onClick={submitPostomat} disabled={postomatSubmitting}
+                  style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8 }}
+                >
+                  {postomatSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch size={15} />}
+                  Створити ТТН
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── CASH ON DELIVERY (НАКЛАДЕНИЙ ПЛАТІЖ) ───────────────────────── */}
+        <Dialog open={showCodDialog} onOpenChange={setShowCodDialog}>
+          <DialogContent style={{ maxWidth: 460 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Banknote size={16} /> Відправка накладеним платежем
+              </DialogTitle>
+            </DialogHeader>
+
+            {codLoadingPreview ? (
+              <div style={{ padding: 24, textAlign: "center" }}><Loader2 className="h-5 w-5 animate-spin" style={{ margin: "0 auto" }} /></div>
+            ) : codPreviewError ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.1)" }}>
+                  <XCircle size={16} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ fontSize: 13, color: "#dc2626" }}>{codPreviewError}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <Button variant="outline" onClick={() => setShowCodDialog(false)}>Закрити</Button>
+                  <Button onClick={goToManualControl} style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", color: "#fff", gap: 8 }}>
+                    <SlidersHorizontal size={15} /> Перейти в ручний режим
+                  </Button>
+                </div>
+              </div>
+            ) : codPreview ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+                  Ці параметри будуть надіслані в Нову Пошту для формування ТТН — перевірте перед підтвердженням.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 14px", borderRadius: 10, background: "var(--bg)", fontSize: 13 }}>
+                  <div><span style={{ color: "var(--text-muted)" }}>Отримувач:</span> <strong>{String(codPreview.recipientName)}</strong> · {String(codPreview.recipientPhone)}</div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Місто / відділення:</span> {String(codPreview.city)} — Відділення №{String(codPreview.warehouseNum)}</div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Вага:</span> {String(codPreview.weight)} кг</div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Вартість оголошена:</span> {Number(codPreview.cost).toFixed(2)} грн</div>
+                  <div style={{ paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Накладений платіж (сплатить отримувач):</span>{" "}
+                    <strong style={{ color: "#059669", fontSize: 15 }}>{Number(codPreview.codAmount).toFixed(2)} грн</strong>
+                  </div>
+                  {!!codPreview.demo && (
+                    <div style={{ fontSize: 12, color: "#d97706" }}>Увімкнено демо-режим — реального звернення до Нової Пошти не буде, ТТН буде згенеровано випадково.</div>
+                  )}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <button
+                    onClick={goToManualControl}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+                  >
+                    <SlidersHorizontal size={12} /> Ввести ТТН вручну
+                  </button>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <Button variant="outline" onClick={() => setShowCodDialog(false)}>Скасувати</Button>
+                    <Button
+                      onClick={confirmCod} disabled={codSubmitting}
+                      style={{ background: "linear-gradient(135deg,#059669,#047857)", border: "none", color: "#fff", gap: 8 }}
+                    >
+                      {codSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check size={15} />}
+                      Підтвердити і сформувати ТТН
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </DialogContent>
         </Dialog>
 
@@ -909,7 +1155,10 @@ export default function OrderDetailPage() {
           </Card>
 
           {/* Manual control */}
-          <Card>
+          <Card
+            ref={manualCardRef}
+            style={manualHighlight ? { borderColor: "#6366f1", boxShadow: "0 0 0 3px rgba(99,102,241,0.25)", transition: "box-shadow 0.3s ease" } : { transition: "box-shadow 0.3s ease" }}
+          >
             <CardHeader><CardTitle className="text-sm">Ручне управління</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">

@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { npFindCityRef, npFindWarehouseRef, npCreateTtn, parseNpAddress } from "@/lib/nova-poshta";
+import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
-
-function getSetting(settings: { value: string; text: string }[], key: string) {
-  return settings.find((s) => s.value === key)?.text?.trim() ?? "";
-}
-
-// Демо-режим (Налаштування → Nova Poshta → "np_demo_mode") — генерує
-// випадковий 14-значний номер замість звернення до реального API НП, щоб
-// можна було перевіряти решту функцій без справжньої відправки.
-function randomDemoTtn(): string {
-  let s = "";
-  for (let i = 0; i < 14; i++) s += Math.floor(Math.random() * 10);
-  return s;
-}
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -35,98 +22,21 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
   if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
 
-  const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
-  const settings = allSettings ?? [];
-
-  const orderTotal = (items as { price: number; quantity: number }[]).reduce(
-    (s, i) => s + i.price * i.quantity, 0
-  );
-
   /* ════════════════════════════════════════════════════════════════════
-     STEP 1 — формування ТТН Нова Пошта
+     STEP 1 — формування ТТН Нова Пошта (без накладеного платежу — оплата
+     вже надійшла банківським переказом). Поштомати сюди не потрапляють:
+     видача там лише після повної передоплати на самій Новій Пошті, а не
+     через цей крок — для них є окрема кнопка «Відправити на поштомат».
   ══════════════════════════════════════════════════════════════════════ */
-  const npDemoMode         = getSetting(settings, "np_demo_mode") === "1";
-  const npApiKey           = getSetting(settings, "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
-  const npSenderRef        = getSetting(settings, "np_sender_ref");
-  const npSenderContactRef = getSetting(settings, "np_sender_contact_ref");
-  const npSenderCityRef    = getSetting(settings, "np_sender_city_ref");
-  const npSenderWhRef      = getSetting(settings, "np_sender_warehouse_ref");
-  const npSenderPhone      = getSetting(settings, "np_sender_phone");
-
-  if (npDemoMode) {
-    if (order.ttn) {
-      log.push({ step: "Формування ТТН", status: "skipped", msg: `ТТН вже існує: ${order.ttn}` });
-    } else {
-      const demoTtn = randomDemoTtn();
-      await supabaseServer.from("orders").update({ ttn: demoTtn }).eq("id", orderId);
-      log.push({
-        step: "Формування ТТН", status: "ok",
-        msg: `[ДЕМО-РЕЖИМ] Згенеровано випадковий ТТН ${demoTtn} — реального звернення до Нової Пошти не було`,
-        data: { ttn: demoTtn, demo: true },
-      });
-    }
+  const ttnResult = await createOrderTtn(orderId, { skipPostomat: true });
+  if (ttnResult.ok) {
+    log.push({
+      step: "Формування ТТН", status: "ok",
+      msg: ttnResult.demo ? `[ДЕМО-РЕЖИМ] Згенеровано випадковий ТТН ${ttnResult.ttn} — реального звернення до Нової Пошти не було` : `ТТН ${ttnResult.ttn} створено`,
+      data: { ttn: ttnResult.ttn, demo: ttnResult.demo },
+    });
   } else {
-
-  const missing = [
-    !npApiKey           && "np_api_key",
-    !npSenderRef        && "np_sender_ref",
-    !npSenderContactRef && "np_sender_contact_ref",
-    !npSenderCityRef    && "np_sender_city_ref",
-    !npSenderWhRef      && "np_sender_warehouse_ref",
-    !npSenderPhone      && "np_sender_phone",
-  ].filter(Boolean);
-
-  if (missing.length) {
-    log.push({ step: "Формування ТТН", status: "skipped", msg: `Не налаштовано: ${missing.join(", ")}` });
-  } else if (!order.phone) {
-    log.push({ step: "Формування ТТН", status: "skipped", msg: "Телефон отримувача відсутній" });
-  } else if (!order.addr_delivery) {
-    log.push({ step: "Формування ТТН", status: "skipped", msg: "Адреса доставки відсутня" });
-  } else if (order.ttn) {
-    log.push({ step: "Формування ТТН", status: "skipped", msg: `ТТН вже існує: ${order.ttn}` });
-  } else {
-    try {
-      const parsed = parseNpAddress(order.addr_delivery);
-      if (!parsed) {
-        log.push({ step: "Формування ТТН", status: "warn", msg: "Не вдалося розпарсити адресу (підтримується формат «Місто — Відділення №N»)" });
-      } else {
-        const recipientCityRef = await npFindCityRef(npApiKey, parsed.city);
-        if (!recipientCityRef) {
-          log.push({ step: "Формування ТТН", status: "error", msg: `Місто не знайдено в НП: ${parsed.city}` });
-        } else {
-          const recipientWhRef = await npFindWarehouseRef(npApiKey, recipientCityRef, parsed.warehouseNum);
-          if (!recipientWhRef) {
-            log.push({ step: "Формування ТТН", status: "error", msg: `Відділення №${parsed.warehouseNum} не знайдено в ${parsed.city}` });
-          } else {
-            const result = await npCreateTtn({
-              apiKey:               npApiKey,
-              senderRef:            npSenderRef,
-              senderContactRef:     npSenderContactRef,
-              senderCityRef:        npSenderCityRef,
-              senderWarehouseRef:   npSenderWhRef,
-              senderPhone:          npSenderPhone,
-              recipientName:        order.person ?? order.login ?? "Отримувач",
-              recipientPhone:       order.phone,
-              recipientCityRef,
-              recipientWarehouseRef: recipientWhRef,
-              weight:      0.5,
-              cost:        orderTotal,
-              description: "Товари",
-            });
-
-            if ("error" in result) {
-              log.push({ step: "Формування ТТН", status: "error", msg: result.error });
-            } else {
-              await supabaseServer.from("orders").update({ ttn: result.ttn }).eq("id", orderId);
-              log.push({ step: "Формування ТТН", status: "ok", msg: `ТТН ${result.ttn} створено`, data: { ttn: result.ttn } });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      log.push({ step: "Формування ТТН", status: "error", msg: (e as Error).message });
-    }
-  }
+    log.push({ step: "Формування ТТН", status: ttnResult.kind, msg: ttnResult.error });
   }
 
   /* ════════════════════════════════════════════════════════════════════
