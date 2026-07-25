@@ -1,6 +1,6 @@
 import type { OrderDocumentData } from "@/lib/order-documents";
 
-const LOGO_URL = "https://zipper.in.ua/img/logo-zipper.png";
+const LOGO_URL = "https://zipper.in.ua/img/logo.jpg";
 const ACCENT = "#6366f1";
 
 function layout(previewText: string, bodyHtml: string): string {
@@ -17,8 +17,8 @@ function layout(previewText: string, bodyHtml: string): string {
       <td align="center">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(15,23,42,0.06);">
           <tr>
-            <td style="background:linear-gradient(135deg,${ACCENT},#8b5cf6); padding:24px 32px; text-align:center;">
-              <img src="${LOGO_URL}" alt="Zipper" height="36" style="height:36px; display:inline-block;"/>
+            <td style="background:#ffffff; padding:24px 32px; text-align:center; border-bottom:1px solid #edf1f8;">
+              <img src="${LOGO_URL}" alt="Zipper" width="190" height="76" style="display:inline-block; max-width:190px; height:auto;"/>
             </td>
           </tr>
           <tr>

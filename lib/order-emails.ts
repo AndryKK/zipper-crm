@@ -1,4 +1,5 @@
-import { getOrderDocumentData, renderInvoiceHtml, renderWaybillHtml } from "@/lib/order-documents";
+import { getOrderDocumentData } from "@/lib/order-documents";
+import { renderInvoicePdf, renderWaybillPdf } from "@/lib/order-pdf";
 import { renderPaymentRequestEmail, renderPaymentConfirmedEmail } from "@/lib/email-templates";
 import { sendEmail, isValidEmail, type EmailResult } from "@/lib/email";
 
@@ -13,11 +14,12 @@ export async function sendPaymentRequestEmail(orderId: number, overrideEmail?: s
   if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to || "—"}` };
 
   const { subject, html } = renderPaymentRequestEmail(doc);
+  const [invoicePdf, waybillPdf] = await Promise.all([renderInvoicePdf(doc), renderWaybillPdf(doc)]);
   return sendEmail({
     to, toName: doc.order.person ?? undefined, subject, html,
     attachments: [
-      { name: `rahunok-${doc.docNumber}.html`, content: Buffer.from(renderInvoiceHtml(doc), "utf-8").toString("base64") },
-      { name: `nakladna-${doc.docNumber}.html`, content: Buffer.from(renderWaybillHtml(doc), "utf-8").toString("base64") },
+      { name: `rahunok-${doc.docNumber}.pdf`, content: invoicePdf.toString("base64") },
+      { name: `nakladna-${doc.docNumber}.pdf`, content: waybillPdf.toString("base64") },
     ],
   });
 }
