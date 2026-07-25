@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
@@ -71,6 +72,12 @@ export default function OrderDetailPage() {
   const [ttnError,    setTtnError]    = useState("");
   const [checkingNp,  setCheckingNp]  = useState(false);
 
+  // Warehouse stock-confirmation popup — shown before "Опрацювати замовлення"
+  // so a warehouse worker visually confirms every item is physically in
+  // stock before the invoice/email pipeline fires.
+  const [showStockConfirm, setShowStockConfirm] = useState(false);
+  const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
+
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
   const [clientDraft, setClientDraft] = useState({ person: "", phone: "", login: "", addr_delivery: "", pay_method: "" });
@@ -117,6 +124,16 @@ export default function OrderDetailPage() {
     toast.success("Збережено!");
     setSaving(false);
     await refreshOrder();
+  }
+
+  function openStockConfirm() {
+    setStockChecks({});
+    setShowStockConfirm(true);
+  }
+
+  async function confirmStockAndProcess() {
+    setShowStockConfirm(false);
+    await autoProcess();
   }
 
   async function autoProcess() {
@@ -448,7 +465,7 @@ export default function OrderDetailPage() {
                   </p>
                   <div>
                     <Button
-                      onClick={autoProcess} disabled={processing}
+                      onClick={openStockConfirm} disabled={processing}
                       style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)", border: "none", color: "#fff", gap: 8, height: 44, fontSize: 15 }}
                     >
                       {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap size={17} />}
@@ -604,6 +621,65 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* ── WAREHOUSE STOCK-CONFIRMATION POPUP ─────────────────────────── */}
+        <Dialog open={showStockConfirm} onOpenChange={setShowStockConfirm}>
+          <DialogContent style={{ maxWidth: 480 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Package size={16} /> Перевірка наявності на складі
+              </DialogTitle>
+            </DialogHeader>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
+              Позначте кожен товар, переконавшись, що він фізично є на складі, перед формуванням рахунку та відправкою листа клієнту.
+            </p>
+            <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {order.items?.map((item: any) => (
+                <label
+                  key={item.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                    borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
+                    background: stockChecks[item.id] ? "rgba(16,185,129,0.08)" : "transparent",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!stockChecks[item.id]}
+                    onChange={(e) => setStockChecks((prev) => ({ ...prev, [item.id]: e.target.checked }))}
+                    style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
+                  />
+                  {item.productImg ? (
+                    <img src={item.productImg} alt="" style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)" }} />
+                  ) : (
+                    <div style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Package size={14} color="var(--text-muted)" />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.productTitle ?? `Товар #${item.product}`}
+                    </div>
+                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {item.productPcode ? `${item.productPcode} · ` : ""}{item.quantity} шт
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+              <Button variant="outline" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
+              <Button
+                onClick={confirmStockAndProcess}
+                disabled={!order.items?.length || !order.items.every((i: { id: number }) => stockChecks[i.id])}
+                style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)", border: "none", color: "#fff", gap: 8 }}
+              >
+                <Zap size={15} /> Підтвердити і опрацювати
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── PROCESS / CONFIRM LOG ─────────────────────────────────────── */}
         {(processLog || confirmLog) && (

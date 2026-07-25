@@ -44,6 +44,9 @@ const LABELS: Record<string, string> = {
   np_demo_mode:          "Демо-режим",
   // Viber
   viber_token:           "Bot Token",
+  // Email
+  email_sender_name:     "Ім'я відправника",
+  email_sender_email:    "Email відправника",
 };
 
 const SECTIONS: Section[] = [
@@ -61,6 +64,11 @@ const SECTIONS: Section[] = [
     description: "У демо-режимі при оплаті замовлення генерується випадковий 14-значний номер ТТН замість реального звернення до API Нової Пошти — зручно для перевірки решти функцій без справжньої відправки.",
   },
   { title: "Viber", keys: ["viber_token"] },
+  {
+    title: "Email",
+    keys: ["email_sender_name", "email_sender_email"],
+    description: "Використовується для листів клієнту (рахунок при опрацюванні замовлення, подяка після оплати) через Brevo. Email відправника має бути підтверджений у Brevo (Settings → Senders), інакше надсилання завершиться помилкою.",
+  },
 ];
 
 const ALL_KNOWN_KEYS = new Set(SECTIONS.flatMap((s) => s.keys));

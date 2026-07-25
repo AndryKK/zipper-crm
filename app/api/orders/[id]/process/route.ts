@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { getOrderDocumentData, renderInvoiceHtml, renderWaybillHtml } from "@/lib/order-documents";
+import { renderPaymentRequestEmail } from "@/lib/email-templates";
+import { sendEmail, isValidEmail } from "@/lib/email";
 // Viber sending is temporarily disabled — see STEP 3 below. Uncomment this
 // import together with the code in STEP 3 to turn it back on.
 // import { sendViberMessage } from "@/lib/viber";
@@ -81,6 +84,40 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       msg:  `Рахунок ${invoiceNumber} сформовано (${orderTotal.toFixed(2)} грн)`,
       data: { invoiceNumber, total: orderTotal },
     });
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     STEP 2.5 — лист клієнту з рахунком (файлом) та видатковою накладною
+     (файлом), з реквізитами оплати та відділенням Нової Пошти
+  ══════════════════════════════════════════════════════════════════════ */
+  if (!isValidEmail(order.login)) {
+    log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
+  } else {
+    try {
+      const doc = await getOrderDocumentData(orderId);
+      if (!doc) {
+        log.push({ step: "Email клієнту", status: "error", msg: "Не вдалося сформувати дані документів" });
+      } else {
+        const { subject, html } = renderPaymentRequestEmail(doc);
+        const result = await sendEmail({
+          to: order.login,
+          toName: order.person ?? undefined,
+          subject,
+          html,
+          attachments: [
+            { name: `rahunok-${invoiceNumber}.html`, content: Buffer.from(renderInvoiceHtml(doc), "utf-8").toString("base64") },
+            { name: `nakladna-${invoiceNumber}.html`, content: Buffer.from(renderWaybillHtml(doc), "utf-8").toString("base64") },
+          ],
+        });
+        if (result.ok) {
+          log.push({ step: "Email клієнту", status: "ok", msg: `Рахунок і накладна надіслані на ${order.login}` });
+        } else {
+          log.push({ step: "Email клієнту", status: "error", msg: result.error });
+        }
+      }
+    } catch (e) {
+      log.push({ step: "Email клієнту", status: "error", msg: (e as Error).message });
+    }
   }
 
   /* ════════════════════════════════════════════════════════════════════
