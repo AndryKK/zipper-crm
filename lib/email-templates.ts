@@ -54,7 +54,19 @@ function itemsTable(items: OrderDocumentData["items"]): string {
     </table>`;
 }
 
-export function renderPaymentRequestEmail(doc: OrderDocumentData): { subject: string; html: string } {
+function noteBlock(note?: string): string {
+  if (!note?.trim()) return "";
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; margin:0 0 20px;">
+      <tr>
+        <td style="padding:14px 18px; font-size:13px; color:#78350f; line-height:1.6; white-space:pre-wrap;">${note.trim()}</td>
+      </tr>
+    </table>`;
+}
+
+export type EmailRenderOptions = { note?: string; subject?: string };
+
+export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRenderOptions = {}): { subject: string; html: string } {
   const { order, orderTotal, docNumber, supplierLines } = doc;
   const name = order.person || order.login || "Шановний(а) клієнте";
   const branch = order.addr_delivery || "—";
@@ -64,6 +76,7 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData): { subject: st
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
       Ваше замовлення №${order.id} прийнято в обробку. Рахунок №${docNumber} та видаткова накладна додані до цього листа файлами.
     </p>
+    ${noteBlock(opts.note)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc; border-radius:10px; margin-bottom:20px;">
       <tr>
@@ -99,12 +112,12 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData): { subject: st
     </p>`;
 
   return {
-    subject: `Рахунок №${docNumber} до сплати — замовлення №${order.id} (${orderTotal.toFixed(2)} грн)`,
+    subject: opts.subject?.trim() || `Рахунок №${docNumber} до сплати — замовлення №${order.id} (${orderTotal.toFixed(2)} грн)`,
     html: layout(`Рахунок №${docNumber} на суму ${orderTotal.toFixed(2)} грн`, body),
   };
 }
 
-export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string | null): { subject: string; html: string } {
+export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string | null, opts: EmailRenderOptions = {}): { subject: string; html: string } {
   const { order } = doc;
   const name = order.person || order.login || "Шановний(а) клієнте";
 
@@ -126,13 +139,14 @@ export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string 
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
       Ми отримали оплату за замовлення №${order.id}. Товар вже готується до відправки — незабаром ви отримаєте його на відділенні Нової Пошти.
     </p>
+    ${noteBlock(opts.note)}
     ${trackBlock}
     <p style="margin:24px 0 0; font-size:14px; color:#334155; line-height:1.6;">
       Дякуємо, що обрали Zipper! 💚 Скоро ваш товар буде доставлено.
     </p>`;
 
   return {
-    subject: `Оплату отримано — замовлення №${order.id} готується до відправки`,
+    subject: opts.subject?.trim() || `Оплату отримано — замовлення №${order.id} готується до відправки`,
     html: layout(`Оплату за замовлення №${order.id} отримано`, body),
   };
 }

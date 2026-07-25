@@ -18,7 +18,7 @@ import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
   Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
-  Mail, Send, Banknote, PackageSearch, SlidersHorizontal,
+  Mail, Banknote, PackageSearch, SlidersHorizontal,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -80,12 +80,12 @@ export default function OrderDetailPage() {
   const [showStockConfirm, setShowStockConfirm] = useState(false);
   const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
 
-  // Resend email — lets a manager fix a typo'd address and resend either
-  // the payment-request or the payment-confirmed letter without re-running
-  // the whole process/confirm-payment pipeline (no TTN/status side-effects).
+  // Resend email — lets a manager fix a typo'd address before either the
+  // payment-request or payment-confirmed letter is (re)sent via the
+  // preview/edit dialog below, without re-running the whole
+  // process/confirm-payment pipeline (no TTN/status side-effects).
   const [resendEmail, setResendEmail] = useState("");
   const [editingResendEmail, setEditingResendEmail] = useState(false);
-  const [resendingKind, setResendingKind] = useState<"invoice" | "confirmed" | null>(null);
 
   // Postomat shipping — Nova Poshta only releases postomat parcels once
   // fully prepaid and wants real per-parcel dimensions (OptionsSeat), so it
@@ -111,11 +111,10 @@ export default function OrderDetailPage() {
   const [prepaymentInput, setPrepaymentInput] = useState("0");
   const [savingPrepayment, setSavingPrepayment] = useState(false);
 
-  // Manual invoice-number generation at the "Новий" step — the invoice/
-  // waybill/email pipeline already falls back to the order id when
-  // doc_field_1 isn't set, so this mainly unlocks the "Рахунок"/"Накладна"
-  // quick-view buttons without running the full autoProcess pipeline
-  // (status change, stock popup, Viber).
+  // Manual invoice-number generation — the invoice/waybill/email pipeline
+  // already falls back to the order id when doc_field_1 isn't set, so this
+  // mainly unlocks the "Рахунок"/"Накладна" quick-view buttons without
+  // running the full autoProcess pipeline (status change, stock popup).
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
   // Manual control card gets scrolled into view + briefly highlighted when
@@ -123,6 +122,23 @@ export default function OrderDetailPage() {
   // hatch instead of retrying the API.
   const manualCardRef = useRef<HTMLDivElement>(null);
   const [manualHighlight, setManualHighlight] = useState(false);
+
+  // Explicit "Ручне керування" menu — available at every step, mirrors the
+  // automatic pipeline's own steps (stock check, invoice, email) but lets a
+  // manager trigger each individually instead of running the whole thing.
+  const [showManualPanel, setShowManualPanel] = useState(false);
+  const [stockCheckResult, setStockCheckResult] = useState<{ status: "ok" | "warn"; msg: string } | null>(null);
+  const [stockChecking, setStockChecking] = useState(false);
+
+  // Email preview/edit — review the exact rendered email (and optionally
+  // add a personal note) before actually sending it.
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [emailPreviewKind, setEmailPreviewKind] = useState<"invoice" | "confirmed" | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [emailPreviewSubject, setEmailPreviewSubject] = useState("");
+  const [emailPreviewNote, setEmailPreviewNote] = useState("");
+  const [emailPreviewHtml, setEmailPreviewHtml] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
 
   function goToManualControl() {
     setShowPostomatDialog(false);
@@ -262,9 +278,72 @@ export default function OrderDetailPage() {
       });
       if (!res.ok) { toast.error("Не вдалося сформувати рахунок"); return; }
       await refreshOrder();
-      toast.success("Рахунок сформовано — тепер можна надіслати email нижче");
+      toast.success("Рахунок сформовано");
     } catch { toast.error("Помилка з'єднання"); }
     finally { setGeneratingInvoice(false); }
+  }
+
+  function openManualPanel() {
+    setShowManualPanel(true);
+    if (!stockCheckResult) runStockCheck();
+  }
+
+  async function runStockCheck() {
+    setStockChecking(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/stock-check`);
+      const data = await res.json();
+      setStockCheckResult(data);
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setStockChecking(false); }
+  }
+
+  async function openEmailPreview(kind: "invoice" | "confirmed") {
+    setEmailPreviewKind(kind);
+    setEmailPreviewNote("");
+    setEmailPreviewSubject("");
+    setEmailPreviewHtml("");
+    setShowEmailPreview(true);
+    setEmailPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/email-preview?kind=${kind}`);
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); setShowEmailPreview(false); return; }
+      setEmailPreviewSubject(data.subject);
+      setEmailPreviewHtml(data.html);
+    } catch { toast.error("Помилка з'єднання"); setShowEmailPreview(false); }
+    finally { setEmailPreviewLoading(false); }
+  }
+
+  async function refreshEmailPreview() {
+    if (!emailPreviewKind) return;
+    setEmailPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/email-preview?kind=${emailPreviewKind}&note=${encodeURIComponent(emailPreviewNote)}`);
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      setEmailPreviewHtml(data.html);
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setEmailPreviewLoading(false); }
+  }
+
+  async function sendPreviewedEmail() {
+    if (!emailPreviewKind) return;
+    const email = resendEmail.trim();
+    if (!email) { toast.error("Введіть email отримувача"); return; }
+    setEmailSending(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/resend-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: emailPreviewKind, email, subject: emailPreviewSubject, note: emailPreviewNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка надсилання"); return; }
+      toast.success("Лист надіслано!");
+      setShowEmailPreview(false);
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setEmailSending(false); }
   }
 
   async function savePrepayment() {
@@ -321,24 +400,6 @@ export default function OrderDetailPage() {
       else          toast.success("ТТН з накладеним платежем створено!");
     } catch { toast.error("Помилка з'єднання"); }
     finally { setCodSubmitting(false); }
-  }
-
-  async function resendEmailNow(kind: "invoice" | "confirmed") {
-    const email = resendEmail.trim();
-    if (!email) { toast.error("Введіть email отримувача"); return; }
-    setResendingKind(kind);
-    try {
-      const res = await fetch(`/api/orders/${params.id}/resend-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, email }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error ?? "Помилка надсилання"); return; }
-      toast.success(kind === "invoice" ? "Рахунок і накладну надіслано повторно" : "Лист-подяку надіслано повторно");
-      setEditingResendEmail(false);
-    } catch { toast.error("Помилка з'єднання"); }
-    finally { setResendingKind(null); }
   }
 
   function validateTtn(value: string): string {
@@ -646,13 +707,6 @@ export default function OrderDetailPage() {
                       Опрацювати замовлення
                     </Button>
                   </div>
-                  <button
-                    onClick={generateInvoiceManually} disabled={generatingInvoice}
-                    style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
-                  >
-                    {generatingInvoice ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText size={12} />}
-                    Або сформувати рахунок вручну (без Viber/статусу) і надіслати email нижче
-                  </button>
                 </div>
               )}
 
@@ -846,12 +900,12 @@ export default function OrderDetailPage() {
               )}
 
               {step < 3 && (
-                <button
-                  onClick={goToManualControl}
-                  style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+                <Button
+                  variant="outline" onClick={openManualPanel}
+                  style={{ marginTop: 14, gap: 8 }}
                 >
-                  <SlidersHorizontal size={12} /> Або керувати вручну (статус, ТТН) — минаючи автоматику
-                </button>
+                  <SlidersHorizontal size={14} /> Ручне керування — минаючи автоматику
+                </Button>
               )}
             </CardContent>
           </Card>
@@ -1044,6 +1098,123 @@ export default function OrderDetailPage() {
           </DialogContent>
         </Dialog>
 
+        {/* ── MANUAL CONTROL PANEL ────────────────────────────────────────── */}
+        <Dialog open={showManualPanel} onOpenChange={setShowManualPanel}>
+          <DialogContent style={{ maxWidth: 540 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <SlidersHorizontal size={16} /> Ручне керування
+              </DialogTitle>
+            </DialogHeader>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
+              Ті самі кроки, що й автоматичне опрацювання — виконайте будь-який з них окремо.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, background: stockCheckResult ? STEP_BG[stockCheckResult.status] : "var(--bg)" }}>
+                <span style={{ marginTop: 1, flexShrink: 0 }}>
+                  {stockChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : stockCheckResult ? STEP_ICON[stockCheckResult.status] : <Package size={15} color="var(--text-muted)" />}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Наявність на складі</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{stockCheckResult ? stockCheckResult.msg : "Порівнює товари замовлення із залишками на складі"}</div>
+                </div>
+                <Button variant="outline" size="sm" onClick={runStockCheck} disabled={stockChecking}>Перевірити</Button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, background: order.doc_field_1 ? STEP_BG.ok : "var(--bg)" }}>
+                <span style={{ marginTop: 1, flexShrink: 0 }}>
+                  {generatingInvoice ? <Loader2 className="h-4 w-4 animate-spin" /> : order.doc_field_1 ? STEP_ICON.ok : <FileText size={15} color="var(--text-muted)" />}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Формування рахунку</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{order.doc_field_1 ? `Рахунок №${order.doc_field_1} сформовано` : "Ще не сформовано"}</div>
+                </div>
+                <Button variant="outline" size="sm" onClick={generateInvoiceManually} disabled={generatingInvoice}>Згенерувати</Button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, background: "var(--bg)" }}>
+                <span style={{ marginTop: 1, flexShrink: 0 }}><Mail size={15} color="var(--text-muted)" /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Email клієнту</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Перегляд і редагування тексту перед відправкою</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openEmailPreview("invoice"); }}>Рахунок</Button>
+                  {step >= 1 && (
+                    <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openEmailPreview("confirmed"); }}>Лист-подяка</Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setShowManualPanel(false); goToManualControl(); }}
+              style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+            >
+              <SlidersHorizontal size={12} /> Статус і ТТН вручну →
+            </button>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── EMAIL PREVIEW / EDIT / SEND ─────────────────────────────────── */}
+        <Dialog open={showEmailPreview} onOpenChange={setShowEmailPreview}>
+          <DialogContent style={{ maxWidth: 640 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Mail size={16} /> {emailPreviewKind === "confirmed" ? "Лист-подяка" : "Рахунок клієнту"} — перегляд перед надсиланням
+              </DialogTitle>
+            </DialogHeader>
+
+            {emailPreviewLoading && !emailPreviewHtml ? (
+              <div style={{ padding: 24, textAlign: "center" }}><Loader2 className="h-5 w-5 animate-spin" style={{ margin: "0 auto" }} /></div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="space-y-1.5">
+                  <Label>Кому</Label>
+                  <Input value={resendEmail} onChange={(e) => setResendEmail(e.target.value)} placeholder="client@example.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Тема листа</Label>
+                  <Input value={emailPreviewSubject} onChange={(e) => setEmailPreviewSubject(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Персональне повідомлення (необов&apos;язково, з&apos;явиться жовтим блоком у листі)</Label>
+                  <Textarea
+                    rows={3} value={emailPreviewNote}
+                    onChange={(e) => setEmailPreviewNote(e.target.value)}
+                    placeholder="напр. Вибачте за затримку, ваше замовлення вже в дорозі..."
+                  />
+                  <button
+                    onClick={refreshEmailPreview} disabled={emailPreviewLoading}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12, padding: 0 }}
+                  >
+                    {emailPreviewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil size={12} />} Оновити перегляд листа
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Перегляд листа</Label>
+                  <iframe
+                    srcDoc={emailPreviewHtml}
+                    sandbox=""
+                    style={{ width: "100%", height: 380, border: "1px solid var(--border)", borderRadius: 8, background: "#fff" }}
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <Button variant="outline" onClick={() => setShowEmailPreview(false)}>Закрити</Button>
+                  <Button
+                    onClick={sendPreviewedEmail} disabled={emailSending}
+                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", color: "#fff", gap: 8 }}
+                  >
+                    {emailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail size={15} />}
+                    Надіслати
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
         {/* ── RESEND EMAIL ──────────────────────────────────────────────── */}
         {!isCancelled && step >= -1 && (
           <Card>
@@ -1078,22 +1249,14 @@ export default function OrderDetailPage() {
               )}
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Button
-                  variant="outline" size="sm"
-                  onClick={() => resendEmailNow("invoice")}
-                  disabled={resendingKind !== null}
-                >
-                  {resendingKind === "invoice" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={14} />}
-                  {step === -1 ? "Надіслати рахунок email" : "Надіслати рахунок повторно"}
+                <Button variant="outline" size="sm" onClick={() => openEmailPreview("invoice")}>
+                  <Mail size={14} />
+                  {step === -1 ? "Рахунок — переглянути й надіслати" : "Рахунок — переглянути й надіслати повторно"}
                 </Button>
                 {step >= 1 && (
-                  <Button
-                    variant="outline" size="sm"
-                    onClick={() => resendEmailNow("confirmed")}
-                    disabled={resendingKind !== null}
-                  >
-                    {resendingKind === "confirmed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={14} />}
-                    Надіслати лист-подяку повторно
+                  <Button variant="outline" size="sm" onClick={() => openEmailPreview("confirmed")}>
+                    <Mail size={14} />
+                    Лист-подяка — переглянути й надіслати повторно
                   </Button>
                 )}
               </div>
