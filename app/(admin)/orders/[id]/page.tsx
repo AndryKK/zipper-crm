@@ -111,6 +111,13 @@ export default function OrderDetailPage() {
   const [prepaymentInput, setPrepaymentInput] = useState("0");
   const [savingPrepayment, setSavingPrepayment] = useState(false);
 
+  // Manual invoice-number generation at the "Новий" step — the invoice/
+  // waybill/email pipeline already falls back to the order id when
+  // doc_field_1 isn't set, so this mainly unlocks the "Рахунок"/"Накладна"
+  // quick-view buttons without running the full autoProcess pipeline
+  // (status change, stock popup, Viber).
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
+
   // Manual control card gets scrolled into view + briefly highlighted when
   // an automated flow (postomat/COD) fails and a manager needs the escape
   // hatch instead of retrying the API.
@@ -243,6 +250,21 @@ export default function OrderDetailPage() {
       else          toast.success("ТТН на поштомат створено!");
     } catch { toast.error("Помилка з'єднання"); }
     finally { setPostomatSubmitting(false); }
+  }
+
+  async function generateInvoiceManually() {
+    setGeneratingInvoice(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_field_1: order.doc_field_1 || String(order.id) }),
+      });
+      if (!res.ok) { toast.error("Не вдалося сформувати рахунок"); return; }
+      await refreshOrder();
+      toast.success("Рахунок сформовано — тепер можна надіслати email нижче");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setGeneratingInvoice(false); }
   }
 
   async function savePrepayment() {
@@ -613,7 +635,7 @@ export default function OrderDetailPage() {
               {step === -1 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
-                    Натисніть «Опрацювати» — сформується рахунок та клієнту надійде повідомлення на Viber.
+                    Натисніть «Опрацювати» — сформується рахунок та клієнту надійде email з рахунком і накладною.
                   </p>
                   <div>
                     <Button
@@ -624,6 +646,13 @@ export default function OrderDetailPage() {
                       Опрацювати замовлення
                     </Button>
                   </div>
+                  <button
+                    onClick={generateInvoiceManually} disabled={generatingInvoice}
+                    style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: 0 }}
+                  >
+                    {generatingInvoice ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText size={12} />}
+                    Або сформувати рахунок вручну (без Viber/статусу) і надіслати email нижче
+                  </button>
                 </div>
               )}
 
@@ -1016,7 +1045,7 @@ export default function OrderDetailPage() {
         </Dialog>
 
         {/* ── RESEND EMAIL ──────────────────────────────────────────────── */}
-        {!isCancelled && step >= 0 && (
+        {!isCancelled && step >= -1 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1055,7 +1084,7 @@ export default function OrderDetailPage() {
                   disabled={resendingKind !== null}
                 >
                   {resendingKind === "invoice" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={14} />}
-                  Надіслати рахунок повторно
+                  {step === -1 ? "Надіслати рахунок email" : "Надіслати рахунок повторно"}
                 </Button>
                 {step >= 1 && (
                   <Button
