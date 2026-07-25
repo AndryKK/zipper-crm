@@ -86,6 +86,12 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
   );
 }
 
+function orderStatusLabel(status: string | null): string {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("отримано") || s.includes("получен")) return "Отримано";
+  return status ?? "Новий";
+}
+
 function orderStatusClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("завершен") || s.includes("завершено")) return "badge badge-green";
@@ -99,6 +105,7 @@ function orderStatusClass(status: string | null): string {
 function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
+  if (s.includes("отримано") || s.includes("получен")) return "order-row--received";
   if (!s || s.includes("нов")) return "order-row--new";
   return "";
 }
@@ -154,15 +161,15 @@ export default async function OrdersPage({
             <thead>
               <tr>
                 <th>#</th>
+                <th>Дії</th>
+                <th>Статус</th>
                 <th>Клієнт</th>
-                <th>Телефон</th>
                 <th>Адреса</th>
                 <th style={{ textAlign: "center" }}>Сайт</th>
                 <th>Товарів</th>
                 <th>Сума</th>
                 <th>Дата</th>
-                <th>Статус</th>
-                <th style={{ textAlign: "right" }}>Дії</th>
+                <th>Телефон</th>
               </tr>
             </thead>
             <tbody>
@@ -171,8 +178,17 @@ export default async function OrdersPage({
                 return (
                   <tr key={order.id} className={orderRowClass(order.status)}>
                     <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
+                    <td>
+                      <Link href={`/orders/${order.id}`}>
+                        <Button variant="outline" size="sm">Переглянути</Button>
+                      </Link>
+                    </td>
+                    <td>
+                      <span className={orderStatusClass(order.status)}>
+                        {orderStatusLabel(order.status)}
+                      </span>
+                    </td>
                     <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
-                    <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
                     <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
                     <td style={{ textAlign: "center" }}>
                       <SiteBadge type={order.type} isPremiumUser={premiumLogins.has(order.login)} />
@@ -180,16 +196,7 @@ export default async function OrdersPage({
                     <td className="text-center">{(order.items || []).length}</td>
                     <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
                     <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
-                    <td>
-                      <span className={orderStatusClass(order.status)}>
-                        {order.status ?? "Новий"}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <Link href={`/orders/${order.id}`}>
-                        <Button variant="outline" size="sm">Переглянути</Button>
-                      </Link>
-                    </td>
+                    <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
                   </tr>
                 );
               })}

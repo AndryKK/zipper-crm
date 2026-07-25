@@ -382,6 +382,14 @@ a > .crm-stat-card:hover .stat-card-value {
 .crm-table tr:last-child td { border-bottom: none; }
 .crm-table tbody tr:hover td { background: var(--bg-hover); }
 
+/* ── Row-level status fill (new / in-progress orders) ── */
+.crm-table tbody tr.order-row--new td       { background: rgba(16,185,129,0.10); }
+.crm-table tbody tr.order-row--new:hover td { background: rgba(16,185,129,0.17); }
+.crm-table tbody tr.order-row--received td       { background: rgba(16,185,129,0.10); }
+.crm-table tbody tr.order-row--received:hover td { background: rgba(16,185,129,0.17); }
+.crm-table tbody tr.order-row--progress td       { background: rgba(245,158,11,0.10); }
+.crm-table tbody tr.order-row--progress:hover td { background: rgba(245,158,11,0.17); }
+
 /* ─── Badge ─── */
 .badge {
   display: inline-flex;
@@ -535,6 +543,14 @@ a > .crm-stat-card:hover .stat-card-value {
   border-left: 2px solid #6366f1;
   padding-left: 14px;
 }
+
+/* ── Row-level status fill (new / in-progress orders) ── */
+[data-theme="light"] .crm-table tbody tr.order-row--new td       { background: #ecfdf5; }
+[data-theme="light"] .crm-table tbody tr.order-row--new:hover td { background: #d7f9e9; }
+[data-theme="light"] .crm-table tbody tr.order-row--received td       { background: #ecfdf5; }
+[data-theme="light"] .crm-table tbody tr.order-row--received:hover td { background: #d7f9e9; }
+[data-theme="light"] .crm-table tbody tr.order-row--progress td       { background: #fffbeb; }
+[data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fdf1cd; }
 
 /* ── Badges: saturated for white background ── */
 [data-theme="light"] .badge-blue   { background: #eef2ff; color: #4338ca; }
