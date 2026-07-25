@@ -116,15 +116,31 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
 
   // Fetch product titles + pcode. Products are stored per-language with each
   // language row having its own distinct id, and orders_item.product is that
-  // exact row id (often a non-"uk" row) — matching by id alone (no lang
-  // filter) is what actually finds the purchased product.
+  // exact row id (often a non-"uk" row, e.g. orders placed on the Russian
+  // site) — matching by id alone (no lang filter) is what actually finds
+  // the purchased product row. Documents/emails must always show the
+  // Ukrainian name regardless of which storefront the order came from, so
+  // once we have that row's translation_id we look up its "uk" sibling and
+  // prefer that title (falling back to whatever title the order's own
+  // product row had if no Ukrainian translation exists).
   const productIds = (items ?? []).map((i: { product: number }) => i.product);
   const { data: products } = productIds.length
-    ? await supabaseServer.from("products").select("id, title, pcode").in("id", productIds)
+    ? await supabaseServer.from("products").select("id, translation_id, title, pcode").in("id", productIds)
     : { data: [] };
 
+  const translationIds = [...new Set((products ?? []).map((p: { translation_id: number }) => p.translation_id))];
+  const { data: ukProducts } = translationIds.length
+    ? await supabaseServer.from("products").select("translation_id, title, pcode").eq("lang", "uk").in("translation_id", translationIds)
+    : { data: [] };
+  const ukByTranslation = new Map(
+    (ukProducts ?? []).map((p: { translation_id: number; title: string; pcode: string | null }) => [p.translation_id, p])
+  );
+
   const prodMap: Record<number, { title: string; pcode: string | null }> = {};
-  for (const p of products ?? []) prodMap[p.id] = p;
+  for (const p of products ?? []) {
+    const uk = ukByTranslation.get(p.translation_id);
+    prodMap[p.id] = { title: uk?.title ?? p.title, pcode: uk?.pcode ?? p.pcode };
+  }
 
   const orderTotal = (items ?? []).reduce(
     (sum: number, i: { price: number; quantity: number }) => sum + i.price * i.quantity, 0
