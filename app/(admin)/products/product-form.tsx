@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { transliterate, getImgUrl } from "@/lib/utils";
-import { Loader2, Plus, Trash2, X, Link2Off } from "lucide-react";
+import { transliterate, getImgUrl, cn } from "@/lib/utils";
+import { Loader2, Plus, Trash2, X, Link2Off, Search } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 
@@ -94,6 +94,90 @@ function makeLangEntry(v: any): LangData {
     seoKey: v.seoKey ?? "",
     seoDescr: v.seoDescr ?? "",
   };
+}
+
+// ─── Filter group: searchable multi-select ──────────────────────────────────
+// Some groups (e.g. "Колір тасьми") carry 100+ values — a flat checkbox wall
+// isn't browsable at that size, so each group gets its own search box that
+// filters its own value list, plus removable chips for what's already picked.
+
+function FilterGroupPicker({
+  title, options, selected, onToggle,
+}: {
+  title: string;
+  options: { id: number; title: string }[];
+  selected: number[];
+  onToggle: (id: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.title.toLowerCase().includes(q)) : options;
+  const selectedOptions = options.filter((o) => selected.includes(o.id));
+
+  return (
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-card)]">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg)] border-b border-[var(--border)]">
+        <span className="font-medium text-sm">{title}</span>
+        {selectedOptions.length > 0 && (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500">
+            {selectedOptions.length}
+          </span>
+        )}
+      </div>
+
+      <div className="p-3 space-y-2.5">
+        {selectedOptions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedOptions.map((o) => (
+              <span key={o.id} className="flex items-center gap-1.5 bg-[var(--bg)] border border-[var(--border)] rounded-md pl-2.5 pr-1.5 py-1 text-xs">
+                {o.title}
+                <button type="button" onClick={() => onToggle(o.id)} className="text-gray-400 hover:text-red-500">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {options.length > 6 && (
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Пошук серед ${options.length}...`}
+              className="w-full text-sm pl-8 pr-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg)] focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+        )}
+
+        <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-gray-400 py-2 text-center">Нічого не знайдено</p>
+          ) : (
+            filtered.map((o) => {
+              const checked = selected.includes(o.id);
+              return (
+                <label
+                  key={o.id}
+                  className={cn(
+                    "flex items-center gap-2 text-sm px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+                    checked ? "bg-indigo-500/10 text-indigo-500 font-medium" : "hover:bg-[var(--bg)]"
+                  )}
+                >
+                  <input
+                    type="checkbox" checked={checked} onChange={() => onToggle(o.id)}
+                    className="h-3.5 w-3.5 rounded border-gray-300 accent-indigo-500 flex-shrink-0"
+                  />
+                  <span className="flex-1 truncate">{o.title}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -1087,28 +1171,26 @@ function EditForm({
 
       {/* ── Фільтри ──────────────────────────────────────────────── */}
       {activeTab === "filters" && (
-        <div className="max-w-2xl space-y-4">
+        <div className="max-w-4xl space-y-4">
           <p className="text-xs text-gray-400">
             Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар.
           </p>
           {filters.length === 0 && (
             <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
           )}
-          {filters.map((filter: any) => (
-            <div key={filter.id} className="border rounded-md overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 font-medium text-sm">{filter.title}</div>
-              <div className="p-3 flex flex-wrap gap-2">
-                {filter.filters.map((ff: any) => (
-                  <label key={ff.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={selectedFilters.includes(ff.translationId)}
-                      onChange={(e) => setSelectedFilters((p) => e.target.checked ? [...p, ff.translationId] : p.filter((x) => x !== ff.translationId))}
-                      className="h-4 w-4 rounded border-gray-300" />
-                    {ff.title}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {filters.map((filter: any) => (
+              <FilterGroupPicker
+                key={filter.id}
+                title={filter.title}
+                options={filter.filters.map((ff: any) => ({ id: ff.translationId, title: ff.title }))}
+                selected={selectedFilters}
+                onToggle={(id) =>
+                  setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+                }
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -1787,20 +1869,26 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
       )}
 
       {activeTab === "filters" && (
-        <div className="max-w-2xl space-y-4">
-          {filters.map((filter: any) => (
-            <div key={filter.id} className="border rounded-md overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 font-medium text-sm">{filter.title}</div>
-              <div className="p-3 flex flex-wrap gap-2">
-                {filter.filters.map((ff: any) => (
-                  <label key={ff.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={selectedFilters.includes(ff.id)} onChange={(e) => setSelectedFilters((p) => e.target.checked ? [...p, ff.id] : p.filter((x) => x !== ff.id))} className="h-4 w-4 rounded border-gray-300" />
-                    {ff.title}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="max-w-4xl space-y-4">
+          <p className="text-xs text-gray-400">
+            Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар.
+          </p>
+          {filters.length === 0 && (
+            <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {filters.map((filter: any) => (
+              <FilterGroupPicker
+                key={filter.id}
+                title={filter.title}
+                options={filter.filters.map((ff: any) => ({ id: ff.id, title: ff.title }))}
+                selected={selectedFilters}
+                onToggle={(id) =>
+                  setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+                }
+              />
+            ))}
+          </div>
         </div>
       )}
 

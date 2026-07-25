@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { supabaseServer } from "@/lib/supabase";
 import { getImgUrl } from "@/lib/utils";
 import Link from "next/link";
-import { Plus, Pencil, Eye, EyeOff } from "lucide-react";
+import { Plus, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProductsSearch } from "./products-search";
 import { DeleteProductButton } from "./delete-product-button";
+import { EditProductLink } from "./edit-product-link";
 
 export const dynamic = "force-dynamic";
 
@@ -239,11 +240,7 @@ export default async function ProductsPage({
                   </td>
                   <td>
                     <div className="flex items-center justify-end gap-1">
-                      <Link href={`/products/${product.id}`}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
+                      <EditProductLink productId={product.id} />
                       <DeleteProductButton productId={product.id} />
                     </div>
                   </td>
