@@ -27,7 +27,19 @@ const ITEM_COLUMNS: Column[] = [
 ];
 
 function newDoc() {
-  const doc = new PDFDocument({ size: "A4", margin: MARGIN });
+  // font: false skips pdfkit's default Helvetica load in the constructor —
+  // it reads Helvetica.afm via a dynamically built path that Vercel's file
+  // tracer can't follow, so that file never makes it into the deployed
+  // bundle and the very first PDFDocument() call throws ENOENT. We only
+  // ever use the bundled Roboto below, so the built-in font is never needed.
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: MARGIN,
+    // @ts-expect-error -- pdfkit accepts `font: false` at runtime to skip
+    // loading the built-in Helvetica metrics; @types/pdfkit only types
+    // this option as `string`.
+    font: false,
+  });
   doc.registerFont("regular", FONT_REGULAR);
   doc.registerFont("bold", FONT_BOLD);
   doc.font("regular").fontSize(10);
