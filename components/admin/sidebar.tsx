@@ -14,6 +14,7 @@ import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useState, Fragment as F } from "react";
 import { CatalogNav, type CatalogRoot } from "./catalog-nav";
+import { BusyOverlay } from "./busy-overlay";
 
 const navGroups = [
   {
@@ -206,14 +207,7 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
         </button>
       </div>
 
-      {isNavigating && (
-        <div className="crm-busy-overlay">
-          <div className="crm-busy-card">
-            <div className="crm-busy-spinner" />
-            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Завантаження сторінки…</span>
-          </div>
-        </div>
-      )}
+      {isNavigating && <BusyOverlay label="Завантаження сторінки" />}
     </aside>
   );
 }

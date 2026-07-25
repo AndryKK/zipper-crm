@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { parseNpAddress } from "@/lib/nova-poshta";
 import { Header } from "@/components/admin/header";
+import { BusyOverlay } from "@/components/admin/busy-overlay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -667,14 +668,7 @@ export default function OrderDetailPage() {
   return (
     <>
       <Header title={`Замовлення #${order.id}`} />
-      {isBusy && (
-        <div className="crm-busy-overlay">
-          <div className="crm-busy-card">
-            <div className="crm-busy-spinner" />
-            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Зачекайте, виконується дія…</span>
-          </div>
-        </div>
-      )}
+      {isBusy && <BusyOverlay />}
       <div className="p-6 space-y-5 max-w-5xl">
 
         <button
