@@ -74,6 +74,12 @@ export default function OrderDetailPage() {
   const [ttnError,    setTtnError]    = useState("");
   const [checkingNp,  setCheckingNp]  = useState(false);
 
+  // Cancel TTN — only ever offered for TTNs the CRM itself created via the
+  // API (order.ttn_auto_created); manually-typed TTNs might belong to a
+  // shipment that already left our control, so those aren't touchable here.
+  const [showCancelTtnDialog, setShowCancelTtnDialog] = useState(false);
+  const [cancellingTtn, setCancellingTtn] = useState(false);
+
   // Warehouse stock-confirmation popup — shown before "Опрацювати замовлення"
   // so a warehouse worker visually confirms every item is physically in
   // stock before the invoice/email pipeline fires.
@@ -188,10 +194,14 @@ export default function OrderDetailPage() {
 
   async function save() {
     setSaving(true);
+    // A TTN typed here overwrites whatever it was — if that differs from
+    // what's on the order, it's a manual edit, so the "created via CRM"
+    // flag (which gates the cancel-TTN button) no longer applies.
+    const ttnChanged = ttn.trim() !== (order.ttn ?? "");
     await fetch(`/api/orders/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, notes, ttn: ttn.trim() || null }),
+      body: JSON.stringify({ status, notes, ttn: ttn.trim() || null, ...(ttnChanged ? { ttn_auto_created: false } : {}) }),
     });
     toast.success("Збережено!");
     setSaving(false);
@@ -346,6 +356,20 @@ export default function OrderDetailPage() {
     finally { setEmailSending(false); }
   }
 
+  async function cancelTtnNow() {
+    setCancellingTtn(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/ttn/cancel`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Не вдалося скасувати ТТН"); return; }
+      setTtn("");
+      setShowCancelTtnDialog(false);
+      await refreshOrder();
+      toast.success(data.demo ? "ТТН скасовано (демо-режим)" : "ТТН скасовано в Новій Пошті");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setCancellingTtn(false); }
+  }
+
   async function savePrepayment() {
     const value = parseFloat(prepaymentInput);
     if (!Number.isFinite(value) || value < 0) { toast.error("Некоректна сума передоплати"); return; }
@@ -418,7 +442,7 @@ export default function OrderDetailPage() {
     await fetch(`/api/orders/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "Відправлено", notes, ttn: digits }),
+      body: JSON.stringify({ status: "Відправлено", notes, ttn: digits, ttn_auto_created: false }),
     });
     setStatus("Відправлено");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -806,6 +830,14 @@ export default function OrderDetailPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <Package size={14} color="var(--text-muted)" />
                       <span style={{ fontSize: 13 }}>ТТН: <strong className="font-mono">{order.ttn}</strong></span>
+                      {order.ttn_auto_created && (
+                        <button
+                          onClick={() => setShowCancelTtnDialog(true)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 12, padding: 0 }}
+                        >
+                          <XCircle size={11} /> Скасувати
+                        </button>
+                      )}
                     </div>
                   ) : (
                     /* TTN відсутній — показуємо поле вводу */
@@ -1095,6 +1127,30 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             ) : null}
+          </DialogContent>
+        </Dialog>
+
+        {/* ── CANCEL TTN ───────────────────────────────────────────────────── */}
+        <Dialog open={showCancelTtnDialog} onOpenChange={setShowCancelTtnDialog}>
+          <DialogContent style={{ maxWidth: 420 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <XCircle size={16} color="#dc2626" /> Скасувати ТТН
+              </DialogTitle>
+            </DialogHeader>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
+              ТТН <strong className="font-mono">{order.ttn}</strong> буде видалено в Новій Пошті. Це можливо лише поки посилку ще не прийняли на відправлення — якщо вона вже прийнята, Нова Пошта поверне помилку і скасувати можна буде лише вручну через їхню підтримку.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button variant="outline" onClick={() => setShowCancelTtnDialog(false)}>Ні, залишити</Button>
+              <Button
+                onClick={cancelTtnNow} disabled={cancellingTtn}
+                style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)", border: "none", color: "#fff", gap: 8 }}
+              >
+                {cancellingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle size={15} />}
+                Так, скасувати ТТН
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1460,6 +1516,14 @@ export default function OrderDetailPage() {
                   placeholder="напр. 59000000000000"
                   className="font-mono"
                 />
+                {order.ttn_auto_created && order.ttn && ttn.trim() === order.ttn && (
+                  <button
+                    onClick={() => setShowCancelTtnDialog(true)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 12, padding: 0 }}
+                  >
+                    <XCircle size={12} /> Скасувати ТТН (створений у CRM)
+                  </button>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Нотатки</Label>

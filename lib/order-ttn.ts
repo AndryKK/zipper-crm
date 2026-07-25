@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase";
-import { npFindCityRef, npFindWarehouseRef, npCreateTtn, parseNpAddress } from "@/lib/nova-poshta";
+import { npFindCityRef, npFindWarehouseRef, npCreateTtn, npDeleteTtn, parseNpAddress } from "@/lib/nova-poshta";
 
 // Shared by every path that can end up creating a Nova Poshta TTN for an
 // order — the standard "Підтвердити оплату" flow, the cash-on-delivery
@@ -75,7 +75,7 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
   const npDemoMode = getSetting(settings, "np_demo_mode") === "1";
   if (npDemoMode) {
     const demoTtn = randomDemoTtn();
-    await supabaseServer.from("orders").update({ ttn: demoTtn }).eq("id", orderId);
+    await supabaseServer.from("orders").update({ ttn: demoTtn, ttn_auto_created: true }).eq("id", orderId);
     return { ok: true, ttn: demoTtn, demo: true };
   }
 
@@ -123,7 +123,7 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
 
     if ("error" in result) return { ok: false, kind: "error", error: result.error };
 
-    await supabaseServer.from("orders").update({ ttn: result.ttn }).eq("id", orderId);
+    await supabaseServer.from("orders").update({ ttn: result.ttn, ttn_auto_created: true }).eq("id", orderId);
     return { ok: true, ttn: result.ttn, demo: false };
   } catch (e) {
     return { ok: false, kind: "error", error: (e as Error).message };
@@ -191,4 +191,35 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
     codAmount,
     demo: npDemoMode,
   };
+}
+
+export type CancelTtnResult = { ok: true; demo: boolean } | { ok: false; error: string };
+
+// Only ever offered in the UI for TTNs this CRM created itself
+// (ttn_auto_created) — a manually-typed TTN might belong to a shipment
+// created outside our system (or already picked up), so we refuse to touch
+// it here even if asked; the caller is expected to gate the button on that
+// flag too, this is just the server-side backstop.
+export async function cancelOrderTtn(orderId: number): Promise<CancelTtnResult> {
+  const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
+  if (!order) return { ok: false, error: "Замовлення не знайдено" };
+  if (!order.ttn) return { ok: false, error: "ТТН відсутній" };
+  if (!order.ttn_auto_created) {
+    return { ok: false, error: "Цей ТТН введено вручну, а не створений у CRM — скасуйте його безпосередньо в кабінеті Нової Пошти" };
+  }
+
+  const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
+  const settings = allSettings ?? [];
+  const npDemoMode = getSetting(settings, "np_demo_mode") === "1";
+
+  if (!npDemoMode) {
+    const npApiKey = getSetting(settings, "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
+    if (!npApiKey) return { ok: false, error: "np_api_key не налаштовано" };
+
+    const result = await npDeleteTtn(npApiKey, order.ttn);
+    if ("error" in result) return { ok: false, error: result.error };
+  }
+
+  await supabaseServer.from("orders").update({ ttn: null, ttn_auto_created: false }).eq("id", orderId);
+  return { ok: true, demo: npDemoMode };
 }

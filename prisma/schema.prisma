@@ -537,6 +537,7 @@ model Order {
   msg          String?  @db.Text
   callme       Int?     @default(0)
   prepayment   Float    @default(0)
+  ttnAutoCreated Boolean @default(false) @map("ttn_auto_created")
 
   items        OrderItem[]
   returns      OrderReturn[]

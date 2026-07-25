@@ -145,3 +145,21 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
   if (!ttn) return { error: "Порожня відповідь TTN" };
   return { ttn };
 }
+
+// Cancels a TTN. We only ever store the human-readable IntDocNumber, but
+// InternetDocument/delete needs the document's internal Ref — so this
+// looks the Ref up by IntDocNumber first via getDocumentList, then deletes
+// it. Nova Poshta only allows this before the parcel is physically
+// scanned in at a branch; after that the call fails and cancellation has
+// to happen through their own support/cabinet instead.
+export async function npDeleteTtn(apiKey: string, intDocNumber: string): Promise<{ ok: true } | { error: string }> {
+  const listRes = await npCall(apiKey, "InternetDocument", "getDocumentList", { IntDocNumber: intDocNumber });
+  if (!listRes.success || !listRes.data?.length) {
+    return { error: `ТТН ${intDocNumber} не знайдено в Новій Пошті (можливо, вже скасовано або прийнято у відправлення)` };
+  }
+
+  const ref = listRes.data[0].Ref;
+  const delRes = await npCall(apiKey, "InternetDocument", "delete", { DocumentRefs: ref });
+  if (!delRes.success) return { error: delRes.errors?.join(", ") ?? "Не вдалося скасувати ТТН" };
+  return { ok: true };
+}
