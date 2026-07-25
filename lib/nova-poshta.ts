@@ -77,9 +77,23 @@ export async function npGetStatus(apiKey: string, ttn: string, phone?: string): 
   return { status, statusCode: d.StatusCode ?? "", isDelivered };
 }
 
+// Nova Poshta rejects DateTime values it considers "in the past" relative
+// to its own clock, which runs on Kyiv time. Deriving the date from the
+// server's local timezone (UTC on Vercel) is wrong for part of the day —
+// whenever it's already past midnight in Kyiv but not yet in UTC, that
+// gives yesterday's date and every TTN creation fails with "DateTime
+// cannot be less then now". Always compute the date in Europe/Kyiv.
+function kyivDateString(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Kyiv",
+    day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}.${get("month")}.${get("year")}`;
+}
+
 export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { error: string }> {
-  const today = new Date();
-  const date = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+  const date = kyivDateString();
 
   const parts = p.recipientName.trim().split(/\s+/);
   const recRes = await npCall(p.apiKey, "Counterparty", "save", {

@@ -123,6 +123,12 @@ export default function OrderDetailPage() {
   // running the full autoProcess pipeline (status change, stock popup).
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
+  // Standalone TTN (re)generation from the Manual Control panel — retries
+  // just the TTN step (no email/status side-effects), e.g. after a
+  // transient Nova Poshta error.
+  const [generatingTtn, setGeneratingTtn] = useState(false);
+  const [ttnGenError, setTtnGenError] = useState("");
+
   // Manual control card gets scrolled into view + briefly highlighted when
   // an automated flow (postomat/COD) fails and a manager needs the escape
   // hatch instead of retrying the API.
@@ -306,6 +312,19 @@ export default function OrderDetailPage() {
       setStockCheckResult(data);
     } catch { toast.error("Помилка з'єднання"); }
     finally { setStockChecking(false); }
+  }
+
+  async function generateTtnManually() {
+    setGeneratingTtn(true);
+    setTtnGenError("");
+    try {
+      const res = await fetch(`/api/orders/${params.id}/ttn/generate`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { setTtnGenError(data.error ?? "Помилка"); toast.error(data.error ?? "Помилка"); return; }
+      await refreshOrder();
+      toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
+    } catch { setTtnGenError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
+    finally { setGeneratingTtn(false); }
   }
 
   async function openEmailPreview(kind: "invoice" | "confirmed") {
@@ -1187,6 +1206,27 @@ export default function OrderDetailPage() {
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{order.doc_field_1 ? `Рахунок №${order.doc_field_1} сформовано` : "Ще не сформовано"}</div>
                 </div>
                 <Button variant="outline" size="sm" onClick={generateInvoiceManually} disabled={generatingInvoice}>Згенерувати</Button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, background: order.ttn ? STEP_BG.ok : ttnGenError ? STEP_BG.error : "var(--bg)" }}>
+                <span style={{ marginTop: 1, flexShrink: 0 }}>
+                  {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : order.ttn ? STEP_ICON.ok : ttnGenError ? STEP_ICON.error : <Truck size={15} color="var(--text-muted)" />}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Формування ТТН</div>
+                  <div style={{ fontSize: 12, color: ttnGenError && !order.ttn ? "#dc2626" : "var(--text-muted)" }}>
+                    {order.ttn ? `ТТН ${order.ttn}` : ttnGenError || "Ще не сформовано"}
+                  </div>
+                </div>
+                {order.ttn ? (
+                  order.ttn_auto_created && (
+                    <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); setShowCancelTtnDialog(true); }}>Скасувати</Button>
+                  )
+                ) : (
+                  <Button variant="outline" size="sm" onClick={generateTtnManually} disabled={generatingTtn}>
+                    {ttnGenError ? "Перегенерувати" : "Згенерувати"}
+                  </Button>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, background: "var(--bg)" }}>
