@@ -471,6 +471,14 @@ model User {
   phone        String? @db.Char(30)
   person       String? @db.Char(40)
 
+  // Last Nova Poshta city/warehouse the customer used at checkout (both
+  // storefronts). Saved on every order so the checkout form can
+  // auto-select it next time instead of asking again; npCityRef is the NP
+  // city Ref (needed to re-fetch that city's warehouse list on page load).
+  npCity       String? @db.VarChar(255) @map("np_city")
+  npCityRef    String? @db.VarChar(64)  @map("np_city_ref")
+  npWarehouse  String? @db.VarChar(255) @map("np_warehouse")
+
   carts        Cart[]
   favourites   ProductFavourite[]
 
