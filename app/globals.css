@@ -157,6 +157,45 @@ body {
   to   { background-position: 200% 0; }
 }
 
+/* ─── Global busy overlay — blocks all interaction while an action is in flight ─── */
+.crm-busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease both;
+}
+
+.crm-busy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 36px 44px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+  animation: scaleIn 0.2s ease both;
+}
+
+.crm-busy-spinner {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--accent), var(--accent2), var(--accent));
+  animation: crmBusySpin 0.9s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+}
+
+@keyframes crmBusySpin { to { transform: rotate(360deg); } }
+
 /* ─── Utility classes ─── */
 .animate-fade-in  { animation: fadeIn 0.35s ease both; }
 .animate-scale-in { animation: scaleIn 0.25s ease both; }

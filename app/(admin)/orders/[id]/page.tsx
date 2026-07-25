@@ -654,9 +654,27 @@ export default function OrderDetailPage() {
   const npParsed    = order.addr_delivery ? parseNpAddress(order.addr_delivery) : null;
   const isPostomat  = npParsed?.isPostomat ?? false;
 
+  // Any in-flight write/API call blocks the whole page — deliberately
+  // excludes itemSearching, which fires on every keystroke of the live
+  // product search and already has its own small inline spinner.
+  const isBusy =
+    saving || processing || confirming || checkingNp || cancellingTtn ||
+    postomatSubmitting || codLoadingPreview || codSubmitting ||
+    savingPrepayment || generatingInvoice || generatingTtn || stockChecking ||
+    emailPreviewLoading || emailSending || savingClient || submittingReturn ||
+    savingItemId !== null;
+
   return (
     <>
       <Header title={`Замовлення #${order.id}`} />
+      {isBusy && (
+        <div className="crm-busy-overlay">
+          <div className="crm-busy-card">
+            <div className="crm-busy-spinner" />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Зачекайте, виконується дія…</span>
+          </div>
+        </div>
+      )}
       <div className="p-6 space-y-5 max-w-5xl">
 
         <button
