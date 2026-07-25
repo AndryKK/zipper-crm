@@ -7,13 +7,22 @@ import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 type CatalogChild = { id: number; title: string };
 export type CatalogRoot = { id: number; title: string; children: CatalogChild[] };
 
-export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
+export function CatalogNav({ roots, onNavigate }: { roots: CatalogRoot[]; onNavigate?: (href: string) => void }) {
   const [expanded, setExpanded] = useState<number[]>([]);
 
   const toggle = (id: number) =>
     setExpanded((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+
+  // Only intercept plain left-clicks — ctrl/cmd/shift/middle-click must
+  // still open in a new tab/window like a normal link.
+  function handleNavClick(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (!onNavigate) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    onNavigate(href);
+  }
 
   const linkStyle = {
     display: "flex",
@@ -31,12 +40,14 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
   return (
     <div style={{ marginTop: 2 }}>
       <Link href="/products" style={linkStyle}
+        onClick={(e) => handleNavClick(e, "/products")}
         onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
       >
         — всі товари
       </Link>
       <Link href="/products?cat=0" style={linkStyle}
+        onClick={(e) => handleNavClick(e, "/products?cat=0")}
         onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
       >
@@ -84,6 +95,7 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
             </button>
             <Link
               href={`/products/new?cat=${root.id}`}
+              onClick={(e) => handleNavClick(e, `/products/new?cat=${root.id}`)}
               style={{
                 flexShrink: 0,
                 padding: "5px 8px",
@@ -109,6 +121,7 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
               {root.children.length === 0 ? (
                 <Link
                   href={`/products?cat=${root.id}`}
+                  onClick={(e) => handleNavClick(e, `/products?cat=${root.id}`)}
                   style={{ ...linkStyle, paddingLeft: 52 }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
@@ -120,6 +133,7 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
                   <div key={child.id} style={{ display: "flex", alignItems: "center" }}>
                     <Link
                       href={`/products?cat=${child.id}`}
+                      onClick={(e) => handleNavClick(e, `/products?cat=${child.id}`)}
                       style={{ ...linkStyle, flex: 1, paddingLeft: 52, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#c7d2fe"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(99,102,241,0.1)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(148,163,184,0.8)"; (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
@@ -128,6 +142,7 @@ export function CatalogNav({ roots }: { roots: CatalogRoot[] }) {
                     </Link>
                     <Link
                       href={`/products/new?cat=${child.id}`}
+                      onClick={(e) => handleNavClick(e, `/products/new?cat=${child.id}`)}
                       style={{
                         flexShrink: 0,
                         padding: "5px 8px",

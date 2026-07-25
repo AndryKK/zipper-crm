@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
 import {
   LayoutDashboard, Package, FolderTree, ShoppingCart, Users,
   FileText, Newspaper, Image, Settings, Filter, UserCog,
@@ -72,6 +73,8 @@ const navGroups = [
 
 export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isNavigating, startNavigation] = useTransition();
   const [collapsed, setCollapsed] = useState<string[]>(["Контент", "Система"]);
   const [catalogNavOpen, setCatalogNavOpen] = useState(false);
 
@@ -83,6 +86,26 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+
+  // Wrapping router.push in a transition gives us isNavigating for as long
+  // as the destination page takes to render — Next.js doesn't otherwise
+  // expose a "navigation in progress" signal, and without one nothing
+  // stopped a manager from clicking elsewhere while a heavier page (e.g.
+  // Товари, Замовлення) was still loading.
+  function navigate(href: string) {
+    if (href === pathname) return;
+    startNavigation(() => {
+      router.push(href);
+    });
+  }
+
+  // Only intercept plain left-clicks — ctrl/cmd/shift/middle-click must
+  // still open in a new tab/window like a normal link.
+  function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(href);
+  }
 
   return (
     <aside className="crm-sidebar">
@@ -128,7 +151,12 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
                         {hasCatalogDropdown ? (
                           <Link
                             href={href}
-                            onClick={() => setCatalogNavOpen((v) => !v)}
+                            onClick={(e) => {
+                              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                              e.preventDefault();
+                              setCatalogNavOpen((v) => !v);
+                              navigate(href);
+                            }}
                             className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
                           >
                             <Icon size={15} style={{ flexShrink: 0 }} />
@@ -146,6 +174,7 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
                         ) : (
                           <Link
                             href={href}
+                            onClick={(e) => handleLinkClick(e, href)}
                             className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
                           >
                             <Icon size={15} style={{ flexShrink: 0 }} />
@@ -153,7 +182,7 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
                           </Link>
                         )}
                         {hasCatalogDropdown && catalogNavOpen && (
-                          <CatalogNav roots={catalogRoots!} />
+                          <CatalogNav roots={catalogRoots!} onNavigate={navigate} />
                         )}
                       </F>
                     );
@@ -176,6 +205,15 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
           <span>Вийти</span>
         </button>
       </div>
+
+      {isNavigating && (
+        <div className="crm-busy-overlay">
+          <div className="crm-busy-card">
+            <div className="crm-busy-spinner" />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Завантаження сторінки…</span>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
