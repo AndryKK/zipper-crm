@@ -17,8 +17,8 @@ import * as XLSX from "xlsx";
 const BUCKET = "price-lists";
 const LANGS = ["uk", "ru"] as const;
 const SITE_URL: Record<string, string> = {
-  uk: "https://zipper-com-ua.fly.dev",
-  ru: "https://zipper-in-ua.fly.dev",
+  uk: "https://com.zipper-shop.online",
+  ru: "https://in.zipper-shop.online",
 };
 
 export type PriceListLogEntry = {
