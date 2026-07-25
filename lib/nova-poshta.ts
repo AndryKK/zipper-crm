@@ -97,7 +97,9 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
   if (!recipientRef || !contactRef) return { error: "Не отримано ref отримувача" };
 
   const docProps: Record<string, unknown> = {
-    PayerType: "Sender",
+    // Recipient pays the Nova Poshta delivery fee itself (separate from
+    // BackwardDeliveryData below, which is about who pays for the goods).
+    PayerType: "Recipient",
     PaymentMethod: "Cash",
     DateTime: date,
     CargoType: "Cargo",
