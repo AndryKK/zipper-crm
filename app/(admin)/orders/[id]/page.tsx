@@ -32,6 +32,15 @@ const PIPELINE = [
   { status: "Завершено",   label: "Завершено",     sublabel: "Клієнт отримав",       color: "#059669" },
 ];
 
+// Nova Poshta's own brand red — used for every action whose primary
+// purpose is a Nova Poshta shipment (postomat, cash-on-delivery, manual
+// city/warehouse TTN creation), so it's visually obvious which buttons
+// leave this app and talk to NP, distinct from this app's own indigo
+// accent and from the order-status pipeline colors above. "Підтвердити
+// оплату" stays blue (that button's own purpose is payment, not
+// shipping, even though it also creates a TTN as a side effect).
+const NP_RED = "linear-gradient(135deg,#e4032e,#b8021f)";
+
 const ALL_STATUSES = [
   { label: "Новий",        color: "#6b7280" },
   { label: "В роботі",    color: "#d97706" },
@@ -882,7 +891,7 @@ export default function OrderDetailPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                       <Button
                         onClick={() => setShowPostomatDialog(true)}
-                        style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                        style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                       >
                         <PackageSearch size={16} />
                         Відправити на поштомат
@@ -907,7 +916,7 @@ export default function OrderDetailPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                           <Button
                             variant="outline" onClick={openCodDialog}
-                            style={{ gap: 8, height: 42, fontSize: 14 }}
+                            style={{ gap: 8, height: 42, fontSize: 14, color: "#e4032e", borderColor: "#e4032e55" }}
                           >
                             <Banknote size={16} />
                             Відправити накладеним платежем
@@ -958,29 +967,49 @@ export default function OrderDetailPage() {
                         </button>
                       )}
                     </div>
+                  ) : isPostomat ? (
+                    /* Поштомат — лише один шлях створення ТТН, той самий,
+                       що на кроці "В роботі": автоматичне (skipPostomat)
+                       тут завжди відмовить із "скористайтесь кнопкою
+                       нижче", тож саму цю кнопку й показуємо, без нічого
+                       зайвого поруч. */
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      <Button
+                        onClick={() => setShowPostomatDialog(true)}
+                        style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                      >
+                        <PackageSearch size={16} />
+                        Відправити на поштомат
+                      </Button>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        Поштомат — видача лише після повної передоплати
+                      </span>
+                    </div>
                   ) : (
                     /* TTN відсутній — можна спробувати згенерувати автоматично ще раз, або ввести вручну */
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <Button
-                          variant="outline" onClick={generateTtnManually} disabled={generatingTtn}
-                          style={{ gap: 8 }}
-                        >
-                          {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
-                          {ttnGenError ? "Спробувати ще раз" : "Згенерувати ТТН автоматично"}
-                        </Button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <Button
+                            variant="outline" onClick={generateTtnManually} disabled={generatingTtn}
+                            style={{ gap: 8, color: "#e4032e", borderColor: "#e4032e55" }}
+                          >
+                            {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
+                            {ttnGenError ? "Спробувати ще раз" : "Згенерувати ТТН автоматично"}
+                          </Button>
+                          {ttnGenError && (
+                            <Button
+                              variant="outline" onClick={openNpManualDialog}
+                              style={{ gap: 8, color: "#e4032e", borderColor: "#e4032e55" }}
+                            >
+                              <MapPin size={15} /> Обрати вручну
+                            </Button>
+                          )}
+                        </div>
                         {ttnGenError && (
                           <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
                             <XCircle size={12} /> {ttnGenError}
                           </span>
-                        )}
-                        {ttnGenError && (
-                          <Button
-                            variant="outline" onClick={openNpManualDialog}
-                            style={{ gap: 8 }}
-                          >
-                            <MapPin size={15} /> Обрати місто/відділення вручну
-                          </Button>
                         )}
                       </div>
 
@@ -1148,7 +1177,7 @@ export default function OrderDetailPage() {
         <Dialog open={showPostomatDialog} onOpenChange={setShowPostomatDialog}>
           <DialogContent style={{ maxWidth: 420 }}>
             <DialogHeader>
-              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <PackageSearch size={16} /> Відправка на поштомат
               </DialogTitle>
             </DialogHeader>
@@ -1188,7 +1217,7 @@ export default function OrderDetailPage() {
                 <Button variant="outline" onClick={() => setShowPostomatDialog(false)}>Скасувати</Button>
                 <Button
                   onClick={submitPostomat} disabled={postomatSubmitting}
-                  style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8 }}
+                  style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
                 >
                   {postomatSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch size={15} />}
                   Створити ТТН
@@ -1206,7 +1235,7 @@ export default function OrderDetailPage() {
         <Dialog open={showNpManualDialog} onOpenChange={setShowNpManualDialog}>
           <DialogContent style={{ maxWidth: 460 }}>
             <DialogHeader>
-              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <MapPin size={16} /> Обрати місто/відділення вручну
               </DialogTitle>
             </DialogHeader>
@@ -1334,7 +1363,7 @@ export default function OrderDetailPage() {
               <Button variant="outline" onClick={() => setShowNpManualDialog(false)}>Скасувати</Button>
               <Button
                 onClick={submitNpManual} disabled={npManualSubmitting || !npCitySelected || !npWhSelected}
-                style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8 }}
+                style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
               >
                 {npManualSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
                 Створити ТТН
@@ -1347,7 +1376,7 @@ export default function OrderDetailPage() {
         <Dialog open={showCodDialog} onOpenChange={setShowCodDialog}>
           <DialogContent style={{ maxWidth: 460 }}>
             <DialogHeader>
-              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <Banknote size={16} /> Відправка накладеним платежем
               </DialogTitle>
             </DialogHeader>
@@ -1405,7 +1434,7 @@ export default function OrderDetailPage() {
                     <Button variant="outline" onClick={() => setShowCodDialog(false)}>Скасувати</Button>
                     <Button
                       onClick={confirmCod} disabled={codSubmitting}
-                      style={{ background: "linear-gradient(135deg,#059669,#047857)", border: "none", color: "#fff", gap: 8 }}
+                      style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
                     >
                       {codSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check size={15} />}
                       Підтвердити і сформувати ТТН
@@ -1490,13 +1519,27 @@ export default function OrderDetailPage() {
                   order.ttn_auto_created && (
                     <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); setShowCancelTtnDialog(true); }}>Скасувати</Button>
                   )
+                ) : isPostomat ? (
+                  /* Поштомат — лише один шлях, той самий, що на кроці
+                     "В роботі"/"Оплачено": звичайне "Згенерувати" тут
+                     завжди відмовить (skipPostomat), тому не показуємо
+                     його поруч. */
+                  <Button
+                    size="sm" onClick={() => { setShowManualPanel(false); setShowPostomatDialog(true); }}
+                    style={{ background: NP_RED, border: "none", color: "#fff", gap: 6 }}
+                  >
+                    <PackageSearch size={13} /> На поштомат
+                  </Button>
                 ) : (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                     <Button variant="outline" size="sm" onClick={generateTtnManually} disabled={generatingTtn}>
                       {ttnGenError ? "Перегенерувати" : "Згенерувати"}
                     </Button>
                     {ttnGenError && (
-                      <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openNpManualDialog(); }}>
+                      <Button
+                        variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openNpManualDialog(); }}
+                        style={{ color: "#e4032e", borderColor: "#e4032e55" }}
+                      >
                         <MapPin size={13} /> Вручну
                       </Button>
                     )}
