@@ -2,7 +2,7 @@
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: filters } = await supabaseServer
@@ -12,6 +12,13 @@ export async function GET() {
     .order("priority", { ascending: true });
 
   const allFilters = filters || [];
+
+  // Callers that only need the group list itself (e.g. the category-side
+  // "which filters apply here" picker) skip the values join entirely.
+  if (req.nextUrl.searchParams.get("groupsOnly") === "1") {
+    return NextResponse.json(allFilters);
+  }
+
   // all_filters_filters.pid references all_filters.translation_id (NOT the
   // serial id) — confirmed against the live site's catalog.php query.
   const filterTranslationIds = allFilters.map((f: any) => f.translation_id);

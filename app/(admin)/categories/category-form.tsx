@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { transliterate, getImgUrl } from "@/lib/utils";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, Filter as FilterIcon } from "lucide-react";
 interface Props {
   category?: any | null;
   parentCategories: any[];
@@ -25,6 +26,56 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
   const imgInputRef = useRef<HTMLInputElement>(null);
   const imgNewShopInputRef = useRef<HTMLInputElement>(null);
   const isNew = !category;
+
+  // Which filter groups (all_filters, e.g. "Колір тасьми") show on this
+  // category's storefront page — the reverse of the same all_filters_items
+  // link the Filters admin page edits per-group. Both the group list and
+  // this category's current selection are fetched lazily, only the first
+  // time the popup is actually opened, not on page load.
+  const [showFiltersDialog, setShowFiltersDialog] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [filterGroups, setFilterGroups] = useState<any[] | null>(null);
+  const [selectedFilterIds, setSelectedFilterIds] = useState<number[] | null>(null);
+  const [loadingFilters, setLoadingFilters] = useState(false);
+  const [savingFilters, setSavingFilters] = useState(false);
+
+  async function openFiltersDialog() {
+    setShowFiltersDialog(true);
+    if (filterGroups !== null && selectedFilterIds !== null) return;
+    setLoadingFilters(true);
+    try {
+      const [groupsRes, linksRes] = await Promise.all([
+        filterGroups ?? fetch("/api/filters?groupsOnly=1").then((r) => r.json()),
+        fetch(`/api/categories/${category.id}/filters`).then((r) => r.json()),
+      ]);
+      setFilterGroups(groupsRes ?? []);
+      setSelectedFilterIds(linksRes?.filterIds ?? []);
+    } finally {
+      setLoadingFilters(false);
+    }
+  }
+
+  function toggleFilterGroup(translationId: number, checked: boolean) {
+    setSelectedFilterIds((prev) => {
+      const current = prev ?? [];
+      return checked ? [...current, translationId] : current.filter((x) => x !== translationId);
+    });
+  }
+
+  async function saveFilters() {
+    setSavingFilters(true);
+    try {
+      await fetch(`/api/categories/${category.id}/filters`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filterIds: selectedFilterIds ?? [] }),
+      });
+      toast.success("Фільтри збережено!");
+      setShowFiltersDialog(false);
+    } finally {
+      setSavingFilters(false);
+    }
+  }
 
   const [form, setForm] = useState({
     title: category?.title ?? "",
@@ -222,6 +273,17 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
         </div>
       )}
 
+      {!isNew && (
+        <div className="border-t pt-4 space-y-2">
+          <p className="text-sm font-medium text-gray-700">Фільтри на цій категорії</p>
+          <p className="text-xs text-gray-400">Які фільтри каталогу (напр. Колір тасьми, Довжина) показувати покупцям на цій категорії.</p>
+          <Button type="button" variant="outline" size="sm" onClick={openFiltersDialog} className="gap-1.5">
+            <FilterIcon className="h-3.5 w-3.5" />
+            Налаштувати фільтри{selectedFilterIds ? ` (${selectedFilterIds.length})` : ""}
+          </Button>
+        </div>
+      )}
+
       <div className="border-t pt-4 space-y-3">
         <p className="text-sm font-medium text-gray-700">SEO</p>
         <div className="space-y-1.5">
@@ -245,6 +307,50 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
         </Button>
         <Button variant="outline" onClick={() => router.push("/categories")}>Скасувати</Button>
       </div>
+
+      {!isNew && (
+        <Dialog open={showFiltersDialog} onOpenChange={setShowFiltersDialog}>
+          <DialogContent style={{ maxWidth: 440 }}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FilterIcon className="h-4 w-4" /> Фільтри на категорії «{form.title}»
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-gray-400 -mt-1">
+              Позначені фільтри показуватимуться покупцям на сторінці цієї категорії.
+            </p>
+
+            {loadingFilters ? (
+              <div className="py-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-gray-400" /></div>
+            ) : (
+              <>
+                <div className="max-h-72 overflow-y-auto border rounded-md p-2 space-y-0.5">
+                  {(filterGroups ?? []).length === 0 && <p className="text-sm text-gray-400 px-1">Фільтрів ще не створено (розділ «Фільтри каталогу»).</p>}
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(filterGroups ?? []).map((f: any) => (
+                    <label key={f.id} className="flex items-center gap-1.5 text-sm py-1 px-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 rounded border-gray-300"
+                        checked={(selectedFilterIds ?? []).includes(f.translationId)}
+                        onChange={(e) => toggleFilterGroup(f.translationId, e.target.checked)}
+                      />
+                      {f.title}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2 mt-2">
+                  <Button variant="outline" onClick={() => setShowFiltersDialog(false)}>Скасувати</Button>
+                  <Button disabled={savingFilters} onClick={saveFilters}>
+                    {savingFilters && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                    Зберегти фільтри
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

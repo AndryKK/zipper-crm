@@ -4,8 +4,9 @@ import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, FolderTree, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 type Category = { id: number; translationId: number; pid: number; title: string; lang: string; priority?: number };
@@ -34,26 +35,52 @@ function buildCategoryTree(categories: Category[]) {
 export default function FiltersPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [filters, setFilters] = useState<any[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [expanded, setExpanded] = useState<number[]>([]);
   const [newFilter, setNewFilter] = useState("");
   const [newValues, setNewValues] = useState<Record<number, string>>({});
+
+  // Category tree is fetched once, lazily — only the first time any
+  // "На яких категоріях" popup is actually opened, not on page load.
+  const [categories, setCategories] = useState<Category[] | null>(null);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
+  // Popup state: which filter group's category assignment is open, its
+  // current selection (fetched lazily on open, one request per group —
+  // never for groups you don't click into), and save-in-flight flag.
+  const [categoriesDialogFor, setCategoriesDialogFor] = useState<{ id: number; title: string } | null>(null);
   const [groupCategoryIds, setGroupCategoryIds] = useState<Record<number, number[]>>({});
-  const [savingCategories, setSavingCategories] = useState<number | null>(null);
+  const [loadingGroupCategories, setLoadingGroupCategories] = useState(false);
+  const [savingCategories, setSavingCategories] = useState(false);
 
   useEffect(() => {
     apiFetch<any[]>("/api/filters").then((data) => { if (data) setFilters(data); });
-    apiFetch<any[]>("/api/categories").then((data) => {
-      if (data) setCategories(data.filter((c: any) => c.lang === "uk"));
-    });
   }, []);
 
   async function toggleExpand(filterId: number) {
-    const isExpanding = !expanded.includes(filterId);
     setExpanded((p) => (p.includes(filterId) ? p.filter((i) => i !== filterId) : [...p, filterId]));
-    if (isExpanding && !(filterId in groupCategoryIds)) {
-      const res = await apiFetch<{ categoryIds: number[] }>(`/api/filters/${filterId}/categories`);
-      setGroupCategoryIds((p) => ({ ...p, [filterId]: res?.categoryIds ?? [] }));
+  }
+
+  async function openCategoriesDialog(filter: { id: number; title: string }) {
+    setCategoriesDialogFor(filter);
+    setLoadingGroupCategories(true);
+    try {
+      const [categoriesRes, linksRes] = await Promise.all([
+        categories ? Promise.resolve(categories) : (async () => {
+          setLoadingCategories(true);
+          const data = await apiFetch<Category[]>("/api/categories?lang=uk");
+          setLoadingCategories(false);
+          const list = data ?? [];
+          setCategories(list);
+          return list;
+        })(),
+        groupCategoryIds[filter.id] !== undefined
+          ? Promise.resolve(groupCategoryIds[filter.id])
+          : apiFetch<{ categoryIds: number[] }>(`/api/filters/${filter.id}/categories`).then((r) => r?.categoryIds ?? []),
+      ]);
+      void categoriesRes;
+      setGroupCategoryIds((p) => ({ ...p, [filter.id]: linksRes }));
+    } finally {
+      setLoadingGroupCategories(false);
     }
   }
 
@@ -67,8 +94,10 @@ export default function FiltersPage() {
     });
   }
 
-  async function saveGroupCategories(filterId: number) {
-    setSavingCategories(filterId);
+  async function saveGroupCategories() {
+    if (!categoriesDialogFor) return;
+    const filterId = categoriesDialogFor.id;
+    setSavingCategories(true);
     try {
       await fetch(`/api/filters/${filterId}/categories`, {
         method: "PUT",
@@ -76,8 +105,9 @@ export default function FiltersPage() {
         body: JSON.stringify({ categoryIds: groupCategoryIds[filterId] ?? [] }),
       });
       toast.success("Категорії збережено!");
+      setCategoriesDialogFor(null);
     } finally {
-      setSavingCategories(null);
+      setSavingCategories(false);
     }
   }
 
@@ -112,7 +142,8 @@ export default function FiltersPage() {
     setFilters((prev) => prev.map((f) => f.id === filterId ? { ...f, filters: f.filters.filter((v: { id: number }) => v.id !== valueId) } : f));
   }
 
-  const categoryTree = buildCategoryTree(categories);
+  const categoryTree = categories ? buildCategoryTree(categories) : [];
+  const dialogCategoryIds = categoriesDialogFor ? (groupCategoryIds[categoriesDialogFor.id] ?? []) : [];
 
   return (
     <>
@@ -136,62 +167,83 @@ export default function FiltersPage() {
               </button>
               <span className="font-medium flex-1">{filter.title}</span>
               <span className="text-xs text-gray-400">{filter.filters?.length ?? 0} значень</span>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => openCategoriesDialog(filter)}
+                className="cursor-pointer h-7 text-xs gap-1.5"
+              >
+                <FolderTree className="h-3.5 w-3.5" /> Категорії
+              </Button>
               <button onClick={() => deleteFilter(filter.id)} className="text-red-400 hover:text-red-600 cursor-pointer">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
             {expanded.includes(filter.id) && (
-              <CardContent className="pt-0 space-y-4">
-                <div>
-                  <div className="pl-6 space-y-1 mb-3">
-                    {filter.filters?.map((val: { id: number; title: string }) => (
-                      <div key={val.id} className="flex items-center gap-2 py-1">
-                        <span className="text-sm flex-1">{val.title}</span>
-                        <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 pl-6">
-                    <Input
-                      value={newValues[filter.id] ?? ""}
-                      onChange={(e) => setNewValues((p) => ({ ...p, [filter.id]: e.target.value }))}
-                      placeholder="Нове значення..."
-                      className="text-sm"
-                      onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
-                    />
-                    <Button size="sm" onClick={() => addValue(filter.id)} className="cursor-pointer"><Plus className="h-3.5 w-3.5" /></Button>
-                  </div>
+              <CardContent className="pt-0">
+                <div className="pl-6 space-y-1 mb-3">
+                  {filter.filters?.map((val: { id: number; title: string }) => (
+                    <div key={val.id} className="flex items-center gap-2 py-1">
+                      <span className="text-sm flex-1">{val.title}</span>
+                      <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
                 </div>
-
-                <div className="border-t pt-3">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 pl-6">
-                    Категорії, де показувати цей фільтр
-                  </p>
-                  <div className="pl-6 max-h-64 overflow-y-auto border rounded-md p-2 space-y-0.5">
-                    {categoryTree.length === 0 && <p className="text-sm text-gray-400 px-1">Завантаження категорій...</p>}
-                    {categoryTree.map(({ cat, depth }) => (
-                      <label key={cat.translationId} className="flex items-center gap-1.5 text-sm py-0.5 cursor-pointer" style={{ paddingLeft: depth * 16 }}>
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-gray-300"
-                          checked={(groupCategoryIds[filter.id] ?? []).includes(cat.translationId)}
-                          onChange={(e) => toggleGroupCategory(filter.id, cat.translationId, e.target.checked)}
-                        />
-                        {cat.title}
-                      </label>
-                    ))}
-                  </div>
-                  <div className="pl-6 mt-2">
-                    <Button size="sm" variant="outline" disabled={savingCategories === filter.id} onClick={() => saveGroupCategories(filter.id)} className="cursor-pointer disabled:cursor-default">
-                      {savingCategories === filter.id ? "Збереження..." : "Зберегти категорії"}
-                    </Button>
-                  </div>
+                <div className="flex gap-2 pl-6">
+                  <Input
+                    value={newValues[filter.id] ?? ""}
+                    onChange={(e) => setNewValues((p) => ({ ...p, [filter.id]: e.target.value }))}
+                    placeholder="Нове значення..."
+                    className="text-sm"
+                    onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
+                  />
+                  <Button size="sm" onClick={() => addValue(filter.id)} className="cursor-pointer"><Plus className="h-3.5 w-3.5" /></Button>
                 </div>
               </CardContent>
             )}
           </Card>
         ))}
       </div>
+
+      <Dialog open={!!categoriesDialogFor} onOpenChange={(open) => !open && setCategoriesDialogFor(null)}>
+        <DialogContent style={{ maxWidth: 460 }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderTree className="h-4 w-4" /> Категорії фільтра «{categoriesDialogFor?.title}»
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-400 -mt-1">
+            На яких категоріях каталогу показувати цей фільтр покупцям.
+          </p>
+
+          {loadingGroupCategories || loadingCategories ? (
+            <div className="py-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-gray-400" /></div>
+          ) : (
+            <>
+              <div className="max-h-72 overflow-y-auto border rounded-md p-2 space-y-0.5">
+                {categoryTree.length === 0 && <p className="text-sm text-gray-400 px-1">Категорій не знайдено</p>}
+                {categoryTree.map(({ cat, depth }) => (
+                  <label key={cat.translationId} className="flex items-center gap-1.5 text-sm py-0.5 cursor-pointer" style={{ paddingLeft: depth * 16 }}>
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-gray-300"
+                      checked={dialogCategoryIds.includes(cat.translationId)}
+                      onChange={(e) => categoriesDialogFor && toggleGroupCategory(categoriesDialogFor.id, cat.translationId, e.target.checked)}
+                    />
+                    {cat.title}
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button variant="outline" onClick={() => setCategoriesDialogFor(null)}>Скасувати</Button>
+                <Button disabled={savingCategories} onClick={saveGroupCategories} className="cursor-pointer disabled:cursor-default">
+                  {savingCategories && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                  Зберегти категорії
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

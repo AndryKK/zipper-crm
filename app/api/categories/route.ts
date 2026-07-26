@@ -2,14 +2,17 @@
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { data } = await supabaseServer
+  const lang = req.nextUrl.searchParams.get("lang");
+  let query = supabaseServer
     .from("categories")
     .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
     .order("pid", { ascending: true })
     .order("priority", { ascending: true });
+  if (lang) query = query.eq("lang", lang);
+  const { data } = await query;
   return NextResponse.json(data || []);
 }
 

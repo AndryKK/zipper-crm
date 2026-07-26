@@ -391,8 +391,14 @@ function EditForm({
       ? (() => { const s = categories.find((x: any) => x.id === parseInt(cascadeSub)); return s ? categories.filter((c: any) => c.pid === s.translationId) : []; })()
       : [];
 
+  // products_categories.cid (and selectedCategories here) stores a
+  // category's translation_id — the language-invariant identifier shared
+  // across all its language rows — never the per-language row's own serial
+  // id, which only happens to coincide with translation_id for whichever
+  // language was imported first. Matching by `.id` here made every already
+  // -assigned category resolve to nothing and fall back to "#<id>".
   function getCategoryPath(catId: number): string {
-    const cat = categories.find((c: any) => c.id === catId);
+    const cat = categories.find((c: any) => c.translationId === catId);
     if (!cat) return `#${catId}`;
     if (cat.pid === 0) return cat.title;
     const parent = categories.find((c: any) => c.translationId === cat.pid);
@@ -412,10 +418,11 @@ function EditForm({
 
   function addCascadeCategory() {
     const idStr = cascadeType !== "0" ? cascadeType : cascadeSub !== "0" ? cascadeSub : cascadeMain;
-    const id = parseInt(idStr);
-    if (!id || selectedCategories.includes(id)) return;
+    const rowId = parseInt(idStr);
+    const cat = categories.find((c: any) => c.id === rowId);
+    if (!cat || selectedCategories.includes(cat.translationId)) return;
     warnCategoriesChange();
-    setSelectedCategories((prev) => [...prev, id]);
+    setSelectedCategories((prev) => [...prev, cat.translationId]);
   }
 
   // ── Add color (with copy + color name replace) ────────────────────
@@ -1681,7 +1688,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     : [];
 
   function getCategoryPath(catId: number): string {
-    const cat = categories.find((c: any) => c.id === catId);
+    const cat = categories.find((c: any) => c.translationId === catId);
     if (!cat) return `#${catId}`;
     if (cat.pid === 0) return cat.title;
     const parent = categories.find((c: any) => c.translationId === cat.pid);
@@ -1692,9 +1699,10 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
 
   function addCascadeCategory() {
     const idStr = cascadeType !== "0" ? cascadeType : cascadeSub !== "0" ? cascadeSub : cascadeMain;
-    const id = parseInt(idStr);
-    if (!id || selectedCategories.includes(id)) return;
-    setSelectedCategories((p) => [...p, id]);
+    const rowId = parseInt(idStr);
+    const cat = categories.find((c: any) => c.id === rowId);
+    if (!cat || selectedCategories.includes(cat.translationId)) return;
+    setSelectedCategories((p) => [...p, cat.translationId]);
   }
 
   const set = (k: string, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
