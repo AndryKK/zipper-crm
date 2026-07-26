@@ -9,19 +9,36 @@ import { useRouter } from "next/navigation";
 // list pages that page via a URL search param instead of client state — the
 // page itself stays a plain server component (no client-side fetch needed),
 // only the pager is interactive.
+//
+// Takes basePath + a plain params object (not a hrefForPage callback) and
+// builds each href itself: a Server Component can't hand a Client Component
+// a function prop (only JSON-serializable values cross that boundary) — an
+// arrow function passed in as hrefForPage blew up with exactly "An error
+// occurred in the Server Components render" on every navigation.
 export function UrlPagination({
   page,
   totalPages,
-  hrefForPage,
+  basePath,
+  params = {},
 }: {
   page: number;
   totalPages: number;
-  hrefForPage: (page: number) => string;
+  basePath: string;
+  params?: Record<string, string | number | undefined>;
 }) {
   const router = useRouter();
   const [jumpValue, setJumpValue] = useState("");
 
   if (totalPages <= 1) return null;
+
+  function hrefForPage(p: number): string {
+    const usp = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "") usp.set(key, String(value));
+    }
+    usp.set("page", String(p));
+    return `${basePath}?${usp.toString()}`;
+  }
 
   function jump() {
     const n = parseInt(jumpValue, 10);
@@ -71,7 +88,7 @@ export function UrlPagination({
       <Link className="btn-ghost" href={hrefForPage(1)} style={navStyle(page <= 1)} title="Перша сторінка" aria-disabled={page <= 1}>
         « Перша
       </Link>
-      <Link className="btn-ghost" href={hrefForPage(page - 1)} style={navStyle(page <= 1)} aria-disabled={page <= 1}>
+      <Link className="btn-ghost" href={hrefForPage(Math.max(1, page - 1))} style={navStyle(page <= 1)} aria-disabled={page <= 1}>
         ← Попередня
       </Link>
 
@@ -87,7 +104,7 @@ export function UrlPagination({
         )
       )}
 
-      <Link className="btn-ghost" href={hrefForPage(page + 1)} style={navStyle(page >= totalPages)} aria-disabled={page >= totalPages}>
+      <Link className="btn-ghost" href={hrefForPage(Math.min(totalPages, page + 1))} style={navStyle(page >= totalPages)} aria-disabled={page >= totalPages}>
         Наступна →
       </Link>
       <Link className="btn-ghost" href={hrefForPage(totalPages)} style={navStyle(page >= totalPages)} title="Остання сторінка" aria-disabled={page >= totalPages}>

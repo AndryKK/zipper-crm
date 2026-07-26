@@ -268,7 +268,8 @@ export default async function ProductsPage({
         <UrlPagination
           page={page}
           totalPages={totalPages}
-          hrefForPage={(p) => `/products?page=${p}${q ? `&q=${q}` : ""}${catId !== undefined ? `&cat=${catId}` : ""}`}
+          basePath="/products"
+          params={{ q: q || undefined, cat: catId }}
         />
       </div>
     </>
