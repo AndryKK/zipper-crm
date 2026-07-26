@@ -1045,9 +1045,21 @@ export default function OrderDetailPage() {
                           </Button>
                         </div>
                         {ttnGenError && (
-                          <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
-                            <XCircle size={12} /> {ttnGenError}
-                          </span>
+                          <>
+                            <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
+                              <XCircle size={12} /> {ttnGenError}
+                            </span>
+                            {/* ТТН не вдалось створити автоматично — лист-подяка з
+                                номером ТТН теж не пішов (див. confirm-payment/route.ts).
+                                Поки клієнт не отримав жодного листа, дозволяємо
+                                надіслати той самий лист без номера ТТН вручну. */}
+                            <Button
+                              variant="outline" onClick={() => openEmailPreview("confirmed")}
+                              style={{ gap: 8, alignSelf: "flex-start" }}
+                            >
+                              <Mail size={14} /> Надіслати повідомлення про оплату без ТТН
+                            </Button>
+                          </>
                         )}
                       </div>
 
