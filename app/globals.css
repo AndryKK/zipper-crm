@@ -491,6 +491,10 @@ a > .crm-stat-card:hover .stat-card-value {
 .crm-table tbody tr.order-row--received:hover td { background: rgba(16,185,129,0.34); }
 .crm-table tbody tr.order-row--progress td       { background: rgba(245,158,11,0.20); }
 .crm-table tbody tr.order-row--progress:hover td { background: rgba(245,158,11,0.34); }
+/* Оплачено — paid, awaiting shipment. Same blue as PIPELINE's own
+   "Оплачено" step color (see app/(admin)/orders/[id]/page.tsx). */
+.crm-table tbody tr.order-row--paid td       { background: rgba(37,99,235,0.20); }
+.crm-table tbody tr.order-row--paid:hover td { background: rgba(37,99,235,0.34); }
 
 /* ─── Badge ─── */
 .badge {
@@ -657,6 +661,8 @@ a > .crm-stat-card:hover .stat-card-value {
 [data-theme="light"] .crm-table tbody tr.order-row--received:hover td { background: #86efac; }
 [data-theme="light"] .crm-table tbody tr.order-row--progress td       { background: #fde68a; }
 [data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fcd34d; }
+[data-theme="light"] .crm-table tbody tr.order-row--paid td       { background: #bfdbfe; }
+[data-theme="light"] .crm-table tbody tr.order-row--paid:hover td { background: #93c5fd; }
 
 /* ── Badges: saturated for white background ── */
 [data-theme="light"] .badge-blue   { background: #eef2ff; color: #4338ca; }

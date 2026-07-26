@@ -29,11 +29,17 @@ export async function GET(req: NextRequest) {
     .order("date", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-  if (filter === "new") query = query.or("status.is.null,status.ilike.%нов%");
+  // Inside .or()'s embedded filter-list syntax, PostgREST requires "*" in
+  // place of "%" for like/ilike patterns (the raw string isn't run through
+  // the same per-value URL-encoding as a real .ilike() call, so a literal
+  // "%" there is taken literally instead of as a wildcard) — using "%" here
+  // silently matched nothing beyond the plain status.is.null half, which is
+  // why the "new" quick filter wasn't actually filtering anything out.
+  if (filter === "new") query = query.or("status.is.null,status.ilike.*нов*");
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 
-  if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
+  if (q) query = query.or(`person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*`);
 
   const { data: orderRows, count } = await query;
 

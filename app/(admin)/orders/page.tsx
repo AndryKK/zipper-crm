@@ -108,6 +108,7 @@ function orderStatusClass(status: string | null): string {
 function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
+  if (s.includes("оплач")) return "order-row--paid";
   if (s.includes("отримано") || s.includes("получен")) return "order-row--received";
   if (!s || s.includes("нов")) return "order-row--new";
   return "";
@@ -116,12 +117,14 @@ function orderRowClass(status: string | null): string {
 // Quick status-bucket filters, mirrored server-side in
 // app/api/orders/route.ts against the canonical pipeline (see PIPELINE in
 // app/(admin)/orders/[id]/page.tsx): Новий → В роботі → Оплачено →
-// Відправлено → Завершено.
+// Відправлено → Завершено. Each button's color matches the row background
+// of the orders it reveals (see .order-row--* in globals.css) — "Усі"
+// isn't tied to a status, so it keeps the site's neutral accent color.
 const QUICK_FILTERS = [
-  { id: "all", label: "Усі", hint: "Усі замовлення", icon: LayoutGrid },
-  { id: "new", label: "Нові", hint: "Нові — потребують опрацювання", icon: ClipboardList },
-  { id: "payment", label: "Оплата", hint: "Потребують оплати", icon: Banknote },
-  { id: "shipping", label: "Відправка", hint: "Потребують відправки", icon: Truck },
+  { id: "all", label: "Усі", hint: "Усі замовлення", icon: LayoutGrid, color: "#6366f1" },
+  { id: "new", label: "Нові", hint: "Нові — потребують опрацювання", icon: ClipboardList, color: "#10b981" },
+  { id: "payment", label: "Очікують оплату", hint: "В роботі — очікують оплату", icon: Banknote, color: "#f59e0b" },
+  { id: "shipping", label: "Очікують відправку", hint: "Оплачено — очікують відправку", icon: Truck, color: "#2563eb" },
 ] as const;
 
 type QuickFilterId = (typeof QUICK_FILTERS)[number]["id"];
@@ -172,42 +175,39 @@ export default function OrdersPage() {
 
   return (
     <>
-      <Header
-        title="Замовлення"
-        actions={
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {QUICK_FILTERS.map((f) => {
-              const Icon = f.icon;
-              const active = filter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  onClick={() => setFilter(f.id)}
-                  title={f.hint}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 12px",
-                    borderRadius: 999,
-                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    background: active ? "var(--accent)" : "transparent",
-                    color: active ? "#fff" : "var(--text-muted)",
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <Icon size={13} />
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-        }
-      />
+      <Header title="Замовлення" />
       <div className="p-6 space-y-4">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {QUICK_FILTERS.map((f) => {
+            const Icon = f.icon;
+            const active = filter === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                title={f.hint}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 13px",
+                  borderRadius: 999,
+                  border: `1px solid ${active ? f.color : `${f.color}55`}`,
+                  background: active ? f.color : `${f.color}18`,
+                  color: active ? "#fff" : f.color,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Icon size={13} />
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div style={{ position: "relative", maxWidth: 360 }}>
           <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input
