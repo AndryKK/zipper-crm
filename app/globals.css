@@ -482,13 +482,15 @@ a > .crm-stat-card:hover .stat-card-value {
 .crm-table tr:last-child td { border-bottom: none; }
 .crm-table tbody tr:hover td { background: var(--bg-hover); }
 
-/* ── Row-level status fill (new / in-progress orders) ── */
-.crm-table tbody tr.order-row--new td       { background: rgba(16,185,129,0.10); }
-.crm-table tbody tr.order-row--new:hover td { background: rgba(16,185,129,0.17); }
-.crm-table tbody tr.order-row--received td       { background: rgba(16,185,129,0.10); }
-.crm-table tbody tr.order-row--received:hover td { background: rgba(16,185,129,0.17); }
-.crm-table tbody tr.order-row--progress td       { background: rgba(245,158,11,0.10); }
-.crm-table tbody tr.order-row--progress:hover td { background: rgba(245,158,11,0.17); }
+/* ── Row-level status fill (new / in-progress orders) — doubled alpha
+   from the original 0.10/0.17 per direct feedback that the tint read as
+   too subtle to scan at a glance. ── */
+.crm-table tbody tr.order-row--new td       { background: rgba(16,185,129,0.20); }
+.crm-table tbody tr.order-row--new:hover td { background: rgba(16,185,129,0.34); }
+.crm-table tbody tr.order-row--received td       { background: rgba(16,185,129,0.20); }
+.crm-table tbody tr.order-row--received:hover td { background: rgba(16,185,129,0.34); }
+.crm-table tbody tr.order-row--progress td       { background: rgba(245,158,11,0.20); }
+.crm-table tbody tr.order-row--progress:hover td { background: rgba(245,158,11,0.34); }
 
 /* ─── Badge ─── */
 .badge {
@@ -644,13 +646,17 @@ a > .crm-stat-card:hover .stat-card-value {
   padding-left: 14px;
 }
 
-/* ── Row-level status fill (new / in-progress orders) ── */
-[data-theme="light"] .crm-table tbody tr.order-row--new td       { background: #ecfdf5; }
-[data-theme="light"] .crm-table tbody tr.order-row--new:hover td { background: #d7f9e9; }
-[data-theme="light"] .crm-table tbody tr.order-row--received td       { background: #ecfdf5; }
-[data-theme="light"] .crm-table tbody tr.order-row--received:hover td { background: #d7f9e9; }
-[data-theme="light"] .crm-table tbody tr.order-row--progress td       { background: #fffbeb; }
-[data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fdf1cd; }
+/* ── Row-level status fill (new / in-progress orders) — on white, the
+   original pale tints (#ecfdf5/#fffbeb, barely a step off white) read as
+   too subtle, more so than the dark theme's, so these jump further than
+   the dark theme's plain doubling — straight to a clearly-saturated
+   green/amber instead of a pastel one. ── */
+[data-theme="light"] .crm-table tbody tr.order-row--new td       { background: #bbf7d0; }
+[data-theme="light"] .crm-table tbody tr.order-row--new:hover td { background: #86efac; }
+[data-theme="light"] .crm-table tbody tr.order-row--received td       { background: #bbf7d0; }
+[data-theme="light"] .crm-table tbody tr.order-row--received:hover td { background: #86efac; }
+[data-theme="light"] .crm-table tbody tr.order-row--progress td       { background: #fde68a; }
+[data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fcd34d; }
 
 /* ── Badges: saturated for white background ── */
 [data-theme="light"] .badge-blue   { background: #eef2ff; color: #4338ca; }

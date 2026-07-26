@@ -1,11 +1,14 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { Header } from "@/components/admin/header";
-import { supabaseServer } from "@/lib/supabase";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { Crown } from "lucide-react";
+import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search } from "lucide-react";
+import { Pagination } from "@/components/admin/data-table-controls";
 
-export const dynamic = "force-dynamic";
+const PAGE_SIZE = 15;
 
 const SITE_BADGE_WIDTH = 30;
 
@@ -110,57 +113,112 @@ function orderRowClass(status: string | null): string {
   return "";
 }
 
-export default async function OrdersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ status?: string; page?: string; q?: string }>;
-}) {
-  const sp = await searchParams;
-  const statusFilter = sp.status ?? "";
-  const page = parseInt(sp.page ?? "1");
-  const q = sp.q ?? "";
-  const limit = 30;
+// Quick status-bucket filters, mirrored server-side in
+// app/api/orders/route.ts against the canonical pipeline (see PIPELINE in
+// app/(admin)/orders/[id]/page.tsx): Новий → В роботі → Оплачено →
+// Відправлено → Завершено.
+const QUICK_FILTERS = [
+  { id: "all", label: "Усі", hint: "Усі замовлення", icon: LayoutGrid },
+  { id: "new", label: "Нові", hint: "Нові — потребують опрацювання", icon: ClipboardList },
+  { id: "payment", label: "Оплата", hint: "Потребують оплати", icon: Banknote },
+  { id: "shipping", label: "Відправка", hint: "Потребують відправки", icon: Truck },
+] as const;
 
-  // Only the columns this list actually renders — orders carries a lot of
-  // heavier fields (addresses, TTN payloads, notes) that this table never
-  // shows, and this page is force-dynamic (re-fetched on every visit), so
-  // select("*") here was needlessly inflating egress on the single most-
-  // visited admin page.
-  let query = supabaseServer
-    .from("orders")
-    .select("id, status, person, login, addr_delivery, type, phone, date", { count: "exact" })
-    .order("date", { ascending: false })
-    .range((page - 1) * limit, page * limit - 1);
+type QuickFilterId = (typeof QUICK_FILTERS)[number]["id"];
 
-  if (statusFilter) query = query.eq("status", statusFilter);
-  if (q) query = query.or(`person.ilike.%${q}%,phone.ilike.%${q}%,login.ilike.%${q}%`);
+interface OrderRow {
+  id: number;
+  status: string | null;
+  person: string | null;
+  login: string | null;
+  addr_delivery: string | null;
+  type: string | null;
+  phone: string | null;
+  date: string;
+  items: { price: number; quantity: number }[];
+  isPremiumUser: boolean;
+}
 
-  const { data: orderRows, count } = await query;
-  const total = count ?? 0;
-  const totalPages = Math.ceil(total / limit);
+export default function OrdersPage() {
+  const [filter, setFilter] = useState<QuickFilterId>("all");
+  const [qInput, setQInput] = useState("");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const orderIds = (orderRows || []).map((o: any) => o.id);
-  const { data: allItems } = orderIds.length > 0
-    ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", orderIds)
-    : { data: [] };
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({ filter, page: String(page), limit: String(PAGE_SIZE) });
+    if (q) params.set("q", q);
+    const res = await fetch(`/api/orders?${params}`);
+    const data = await res.json();
+    setOrders(data.items ?? []);
+    setTotal(data.total ?? 0);
+    setLoading(false);
+  }, [filter, page, q]);
 
-  const logins = Array.from(new Set((orderRows || []).map((o: any) => o.login).filter(Boolean)));
-  const { data: loginUsers } = logins.length > 0
-    ? await supabaseServer.from("users").select("login, password").in("login", logins)
-    : { data: [] };
-  const premiumLogins = new Set(
-    (loginUsers || []).filter((u: any) => u.password === "SUPABASE_AUTH").map((u: any) => u.login)
-  );
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [filter, q]);
 
-  const allOrders = (orderRows || []).map((o: any) => ({
-    ...o,
-    items: (allItems || []).filter((i: any) => i.oid === o.id),
-  }));
+  // Debounce search input before it hits the server.
+  useEffect(() => {
+    const t = setTimeout(() => setQ(qInput), 300);
+    return () => clearTimeout(t);
+  }, [qInput]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
-      <Header title="Замовлення" />
+      <Header
+        title="Замовлення"
+        actions={
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {QUICK_FILTERS.map((f) => {
+              const Icon = f.icon;
+              const active = filter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  title={f.hint}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 12px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                    background: active ? "var(--accent)" : "transparent",
+                    color: active ? "#fff" : "var(--text-muted)",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Icon size={13} />
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        }
+      />
       <div className="p-6 space-y-4">
+        <div style={{ position: "relative", maxWidth: 360 }}>
+          <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+          <input
+            className="crm-input"
+            placeholder="Пошук за клієнтом, телефоном, логіном..."
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            style={{ paddingLeft: 36 }}
+          />
+        </div>
+
         <div className="crm-card overflow-hidden">
           <table className="crm-table">
             <thead>
@@ -178,39 +236,46 @@ export default async function OrdersPage({
               </tr>
             </thead>
             <tbody>
-              {allOrders.map((order: any) => {
-                const orderTotal = (order.items || []).reduce((s: number, i: any) => s + i.price * i.quantity, 0);
-                return (
-                  <tr key={order.id} className={orderRowClass(order.status)}>
-                    <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
-                    <td>
-                      <Link href={`/orders/${order.id}`}>
-                        <Button variant="outline" size="sm">Переглянути</Button>
-                      </Link>
-                    </td>
-                    <td>
-                      <span className={orderStatusClass(order.status)}>
-                        {orderStatusLabel(order.status)}
-                      </span>
-                    </td>
-                    <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
-                    <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <SiteBadge type={order.type} isPremiumUser={premiumLogins.has(order.login)} />
-                    </td>
-                    <td className="text-center">{(order.items || []).length}</td>
-                    <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
-                    <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
-                    <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
-                  </tr>
-                );
-              })}
-              {allOrders.length === 0 && (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
+                    Завантаження...
+                  </td>
+                </tr>
+              ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Замовлень немає
                   </td>
                 </tr>
+              ) : (
+                orders.map((order) => {
+                  const orderTotal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
+                  return (
+                    <tr key={order.id} className={orderRowClass(order.status)}>
+                      <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
+                      <td>
+                        <Link href={`/orders/${order.id}`}>
+                          <Button variant="outline" size="sm">Переглянути</Button>
+                        </Link>
+                      </td>
+                      <td>
+                        <span className={orderStatusClass(order.status)}>
+                          {orderStatusLabel(order.status)}
+                        </span>
+                      </td>
+                      <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
+                      <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <SiteBadge type={order.type} isPremiumUser={order.isPremiumUser} />
+                      </td>
+                      <td className="text-center">{(order.items || []).length}</td>
+                      <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
+                      <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
+                      <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -218,14 +283,8 @@ export default async function OrdersPage({
 
         <div className="flex items-center justify-between text-sm" style={{ color: "var(--text-muted)" }}>
           <span>Всього: {total}</span>
-          {totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              {page > 1 && <Link href={`/orders?page=${page - 1}${statusFilter ? `&status=${statusFilter}` : ""}`}><Button variant="outline" size="sm">← Попередня</Button></Link>}
-              <span>Сторінка {page} з {totalPages}</span>
-              {page < totalPages && <Link href={`/orders?page=${page + 1}${statusFilter ? `&status=${statusFilter}` : ""}`}><Button variant="outline" size="sm">Наступна →</Button></Link>}
-            </div>
-          )}
         </div>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
     </>
   );
