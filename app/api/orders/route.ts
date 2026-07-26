@@ -35,7 +35,15 @@ export async function GET(req: NextRequest) {
   // "%" there is taken literally instead of as a wildcard) — using "%" here
   // silently matched nothing beyond the plain status.is.null half, which is
   // why the "new" quick filter wasn't actually filtering anything out.
-  if (filter === "new") query = query.or("status.is.null,status.ilike.*нов*");
+  //
+  // Brand-new/unprocessed orders carry the literal English status "new"
+  // (lowercase — a legacy leftover; confirmed directly against the live
+  // table, e.g. order #1) rather than null, empty, or a Ukrainian/Russian
+  // word — the null/"нов*" checks alone matched exactly zero real rows,
+  // which is why this filter always came back empty even with the *-fix
+  // above. See isNewStatus() in app/(admin)/orders/page.tsx for the same
+  // check applied client-side to row coloring/labeling.
+  if (filter === "new") query = query.or("status.is.null,status.ilike.new,status.ilike.*нов*");
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 

@@ -89,9 +89,21 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
   );
 }
 
+// Brand-new/unprocessed orders carry the literal English status "new"
+// (lowercase — a legacy leftover, confirmed against the live orders table:
+// order #1 and presumably every never-touched order have status="new",
+// not a Ukrainian/Russian word and not null/empty), so every "is this a
+// new order" check below needs to match that exact literal on top of the
+// null/empty/"нов*" cases already handled.
+function isNewStatus(status: string | null): boolean {
+  const s = (status ?? "").toLowerCase();
+  return !s || s === "new" || s.includes("нов");
+}
+
 function orderStatusLabel(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("отримано") || s.includes("получен")) return "Отримано";
+  if (isNewStatus(status)) return "Новий";
   return status ?? "Новий";
 }
 
@@ -110,7 +122,7 @@ function orderRowClass(status: string | null): string {
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
   if (s.includes("оплач")) return "order-row--paid";
   if (s.includes("отримано") || s.includes("получен")) return "order-row--received";
-  if (!s || s.includes("нов")) return "order-row--new";
+  if (isNewStatus(status)) return "order-row--new";
   return "";
 }
 
