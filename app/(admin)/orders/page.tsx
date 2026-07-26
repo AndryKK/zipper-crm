@@ -95,14 +95,19 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
 // not a Ukrainian/Russian word and not null/empty), so every "is this a
 // new order" check below needs to match that exact literal on top of the
 // null/empty/"нов*" cases already handled.
+// "Отримано"/"Получен" looks like it should mean "customer received the
+// parcel", but verified directly against the live table: every single one
+// of the 89 orders carrying this status (across the whole history, not
+// just recent ones) has ttn=null and pay_method=null — none were ever
+// paid or shipped. The storefront actually writes this status to mean
+// "[we] received the order" (order intake), not "[customer] received the
+// package" — a literal-translation trap, not a distinct pipeline stage.
 function isNewStatus(status: string | null): boolean {
   const s = (status ?? "").toLowerCase();
-  return !s || s === "new" || s.includes("нов");
+  return !s || s === "new" || s.includes("нов") || s.includes("отримано") || s.includes("получен");
 }
 
 function orderStatusLabel(status: string | null): string {
-  const s = (status ?? "").toLowerCase();
-  if (s.includes("отримано") || s.includes("получен")) return "Отримано";
   if (isNewStatus(status)) return "Новий";
   return status ?? "Новий";
 }
@@ -111,7 +116,6 @@ function orderStatusClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("завершен") || s.includes("завершено")) return "badge badge-green";
   if (s.includes("відправлен") || s.includes("отправлен")) return "badge badge-purple";
-  if (s.includes("отримано") || s.includes("получен")) return "badge badge-blue";
   if (s.includes("в работ") || s.includes("в робот")) return "badge badge-amber";
   if (s.includes("скасован") || s.includes("отмен")) return "badge badge-red";
   return "badge badge-gray";
@@ -121,7 +125,6 @@ function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
   if (s.includes("оплач")) return "order-row--paid";
-  if (s.includes("отримано") || s.includes("получен")) return "order-row--received";
   if (isNewStatus(status)) return "order-row--new";
   return "";
 }

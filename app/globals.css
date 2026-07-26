@@ -487,8 +487,6 @@ a > .crm-stat-card:hover .stat-card-value {
    too subtle to scan at a glance. ── */
 .crm-table tbody tr.order-row--new td       { background: rgba(16,185,129,0.20); }
 .crm-table tbody tr.order-row--new:hover td { background: rgba(16,185,129,0.34); }
-.crm-table tbody tr.order-row--received td       { background: rgba(16,185,129,0.20); }
-.crm-table tbody tr.order-row--received:hover td { background: rgba(16,185,129,0.34); }
 .crm-table tbody tr.order-row--progress td       { background: rgba(245,158,11,0.20); }
 .crm-table tbody tr.order-row--progress:hover td { background: rgba(245,158,11,0.34); }
 /* Оплачено — paid, awaiting shipment. Same blue as PIPELINE's own
@@ -657,8 +655,6 @@ a > .crm-stat-card:hover .stat-card-value {
    green/amber instead of a pastel one. ── */
 [data-theme="light"] .crm-table tbody tr.order-row--new td       { background: #bbf7d0; }
 [data-theme="light"] .crm-table tbody tr.order-row--new:hover td { background: #86efac; }
-[data-theme="light"] .crm-table tbody tr.order-row--received td       { background: #bbf7d0; }
-[data-theme="light"] .crm-table tbody tr.order-row--received:hover td { background: #86efac; }
 [data-theme="light"] .crm-table tbody tr.order-row--progress td       { background: #fde68a; }
 [data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fcd34d; }
 [data-theme="light"] .crm-table tbody tr.order-row--paid td       { background: #bfdbfe; }

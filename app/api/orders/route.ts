@@ -41,9 +41,16 @@ export async function GET(req: NextRequest) {
   // table, e.g. order #1) rather than null, empty, or a Ukrainian/Russian
   // word — the null/"нов*" checks alone matched exactly zero real rows,
   // which is why this filter always came back empty even with the *-fix
-  // above. See isNewStatus() in app/(admin)/orders/page.tsx for the same
-  // check applied client-side to row coloring/labeling.
-  if (filter === "new") query = query.or("status.is.null,status.ilike.new,status.ilike.*нов*");
+  // above.
+  //
+  // The storefront's actual checkout flow writes "Получен"/"Отримано" for
+  // a freshly-placed order — a literal-translation trap ("received the
+  // order", not "customer received the parcel"): verified directly
+  // against the live table, all 89 orders with this status have both
+  // ttn=null and pay_method=null, i.e. none were ever paid or shipped.
+  // See isNewStatus() in app/(admin)/orders/page.tsx for the same check
+  // applied client-side to row coloring/labeling.
+  if (filter === "new") query = query.or("status.is.null,status.ilike.new,status.ilike.*нов*,status.ilike.*отримано*,status.ilike.*получен*");
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 
