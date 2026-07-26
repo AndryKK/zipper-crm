@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, Pencil, Trash2, Package, Eye, EyeOff } from "lucide-react";
+import { ChevronRight, Plus, Pencil, Trash2, Package, Eye, EyeOff, Percent } from "lucide-react";
 
 /* ─── Types ─── */
 interface Cat {
@@ -13,6 +13,22 @@ interface Cat {
   title: string;
   priority: number;
   visibility: number;
+  discount: number | null;
+  ndiscount: number | null;
+}
+
+/* ─── Bulk-quantity discount badge ("10% від 100 шт.") — mirrors the
+   legacy admin's "[10% от 100 шт.]" label. Both discount and ndiscount
+   have to be set: a % with no quantity threshold (or vice versa) is
+   never actually applied by the storefront's pricing logic. ─── */
+function DiscountBadge({ cat }: { cat: Cat }) {
+  if (!cat.discount || cat.discount <= 0 || !cat.ndiscount || cat.ndiscount <= 0) return null;
+  return (
+    <span className="cat-badge cat-badge--discount" title="Знижка за кількістю товару з категорії в замовленні">
+      <Percent size={10} />
+      {cat.discount}% від {cat.ndiscount} шт.
+    </span>
+  );
 }
 
 export interface CategoryTreeProps {
@@ -222,6 +238,8 @@ function SubItem({
           {count}
         </Link>
 
+        <DiscountBadge cat={cat} />
+
         {cat.visibility === 0 && (
           <span className="cat-badge cat-badge--hidden" title="Прихована">
             <EyeOff size={10} />
@@ -321,6 +339,8 @@ function RootCard({
           <Package size={11} />
           {pluralUa(count)}
         </Link>
+
+        <DiscountBadge cat={cat} />
 
         {cat.visibility === 1 && (
           <span className="cat-badge cat-badge--visible" title="Видима">

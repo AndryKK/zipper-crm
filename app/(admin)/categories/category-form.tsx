@@ -84,6 +84,7 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
     visibility: category?.visibility ?? 1,
     priority: category?.priority ?? 0,
     discount: category?.discount ?? "",
+    ndiscount: category?.ndiscount ?? "",
     descr: category?.descr ?? "",
     text: category?.text ?? "",
     seoTitle: category?.seoTitle ?? "",
@@ -134,6 +135,7 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
         visibility: parseInt(String(form.visibility)),
         priority: parseInt(String(form.priority)) || 0,
         discount: form.discount !== "" ? parseFloat(String(form.discount)) : null,
+        ndiscount: form.ndiscount !== "" ? parseInt(String(form.ndiscount)) : null,
         lang: "uk",
       };
 
@@ -178,7 +180,7 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>Батьківська категорія</Label>
           <Select value={String(form.pid)} onValueChange={(v) => set("pid", parseInt(v))}>
@@ -203,9 +205,22 @@ export function CategoryForm({ category, parentCategories, initialPid = 0 }: Pro
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
-          <Label>Знижка (%)</Label>
-          <Input type="number" value={form.discount} onChange={(e) => set("discount", e.target.value)} placeholder="0" />
+      </div>
+
+      <div className="border-t pt-4 space-y-2">
+        <p className="text-sm font-medium text-gray-700">Знижка за кількістю товару</p>
+        <p className="text-xs text-gray-400">
+          Якщо в замовленні набирається зазначена кількість товарів саме з цієї категорії — на них діє знижка. Обидва поля мають бути заповнені, інакше знижка не застосовується.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Знижка (%)</Label>
+            <Input type="number" value={form.discount} onChange={(e) => set("discount", e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Від скількох штук</Label>
+            <Input type="number" value={form.ndiscount} onChange={(e) => set("ndiscount", e.target.value)} placeholder="0" />
+          </div>
         </div>
       </div>
 

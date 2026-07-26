@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function CategoriesPage() {
   const { data: categories } = await supabaseServer
     .from("categories")
-    .select("id, translation_id, pid, title, priority, visibility")
+    .select("id, translation_id, pid, title, priority, visibility, discount, ndiscount")
     .eq("lang", "uk")
     .order("priority", { ascending: true });
 
