@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProductsSearch } from "./products-search";
 import { DeleteProductButton } from "./delete-product-button";
 import { EditProductLink } from "./edit-product-link";
+import { UrlPagination } from "@/components/admin/url-pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -264,21 +265,11 @@ export default async function ProductsPage({
           </table>
         </div>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2">
-            {page > 1 && (
-              <Link href={`/products?page=${page - 1}${q ? `&q=${q}` : ""}${catId !== undefined ? `&cat=${catId}` : ""}`}>
-                <Button variant="outline" size="sm">← Попередня</Button>
-              </Link>
-            )}
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>Сторінка {page} з {totalPages}</span>
-            {page < totalPages && (
-              <Link href={`/products?page=${page + 1}${q ? `&q=${q}` : ""}${catId !== undefined ? `&cat=${catId}` : ""}`}>
-                <Button variant="outline" size="sm">Наступна →</Button>
-              </Link>
-            )}
-          </div>
-        )}
+        <UrlPagination
+          page={page}
+          totalPages={totalPages}
+          hrefForPage={(p) => `/products?page=${p}${q ? `&q=${q}` : ""}${catId !== undefined ? `&cat=${catId}` : ""}`}
+        />
       </div>
     </>
   );

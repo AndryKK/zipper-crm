@@ -29,9 +29,26 @@ export default function UserCategoriesPage() {
     setSaving(false);
   }
 
+  // Was firing "Збережено!" unconditionally, without ever checking whether
+  // the PUT actually succeeded — a save that silently failed (expired
+  // session, network hiccup) still told the admin it worked, and the input
+  // (uncontrolled, defaultValue-based) kept showing the typed value even
+  // though the DB never got it — reading as "editing doesn't work" once the
+  // page was reloaded and the old value reappeared.
   async function update(id: number, field: string, value: string | number) {
-    await fetch(`/api/user-categories/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
-    toast.success("Збережено!");
+    try {
+      const res = await fetch(`/api/user-categories/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? "Не вдалося зберегти");
+        return;
+      }
+      const updated = await res.json();
+      setCats((p) => p.map((c) => (c.id === id ? { ...c, ...updated } : c)));
+      toast.success("Збережено!");
+    } catch {
+      toast.error("Помилка з'єднання");
+    }
   }
 
   async function remove(id: number) {
@@ -79,13 +96,34 @@ export default function UserCategoriesPage() {
               {cats.map((c) => (
                 <tr key={c.id} className="border-t hover:bg-gray-50">
                   <td className="px-4 py-2">
-                    <input defaultValue={c.title} onBlur={(e) => update(c.id, "title", e.target.value)} className="border-0 bg-transparent w-full focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1" />
+                    {/* key includes the last known-saved value so a successful
+                        save (setCats above) remounts the uncontrolled input
+                        with the server-confirmed value instead of silently
+                        keeping whatever was last typed. */}
+                    <input
+                      key={`title-${c.id}-${c.title}`}
+                      defaultValue={c.title}
+                      onBlur={(e) => update(c.id, "title", e.target.value)}
+                      className="border border-gray-200 bg-white w-full focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 rounded px-2 py-1"
+                    />
                   </td>
                   <td className="px-4 py-2">
-                    <input type="number" defaultValue={c.discount} onBlur={(e) => update(c.id, "discount", parseFloat(e.target.value))} className="border-0 bg-transparent w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1" />
+                    <input
+                      key={`discount-${c.id}-${c.discount}`}
+                      type="number"
+                      defaultValue={c.discount}
+                      onBlur={(e) => update(c.id, "discount", parseFloat(e.target.value))}
+                      className="border border-gray-200 bg-white w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 rounded px-2 py-1"
+                    />
                   </td>
                   <td className="px-4 py-2">
-                    <input type="number" defaultValue={c.discount_total} onBlur={(e) => update(c.id, "discount_total", parseFloat(e.target.value))} className="border-0 bg-transparent w-32 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-1" />
+                    <input
+                      key={`discount_total-${c.id}-${c.discount_total}`}
+                      type="number"
+                      defaultValue={c.discount_total}
+                      onBlur={(e) => update(c.id, "discount_total", parseFloat(e.target.value))}
+                      className="border border-gray-200 bg-white w-32 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 rounded px-2 py-1"
+                    />
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button onClick={() => remove(c.id)} className="text-red-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>

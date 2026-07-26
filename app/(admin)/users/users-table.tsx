@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Search, Zap, Crown } from "lucide-react";
+import { Pagination } from "@/components/admin/data-table-controls";
+
+const PAGE_SIZE = 40;
 
 type User = {
   id: number;
@@ -56,13 +59,9 @@ function UserRow({ u, cnt }: { u: User; cnt: number }) {
         {u.addr_delivery ?? "—"}
       </td>
       <td style={{ textAlign: "right" }}>
-        {cnt > 0 ? (
-          <span className="badge badge-blue">{cnt}</span>
-        ) : (
-          <span style={{ color: "var(--text-muted)" }}>0</span>
-        )}
+        <span className={cnt > 0 ? "badge badge-blue" : "badge badge-gray"}>{cnt}</span>
       </td>
-      <td>
+      <td style={{ whiteSpace: "nowrap" }}>
         {u.rank ? (
           <span className="badge badge-purple">Ранг {u.rank}</span>
         ) : (
@@ -80,9 +79,11 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
 
   const activeTab: Tab = searchParams.get("tab") === "premium" ? "premium" : "classic";
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   function switchTab(tab: Tab) {
     setQuery("");
+    setPage(1);
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
     router.push(`${pathname}?${params.toString()}`);
@@ -103,6 +104,9 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
           u.addr_delivery?.toLowerCase().includes(q)
       )
     : pool;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSlice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const cfg = TAB_CONFIG[activeTab];
 
@@ -178,7 +182,7 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             placeholder={`Пошук у ${cfg.label}...`}
             style={{
               width: "100%",
@@ -217,16 +221,19 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
                 <th>Ім&apos;я</th>
                 <th>Телефон</th>
                 <th>Адреса</th>
-                <th style={{ textAlign: "right" }}>Замовлень</th>
-                <th>Ранг</th>
+                <th style={{ textAlign: "right", width: 100 }}>Замовлень</th>
+                <th style={{ width: 160 }}>Ранг</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {pageSlice.map((u) => (
                 <UserRow key={u.id} u={u} cnt={orderCountMap[u.login] ?? 0} />
               ))}
             </tbody>
           </table>
+          <div style={{ padding: "4px 16px 16px" }}>
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          </div>
         </div>
       )}
     </div>
