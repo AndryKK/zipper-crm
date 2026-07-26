@@ -207,7 +207,7 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
         </button>
       </div>
 
-      {isNavigating && <BusyOverlay label="Завантаження сторінки" />}
+      {isNavigating && <BusyOverlay />}
     </aside>
   );
 }

@@ -27,7 +27,7 @@ export function EditProductLink({ productId }: { productId: number }) {
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </Link>
-      {isPending && <BusyOverlay label="Відкриваємо товар" />}
+      {isPending && <BusyOverlay />}
     </>
   );
 }
