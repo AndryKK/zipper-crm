@@ -1722,7 +1722,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
           price2n: form.price2n !== "" ? parseInt(String(form.price2n)) : 0,
           price3: form.price3 !== "" ? parseFloat(String(form.price3)) : 0,
           price3n: form.price3n !== "" ? parseInt(String(form.price3n)) : 0,
-          measure: form.measure !== "0" ? String(parseInt(form.measure)) : "",
+          measure: form.measure !== "0" ? parseInt(form.measure) : null,
           minquantity: parseInt(String(form.minquantity)) || 0,
           priority: parseInt(String(form.priority)) || 0,
           active: parseInt(String(form.active)),
