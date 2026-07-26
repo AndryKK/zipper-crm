@@ -887,61 +887,55 @@ export default function OrderDetailPage() {
                       </button>
                     </div>
                   )}
-                  {isPostomat ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  {/* Postomat orders confirm payment here too — /api/orders/[id]/confirm-payment
+                      already skips TTN creation for a postomat address (via skipPostomat)
+                      but still sends the thank-you email and advances status to "Оплачено"
+                      unconditionally, so this is the same button/action either way. The
+                      postomat-specific TTN (with parcel dimensions) is a distinct action,
+                      offered only once payment is confirmed — see Step 1 below. Cash-on-
+                      delivery isn't offered for postomat destinations (NP doesn't support it
+                      there — release is prepayment-only). */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <Button
-                        onClick={() => setShowPostomatDialog(true)}
-                        style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                        onClick={confirmPayment} disabled={confirming}
+                        style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                       >
-                        <PackageSearch size={16} />
-                        Відправити на поштомат
+                        {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard size={16} />}
+                        Підтвердити оплату
                       </Button>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        Поштомат — видача лише після повної передоплати, накладений платіж тут неможливий
-                      </span>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      {!isPostomat && (
                         <Button
-                          onClick={confirmPayment} disabled={confirming}
-                          style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                          variant="outline" onClick={openCodDialog}
+                          style={{ gap: 8, height: 42, fontSize: 14, color: "#e4032e", borderColor: "#e4032e55" }}
                         >
-                          {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard size={16} />}
-                          Підтвердити оплату
+                          <Banknote size={16} />
+                          Відправити накладеним платежем
                         </Button>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Оплата вже надійшла (переказ) — автоматично створить ТТН</span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                          <Button
-                            variant="outline" onClick={openCodDialog}
-                            style={{ gap: 8, height: 42, fontSize: 14, color: "#e4032e", borderColor: "#e4032e55" }}
-                          >
-                            <Banknote size={16} />
-                            Відправити накладеним платежем
-                          </Button>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            Отримувач сплачує {Math.max(0, orderTotal - (parseFloat(prepaymentInput) || 0)).toFixed(2)} грн при отриманні
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <Label style={{ fontSize: 12, color: "var(--text-muted)" }}>Врахувати передоплату, грн</Label>
-                          <Input
-                            type="number" step="0.01" min="0" value={prepaymentInput}
-                            onChange={(e) => setPrepaymentInput(e.target.value)}
-                            style={{ width: 110, height: 30, fontSize: 13 }}
-                          />
-                          <button
-                            onClick={savePrepayment} disabled={savingPrepayment}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
-                          >
-                            {savingPrepayment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти для замовлення
-                          </button>
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  )}
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                      {isPostomat
+                        ? "Поштомат — це лише підтвердить оплату; ТТН і габарити посилки вводяться окремо на наступному кроці. Накладений платіж тут неможливий (видача лише після повної передоплати)."
+                        : `Оплата вже надійшла (переказ) — автоматично створить ТТН. Або накладений платіж — отримувач сплачує ${Math.max(0, orderTotal - (parseFloat(prepaymentInput) || 0)).toFixed(2)} грн при отриманні.`}
+                    </p>
+                    {!isPostomat && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Label style={{ fontSize: 12, color: "var(--text-muted)" }}>Врахувати передоплату, грн</Label>
+                        <Input
+                          type="number" step="0.01" min="0" value={prepaymentInput}
+                          onChange={(e) => setPrepaymentInput(e.target.value)}
+                          style={{ width: 110, height: 30, fontSize: 13 }}
+                        />
+                        <button
+                          onClick={savePrepayment} disabled={savingPrepayment}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
+                        >
+                          {savingPrepayment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти для замовлення
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -968,22 +962,22 @@ export default function OrderDetailPage() {
                       )}
                     </div>
                   ) : isPostomat ? (
-                    /* Поштомат — лише один шлях створення ТТН, той самий,
-                       що на кроці "В роботі": автоматичне (skipPostomat)
-                       тут завжди відмовить із "скористайтесь кнопкою
-                       нижче", тож саму цю кнопку й показуємо, без нічого
-                       зайвого поруч. */
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                      <Button
-                        onClick={() => setShowPostomatDialog(true)}
-                        style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
-                      >
-                        <PackageSearch size={16} />
-                        Відправити на поштомат
-                      </Button>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        Поштомат — видача лише після повної передоплати
-                      </span>
+                    /* Поштомат: оплату вже підтверджено на попередньому
+                       кроці (без створення ТТН — skipPostomat) — тут єдина
+                       дія: ввести габарити посилки й створити ТТН. */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <Button
+                          onClick={() => setShowPostomatDialog(true)}
+                          style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
+                        >
+                          <PackageSearch size={16} />
+                          Відправити на поштомат
+                        </Button>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                        Поштомат — видача лише після повної передоплати.
+                      </p>
                     </div>
                   ) : (
                     /* TTN відсутній — можна спробувати згенерувати автоматично ще раз, або ввести вручну */
