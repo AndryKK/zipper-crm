@@ -59,9 +59,16 @@ export default async function ProductsPage({
     }
   }
 
+  // Only the columns this list renders — products carries several large
+  // text fields (descr, text, seo_*) that this table never shows, and this
+  // page is force-dynamic (re-fetched on every visit), so select("*") here
+  // was needlessly inflating egress on one of the most-visited admin pages.
   let query = supabaseServer
     .from("products")
-    .select("*, labelAction:label_action, translationId:translation_id", { count: "exact" })
+    .select(
+      "id, img, title, pcode, price, price_sale, package, translation_id, label_action, labelAction:label_action, translationId:translation_id",
+      { count: "exact" }
+    )
     .eq("lang", "uk");
 
   if (catId === 0) {

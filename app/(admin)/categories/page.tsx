@@ -16,24 +16,19 @@ export default async function CategoriesPage() {
 
   const cats = (categories || []) as any[];
 
-  // Count products per category.
-  // products_categories.cid = categories.id (MySQL pk, preserved in migration).
-  // Using parallel HEAD-only count queries to avoid PostgREST 1000-row default limit.
-  // products_categories.cid = original MySQL categories.id.
-  // For the primary (RU) row: id = translation_id.
-  // For the UK copy: id ≠ translation_id, but cid still references the RU id = translation_id.
-  // Therefore cid == categories.translation_id for all rows.
-  const countPairs = await Promise.all(
-    cats.map(async (cat) => {
-      const { count } = await supabaseServer
-        .from("products_categories")
-        .select("*", { count: "exact", head: true })
-        .eq("cid", cat.translation_id);
-      return [cat.translation_id, count ?? 0] as const;
-    })
-  );
+  // Product counts per category come from the category_product_counts view
+  // (scripts/create-category-product-counts-view.sql), a single GROUP BY
+  // query — this used to be ~150-160 separate per-category HEAD-count
+  // requests (one per row in `cats`), which was by far the largest source
+  // of this project's Supabase egress usage since this page is
+  // force-dynamic and re-fetches on every visit.
+  const { data: countRows } = await supabaseServer
+    .from("category_product_counts")
+    .select("translation_id, product_count");
 
-  const productCounts: Record<number, number> = Object.fromEntries(countPairs);
+  const productCounts: Record<number, number> = Object.fromEntries(
+    (countRows || []).map((r: any) => [r.translation_id, r.product_count])
+  );
 
   return (
     <>

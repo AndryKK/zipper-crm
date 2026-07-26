@@ -121,9 +121,14 @@ export default async function OrdersPage({
   const q = sp.q ?? "";
   const limit = 30;
 
+  // Only the columns this list actually renders — orders carries a lot of
+  // heavier fields (addresses, TTN payloads, notes) that this table never
+  // shows, and this page is force-dynamic (re-fetched on every visit), so
+  // select("*") here was needlessly inflating egress on the single most-
+  // visited admin page.
   let query = supabaseServer
     .from("orders")
-    .select("*", { count: "exact" })
+    .select("id, status, person, login, addr_delivery, type, phone, date", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 
@@ -136,7 +141,7 @@ export default async function OrdersPage({
 
   const orderIds = (orderRows || []).map((o: any) => o.id);
   const { data: allItems } = orderIds.length > 0
-    ? await supabaseServer.from("orders_item").select("*").in("oid", orderIds)
+    ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", orderIds)
     : { data: [] };
 
   const logins = Array.from(new Set((orderRows || []).map((o: any) => o.login).filter(Boolean)));
