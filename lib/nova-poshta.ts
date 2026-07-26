@@ -92,6 +92,11 @@ export interface NpStatus {
   status: string;
   statusCode: string;
   isDelivered: boolean;
+  // TTN exists in NP's system but the sender never actually handed the
+  // parcel over (no scan at a branch/courier pickup yet) — this CRM already
+  // marked the order "Відправлено" once the TTN was created, which is wrong
+  // if NP itself says nothing has physically shipped.
+  notHandedOver: boolean;
 }
 
 // Nova Poshta has no push webhook for arbitrary API keys — this is a
@@ -107,7 +112,10 @@ export async function npGetStatus(apiKey: string, ttn: string, phone?: string): 
   // StatusCode 9 = "Отримано" per NP's documented codes, but we also match
   // on the status text itself since code mappings have historically shifted.
   const isDelivered = d.StatusCode === "9" || /отримано|видано/i.test(status);
-  return { status, statusCode: d.StatusCode ?? "", isDelivered };
+  // StatusCode 1 = "Відправник самостійно створив цю накладну, але ще не
+  // надав до відправки" — matched on text too, same reasoning as above.
+  const notHandedOver = d.StatusCode === "1" || /не надав(?:о)? до відправки|не передал.*к отправке/i.test(status);
+  return { status, statusCode: d.StatusCode ?? "", isDelivered, notHandedOver };
 }
 
 // Nova Poshta rejects DateTime values it considers "in the past" relative

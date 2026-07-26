@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const apiKey = getSetting(settings, "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
   if (!apiKey) return NextResponse.json({ error: "np_api_key не налаштовано" }, { status: 400 });
 
-  const log: { orderId: number; ttn: string; status?: string; delivered?: boolean; error?: string }[] = [];
+  const log: { orderId: number; ttn: string; status?: string; delivered?: boolean; reverted?: boolean; error?: string }[] = [];
   const returnLog: { returnId: number; ttn: string; status?: string; delivered?: boolean; error?: string }[] = [];
 
   if (!onlyReturnId) {
@@ -49,13 +49,23 @@ export async function GET(req: NextRequest) {
       try {
         const result = await npGetStatus(apiKey, order.ttn, order.phone ?? undefined);
         if (!result) { log.push({ orderId: order.id, ttn: order.ttn, error: "Немає відповіді від НП" }); continue; }
+        let reverted = false;
         if (result.isDelivered) {
           // "Отримано" used to be a separate step with a further manual/14-day
           // wait before "Завершено" — merged into one: once NP confirms
           // delivery, the order is done, no extra step needed.
           await supabaseServer.from("orders").update({ status: "Завершено" }).eq("id", order.id);
+        } else if (result.notHandedOver) {
+          // The TTN exists but NP itself says nothing has actually shipped
+          // (no branch/courier scan yet) — "Відправлено" here was premature
+          // (created but never physically dropped off), so it belongs back
+          // at "Оплачено" (paid, awaiting shipment) rather than staying
+          // marked as shipped. The TTN itself is left alone — it's still a
+          // real, valid waybill, just not handed over yet.
+          await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", order.id);
+          reverted = true;
         }
-        log.push({ orderId: order.id, ttn: order.ttn, status: result.status, delivered: result.isDelivered });
+        log.push({ orderId: order.id, ttn: order.ttn, status: result.status, delivered: result.isDelivered, reverted });
       } catch (e) {
         log.push({ orderId: order.id, ttn: order.ttn, error: (e as Error).message });
       }

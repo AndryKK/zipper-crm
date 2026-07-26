@@ -270,8 +270,12 @@ export default function OrderDetailPage() {
       try {
         const res = await fetch(`/api/cron/sync-ttn-status?orderId=${params.id}`);
         const data = await res.json();
-        if (res.ok && data.log?.[0]?.delivered) {
+        const entry = data.log?.[0];
+        if (res.ok && entry?.delivered) {
           toast.success("Нова Пошта підтвердила отримання — статус оновлено");
+          await refreshOrder();
+        } else if (res.ok && entry?.reverted) {
+          toast.warning("ТТН ще не здано до відправки — статус повернуто на «Оплачено»");
           await refreshOrder();
         }
       } catch {
@@ -619,6 +623,9 @@ export default function OrderDetailPage() {
       if (entry.error) { toast.error(entry.error); return; }
       if (entry.delivered) {
         toast.success("Нова Пошта підтвердила отримання — статус оновлено");
+        await refreshOrder();
+      } else if (entry.reverted) {
+        toast.warning(`ТТН ще не здано до відправки — статус повернуто на «Оплачено». ${entry.status ?? ""}`);
         await refreshOrder();
       } else {
         toast.info(`Статус НП: ${entry.status || "ще в дорозі"}`);
