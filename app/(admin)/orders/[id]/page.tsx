@@ -26,7 +26,7 @@ import {
 // wait before "Завершено" — collapsed into one: once the client has the
 // parcel, the order is done, nothing further to wait on.
 const PIPELINE = [
-  { status: "В роботі",    label: "Опрацювання",  sublabel: "Рахунок + Viber",     color: "#d97706" },
+  { status: "В роботі",    label: "Опрацювання",  sublabel: "Рахунок + Email",     color: "#d97706" },
   { status: "Оплачено",    label: "Оплата",        sublabel: "Підтверджено",         color: "#2563eb" },
   { status: "Відправлено", label: "Відправлено",   sublabel: "ТТН відстеження",      color: "#7c3aed" },
   { status: "Завершено",   label: "Завершено",     sublabel: "Клієнт отримав",       color: "#059669" },
@@ -255,6 +255,34 @@ export default function OrderDetailPage() {
     const updated = await apiFetch<any>(`/api/orders/${params.id}`);
     if (updated) { setOrder(updated); setStatus(updated.status ?? ""); setPrepaymentInput(String(updated.prepayment ?? 0)); }
   }
+
+  // Silently checks Nova Poshta's delivery status once whenever a shipped
+  // order with a TTN is opened, so the status advances to "Завершено" on
+  // its own instead of only updating via the once-a-day cron
+  // (vercel.json) or an explicit "Перевірити статус НП" click. Quiet on
+  // failure/not-yet-delivered — this is a background convenience, not a
+  // user-initiated action, so it shouldn't toast noise on every visit.
+  useEffect(() => {
+    if (!order?.ttn) return;
+    const s = (order.status ?? "").toLowerCase();
+    if (!s.includes("відправлен") && !s.includes("отправлен")) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/cron/sync-ttn-status?orderId=${params.id}`);
+        const data = await res.json();
+        if (res.ok && data.log?.[0]?.delivered) {
+          toast.success("Нова Пошта підтвердила отримання — статус оновлено");
+          await refreshOrder();
+        }
+      } catch {
+        // silent — background check only
+      }
+    })();
+    // params.id/refreshOrder are stable for the life of this page (route
+    // param + a function closing over it) — only order's own fields
+    // should re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.ttn, order?.status]);
 
   async function save() {
     setSaving(true);
@@ -906,13 +934,16 @@ export default function OrderDetailPage() {
                       </Button>
                       {!isPostomat && (
                         <Button
-                          variant="outline" onClick={openCodDialog}
-                          style={{ gap: 8, height: 42, fontSize: 14, color: "#e4032e", borderColor: "#e4032e55" }}
+                          onClick={openCodDialog}
+                          style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                         >
                           <Banknote size={16} />
                           Відправити накладеним платежем
                         </Button>
                       )}
+                      <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                        <SlidersHorizontal size={14} /> Ручне керування
+                      </Button>
                     </div>
                     <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
                       {isPostomat
@@ -949,9 +980,16 @@ export default function OrderDetailPage() {
 
                   {order.ttn ? (
                     /* TTN вже є — одразу кнопка */
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <Package size={14} color="var(--text-muted)" />
                       <span style={{ fontSize: 13 }}>ТТН: <strong className="font-mono">{order.ttn}</strong></span>
+                      <a
+                        href={`https://novaposhta.ua/tracking/${order.ttn}`}
+                        target="_blank" rel="noreferrer"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#e4032e18", color: "#e4032e", border: "1px solid #e4032e40", textDecoration: "none" }}
+                      >
+                        <Truck size={11} /> Відстежити
+                      </a>
                       {order.ttn_auto_created && (
                         <button
                           onClick={() => setShowCancelTtnDialog(true)}
@@ -974,6 +1012,9 @@ export default function OrderDetailPage() {
                           <PackageSearch size={16} />
                           Відправити на поштомат
                         </Button>
+                        <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                          <SlidersHorizontal size={14} /> Ручне керування
+                        </Button>
                       </div>
                       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
                         Поштомат — видача лише після повної передоплати.
@@ -985,20 +1026,23 @@ export default function OrderDetailPage() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <Button
-                            variant="outline" onClick={generateTtnManually} disabled={generatingTtn}
-                            style={{ gap: 8, color: "#e4032e", borderColor: "#e4032e55" }}
+                            onClick={generateTtnManually} disabled={generatingTtn}
+                            style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
                           >
                             {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
                             {ttnGenError ? "Спробувати ще раз" : "Згенерувати ТТН автоматично"}
                           </Button>
                           {ttnGenError && (
                             <Button
-                              variant="outline" onClick={openNpManualDialog}
-                              style={{ gap: 8, color: "#e4032e", borderColor: "#e4032e55" }}
+                              onClick={openNpManualDialog}
+                              style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
                             >
                               <MapPin size={15} /> Обрати вручну
                             </Button>
                           )}
+                          <Button variant="outline" onClick={openManualPanel} style={{ gap: 8 }}>
+                            <SlidersHorizontal size={14} /> Ручне керування
+                          </Button>
                         </div>
                         {ttnGenError && (
                           <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1036,13 +1080,16 @@ export default function OrderDetailPage() {
                   )}
 
                   {order.ttn && (
-                    <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <Button
                         onClick={() => advanceStatus("Відправлено")}
                         style={{ background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                       >
                         <Truck size={16} />
                         Позначити відправленим
+                      </Button>
+                      <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                        <SlidersHorizontal size={14} /> Ручне керування
                       </Button>
                     </div>
                   )}
@@ -1057,13 +1104,13 @@ export default function OrderDetailPage() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#7c3aed" }}>Посилка у дорозі</span>
                   </div>
                   {order.ttn && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <Package size={14} color="var(--text-muted)" />
                       <span style={{ fontSize: 13 }}>ТТН: <strong className="font-mono">{order.ttn}</strong></span>
                       <a
                         href={`https://novaposhta.ua/tracking/${order.ttn}`}
                         target="_blank" rel="noreferrer"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)", textDecoration: "none" }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#e4032e18", color: "#e4032e", border: "1px solid #e4032e40", textDecoration: "none" }}
                       >
                         <Truck size={11} /> Відстежити
                       </a>
@@ -1078,11 +1125,14 @@ export default function OrderDetailPage() {
                       Позначити отриманим / завершити
                     </Button>
                     <Button
-                      variant="outline" onClick={checkNpStatus} disabled={checkingNp}
-                      style={{ gap: 8, height: 42, fontSize: 14 }}
+                      onClick={checkNpStatus} disabled={checkingNp}
+                      style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                     >
                       {checkingNp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={16} />}
                       Перевірити статус НП
+                    </Button>
+                    <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                      <SlidersHorizontal size={14} /> Ручне керування
                     </Button>
                   </div>
                 </div>
@@ -1096,14 +1146,6 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
-              {step < 3 && (
-                <Button
-                  variant="outline" onClick={openManualPanel}
-                  style={{ marginTop: 14, gap: 8 }}
-                >
-                  <SlidersHorizontal size={14} /> Ручне керування — минаючи автоматику
-                </Button>
-              )}
             </CardContent>
           </Card>
         )}
@@ -1526,13 +1568,13 @@ export default function OrderDetailPage() {
                   </Button>
                 ) : (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <Button variant="outline" size="sm" onClick={generateTtnManually} disabled={generatingTtn}>
+                    <Button size="sm" onClick={generateTtnManually} disabled={generatingTtn} style={{ background: NP_RED, border: "none", color: "#fff" }}>
                       {ttnGenError ? "Перегенерувати" : "Згенерувати"}
                     </Button>
                     {ttnGenError && (
                       <Button
-                        variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openNpManualDialog(); }}
-                        style={{ color: "#e4032e", borderColor: "#e4032e55" }}
+                        size="sm" onClick={() => { setShowManualPanel(false); openNpManualDialog(); }}
+                        style={{ background: NP_RED, border: "none", color: "#fff" }}
                       >
                         <MapPin size={13} /> Вручну
                       </Button>
@@ -1786,7 +1828,7 @@ export default function OrderDetailPage() {
                   <a
                     href={`https://novaposhta.ua/tracking/${order.ttn}`}
                     target="_blank" rel="noreferrer"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)", textDecoration: "none" }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#e4032e18", color: "#e4032e", border: "1px solid #e4032e40", textDecoration: "none" }}
                   >
                     <Truck size={11} /> Відстежити
                   </a>
