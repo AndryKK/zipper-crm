@@ -25,24 +25,6 @@ async function fetchAllUsers() {
   return rows;
 }
 
-async function fetchAllOrderLogins() {
-  const rows: { login: string }[] = [];
-  let page = 0;
-  while (true) {
-    const { data, error } = await supabaseServer
-      .from("orders")
-      .select("login")
-      .not("login", "is", null)
-      .range(page * PAGE, (page + 1) * PAGE - 1);
-    if (error) { console.error("[orders] fetch error:", error.message); break; }
-    if (!data || data.length === 0) break;
-    rows.push(...(data as { login: string }[]));
-    if (data.length < PAGE) break;
-    page++;
-  }
-  return rows;
-}
-
 export default async function UsersPage() {
   /* Accurate counts — no row transfer */
   const [{ count: totalUsers }, { count: totalOrders }] = await Promise.all([
@@ -50,16 +32,18 @@ export default async function UsersPage() {
     supabaseServer.from("orders").select("*", { count: "exact", head: true }),
   ]);
 
-  /* Full data via pagination */
-  const [allUsers, allOrderLogins] = await Promise.all([
+  /* Full user list via pagination + per-customer order counts from the
+     user_order_counts view (scripts/create-user-order-counts-view.sql) —
+     one row per distinct login instead of paginating through every order
+     row just to count them client-side. */
+  const [allUsers, orderCountRows] = await Promise.all([
     fetchAllUsers(),
-    fetchAllOrderLogins(),
+    supabaseServer.from("user_order_counts").select("login, order_count").then((r) => r.data ?? []),
   ]);
 
-  const orderCountMap: Record<string, number> = {};
-  for (const row of allOrderLogins) {
-    orderCountMap[row.login] = (orderCountMap[row.login] ?? 0) + 1;
-  }
+  const orderCountMap: Record<string, number> = Object.fromEntries(
+    orderCountRows.map((r: any) => [r.login, r.order_count])
+  );
 
   const avgOrders = allUsers.length
     ? ((totalOrders ?? 0) / allUsers.length).toFixed(1)

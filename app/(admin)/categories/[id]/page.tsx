@@ -17,9 +17,11 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
           .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr, image_new_shop")
           .eq("id", parseInt(id))
           .single(),
+    // Only used to populate the "parent category" dropdown (id/title),
+    // so no need for the full row (seo_*, descr, text, img, discount...).
     supabaseServer
       .from("categories")
-      .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
+      .select("id, title, translationId:translation_id")
       .eq("lang", "uk")
       .eq("pid", 0)
       .order("title", { ascending: true }),

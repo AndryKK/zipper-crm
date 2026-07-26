@@ -149,6 +149,7 @@ model Category {
   productLinks  ProductCategory[]
   filterItems   AllFilterItem[]
 
+  @@index([pid])
   @@map("categories")
 }
 
@@ -211,6 +212,7 @@ model ProductCategory {
   category   Category @relation(fields: [cid], references: [id], onDelete: Cascade)
 
   @@unique([pid, cid])
+  @@index([cid])
   @@map("products_categories")
 }
 
@@ -311,6 +313,7 @@ model AllFilterFilter {
   parent        AllFilter       @relation(fields: [pid], references: [id], onDelete: Cascade)
   items         AllFilterItem[]
 
+  @@index([pid])
   @@map("all_filters_filters")
 }
 
@@ -323,6 +326,7 @@ model AllFilterItem {
   filter   AllFilterFilter @relation(fields: [fid], references: [id], onDelete: Cascade)
 
   @@unique([cid, fid])
+  @@index([fid])
   @@map("all_filters_items")
 }
 
@@ -542,6 +546,9 @@ model Order {
   items        OrderItem[]
   returns      OrderReturn[]
 
+  @@index([date])
+  @@index([status])
+  @@index([login])
   @@map("orders")
 }
 
@@ -556,6 +563,7 @@ model OrderItem {
 
   order      Order   @relation(fields: [oid], references: [id], onDelete: Cascade)
 
+  @@index([oid])
   @@map("orders_item")
 }
 

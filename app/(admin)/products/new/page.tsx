@@ -10,14 +10,18 @@ export default async function NewProductPage() {
     { data: measures },
     { data: langs },
   ] = await Promise.all([
-    supabaseServer.from("categories").select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr").eq("lang", "uk").order("title", { ascending: true }),
+    // Only id/pid/title/translationId are read by ProductForm's category
+    // picker/cascade — this page is force-dynamic and re-fetches every
+    // category on every "new product" visit, so trimming away seo_*/descr/
+    // text/img etc. cuts real egress.
+    supabaseServer.from("categories").select("id, pid, title, translationId:translation_id").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority", { ascending: true }),
   ]);
 
   const { data: allFilters } = await supabaseServer
     .from("all_filters")
-    .select("*, translationId:translation_id")
+    .select("id, translation_id, title, translationId:translation_id")
     .eq("lang", "uk")
     .order("priority", { ascending: true });
 
@@ -29,7 +33,7 @@ export default async function NewProductPage() {
   if (filterTranslationIds.length) {
     const { data: filterItems } = await supabaseServer
       .from("all_filters_filters")
-      .select("*, translationId:translation_id")
+      .select("id, pid, title, translationId:translation_id")
       .in("pid", filterTranslationIds)
       .eq("lang", "uk")
       .order("priority", { ascending: true });

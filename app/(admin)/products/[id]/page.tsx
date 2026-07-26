@@ -110,8 +110,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     // products_photos.pid references translation_id, not the row's own id.
     const allColorTrIds = [...new Set((colorAllVars || []).map((p: any) => p.translationId))];
     const [{ data: cPhotos }, { data: cPhotos2 }] = await Promise.all([
-      supabaseServer.from("products_photos").select("*").in("pid", allColorTrIds).order("priority"),
-      supabaseServer.from("products_photos2").select("*").in("pid", allColorTrIds).order("priority"),
+      supabaseServer.from("products_photos").select("id, img, pid").in("pid", allColorTrIds).order("priority"),
+      supabaseServer.from("products_photos2").select("id, img, pid").in("pid", allColorTrIds).order("priority"),
     ]);
 
     colorGroups = Object.values(grouped).map((group) => ({
@@ -132,10 +132,15 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     { data: langs },
     { data: productCats },
   ] = await Promise.all([
-    supabaseServer.from("products_photos").select("*").in("pid", langTrIds).order("priority"),
-    supabaseServer.from("products_photos2").select("*").in("pid", langTrIds).order("priority"),
+    supabaseServer.from("products_photos").select("id, img, pid").in("pid", langTrIds).order("priority"),
+    supabaseServer.from("products_photos2").select("id, img, pid").in("pid", langTrIds).order("priority"),
     supabaseServer.from("products_chars").select("*").in("pid", langIds).order("priority"),
-    supabaseServer.from("categories").select("*, translationId:translation_id").eq("lang", "uk").order("title"),
+    // This admin page re-fetches every category on every single product
+    // edit, so trimming the columns to just what ProductForm's category
+    // picker/cascade actually reads (id/pid/title/translationId) — not
+    // the full row (seo_*, descr, text, img, discount, etc.) — meaningfully
+    // cuts egress on one of the most-visited pages in the CRM.
+    supabaseServer.from("categories").select("id, pid, title, translationId:translation_id").eq("lang", "uk").order("title"),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title"),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority"),
     supabaseServer.from("products_categories").select("cid").in("pid", langIds),
@@ -145,12 +150,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   // all_filters_filters.pid references all_filters.translation_id (NOT the
   // serial id) — confirmed against the live site's catalog.php query.
   const { data: allFilters } = await supabaseServer.from("all_filters")
-    .select("*, translationId:translation_id").eq("lang", "uk").order("priority");
+    .select("id, translation_id, title, translationId:translation_id").eq("lang", "uk").order("priority");
   const filterList = allFilters || [];
   let filtersWithChildren: any[] = filterList;
   if (filterList.length) {
     const { data: filterItems } = await supabaseServer.from("all_filters_filters")
-      .select("*, translationId:translation_id")
+      .select("id, pid, title, translationId:translation_id")
       .in("pid", filterList.map((f: any) => f.translation_id)).eq("lang", "uk").order("priority");
     const fm: Record<number, any[]> = {};
     for (const fi of filterItems || []) (fm[(fi as any).pid] ??= []).push(fi);
