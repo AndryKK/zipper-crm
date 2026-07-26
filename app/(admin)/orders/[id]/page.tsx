@@ -130,6 +130,54 @@ export default function OrderDetailPage() {
   const [generatingTtn, setGeneratingTtn] = useState(false);
   const [ttnGenError, setTtnGenError] = useState("");
 
+  // Manual Nova Poshta city/warehouse picker — the escape hatch offered
+  // whenever automatic TTN creation can't parse the order's free-text
+  // delivery address (or the city/warehouse it names isn't found in NP):
+  // search-as-you-type against NP's own API instead of fixing the address
+  // text, then create the TTN with the refs picked here.
+  const [showNpManualDialog, setShowNpManualDialog] = useState(false);
+  const [npCityQuery, setNpCityQuery] = useState("");
+  const [npCityResults, setNpCityResults] = useState<{ ref: string; description: string }[]>([]);
+  const [npCitySelected, setNpCitySelected] = useState<{ ref: string; description: string } | null>(null);
+  const [npCitySearching, setNpCitySearching] = useState(false);
+  const [npWhQuery, setNpWhQuery] = useState("");
+  const [npWhResults, setNpWhResults] = useState<{ ref: string; description: string; number: string; isPostomat: boolean }[]>([]);
+  const [npWhSelected, setNpWhSelected] = useState<{ ref: string; description: string; number: string; isPostomat: boolean } | null>(null);
+  const [npWhSearching, setNpWhSearching] = useState(false);
+  const [npManualSeat, setNpManualSeat] = useState({ weight: "1", length: "20", width: "15", height: "10" });
+  const [npManualSubmitting, setNpManualSubmitting] = useState(false);
+  const [npManualError, setNpManualError] = useState("");
+
+  useEffect(() => {
+    if (!showNpManualDialog || npCityQuery.trim().length < 2) return;
+    const t = setTimeout(async () => {
+      setNpCitySearching(true);
+      try {
+        const res = await fetch(`/api/nova-poshta/cities?q=${encodeURIComponent(npCityQuery)}`);
+        const data = await res.json();
+        setNpCityResults(Array.isArray(data) ? data : []);
+      } finally {
+        setNpCitySearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [npCityQuery, showNpManualDialog]);
+
+  useEffect(() => {
+    if (!npCitySelected) return;
+    const t = setTimeout(async () => {
+      setNpWhSearching(true);
+      try {
+        const res = await fetch(`/api/nova-poshta/warehouses?cityRef=${npCitySelected.ref}&q=${encodeURIComponent(npWhQuery)}`);
+        const data = await res.json();
+        setNpWhResults(Array.isArray(data) ? data : []);
+      } finally {
+        setNpWhSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [npWhQuery, npCitySelected]);
+
   // Manual control card gets scrolled into view + briefly highlighted when
   // an automated flow (postomat/COD) fails and a manager needs the escape
   // hatch instead of retrying the API.
@@ -326,6 +374,45 @@ export default function OrderDetailPage() {
       toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
     } catch { setTtnGenError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
     finally { setGeneratingTtn(false); }
+  }
+
+  function openNpManualDialog() {
+    setNpCityQuery(""); setNpCityResults([]); setNpCitySelected(null);
+    setNpWhQuery(""); setNpWhResults([]); setNpWhSelected(null);
+    setNpManualSeat({ weight: "1", length: "20", width: "15", height: "10" });
+    setNpManualError("");
+    setShowNpManualDialog(true);
+  }
+
+  async function submitNpManual() {
+    if (!npCitySelected || !npWhSelected) { setNpManualError("Оберіть місто і відділення/поштомат"); return; }
+    setNpManualSubmitting(true);
+    setNpManualError("");
+    try {
+      const body: Record<string, unknown> = {
+        cityRef: npCitySelected.ref,
+        warehouseRef: npWhSelected.ref,
+        isPostomat: npWhSelected.isPostomat,
+      };
+      if (npWhSelected.isPostomat) {
+        body.seat = {
+          weight: parseFloat(npManualSeat.weight),
+          length: parseFloat(npManualSeat.length),
+          width: parseFloat(npManualSeat.width),
+          height: parseFloat(npManualSeat.height),
+        };
+      }
+      const res = await fetch(`/api/orders/${params.id}/ttn/manual`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { setNpManualError(data.error ?? "Помилка"); toast.error(data.error ?? "Помилка"); return; }
+      await refreshOrder();
+      setShowNpManualDialog(false);
+      setTtnGenError("");
+      toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
+    } catch { setNpManualError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
+    finally { setNpManualSubmitting(false); }
   }
 
   async function openEmailPreview(kind: "invoice" | "confirmed") {
@@ -663,6 +750,7 @@ export default function OrderDetailPage() {
     postomatSubmitting || codLoadingPreview || codSubmitting ||
     savingPrepayment || generatingInvoice || generatingTtn || stockChecking ||
     emailPreviewLoading || emailSending || savingClient || submittingReturn ||
+    npManualSubmitting ||
     savingItemId !== null;
 
   return (
@@ -886,6 +974,14 @@ export default function OrderDetailPage() {
                             <XCircle size={12} /> {ttnGenError}
                           </span>
                         )}
+                        {ttnGenError && (
+                          <Button
+                            variant="outline" onClick={openNpManualDialog}
+                            style={{ gap: 8 }}
+                          >
+                            <MapPin size={15} /> Обрати місто/відділення вручну
+                          </Button>
+                        )}
                       </div>
 
                       <Label style={{ fontSize: 13 }}>Або введіть номер ТТН вручну</Label>
@@ -1102,6 +1198,151 @@ export default function OrderDetailPage() {
           </DialogContent>
         </Dialog>
 
+        {/* ── MANUAL NOVA POSHTA CITY/WAREHOUSE PICKER ────────────────────
+            Escape hatch for when the order's free-text delivery address
+            can't be parsed (or the city/warehouse it names isn't found in
+            NP) — search Nova Poshta's own city/warehouse API instead of
+            fixing the address text, then create the TTN with those refs. */}
+        <Dialog open={showNpManualDialog} onOpenChange={setShowNpManualDialog}>
+          <DialogContent style={{ maxWidth: 460 }}>
+            <DialogHeader>
+              <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <MapPin size={16} /> Обрати місто/відділення вручну
+              </DialogTitle>
+            </DialogHeader>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
+              Пошук напряму в Новій Пошті — на випадок, коли адресу доставки не вдалося розпізнати автоматично.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label>Місто</Label>
+              {npCitySelected ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderRadius: 8, background: "var(--bg)", fontSize: 13 }}>
+                  <span>{npCitySelected.description}</span>
+                  <button
+                    onClick={() => { setNpCitySelected(null); setNpWhSelected(null); setNpCityQuery(""); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    value={npCityQuery}
+                    onChange={(e) => setNpCityQuery(e.target.value)}
+                    placeholder="Почніть вводити назву міста..."
+                  />
+                  {npCitySearching && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Пошук...</div>}
+                  {npCityQuery.trim().length >= 2 && npCityResults.length > 0 && (
+                    <div style={{ marginTop: 4, maxHeight: 160, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+                      {npCityResults.map((c) => (
+                        <button
+                          key={c.ref}
+                          onClick={() => { setNpCitySelected(c); setNpCityResults([]); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                        >
+                          {c.description}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {npCitySelected && (
+              <div className="space-y-1.5">
+                <Label>Відділення або поштомат</Label>
+                {npWhSelected ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderRadius: 8, background: "var(--bg)", fontSize: 13 }}>
+                    <span>{npWhSelected.description}</span>
+                    <button
+                      onClick={() => setNpWhSelected(null)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Input
+                      value={npWhQuery}
+                      onChange={(e) => setNpWhQuery(e.target.value)}
+                      placeholder="Номер або назва (необов'язково)..."
+                    />
+                    {npWhSearching && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Пошук...</div>}
+                    {npWhResults.length > 0 && (
+                      <div style={{ marginTop: 4, maxHeight: 200, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+                        {npWhResults.map((w) => (
+                          <button
+                            key={w.ref}
+                            onClick={() => setNpWhSelected(w)}
+                            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: 12.5 }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                          >
+                            {w.isPostomat ? <PackageSearch size={13} style={{ flexShrink: 0 }} /> : <Package size={13} style={{ flexShrink: 0 }} />}
+                            {w.description}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {npWhSelected?.isPostomat && (
+              <div className="space-y-1.5">
+                <Label style={{ fontSize: 12.5 }}>Габарити посилки — Нова Пошта вимагає їх для поштоматів</Label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div className="space-y-1.5">
+                    <Label style={{ fontSize: 12 }}>Вага, кг</Label>
+                    <Input type="number" step="0.1" min="0.1" value={npManualSeat.weight}
+                      onChange={(e) => setNpManualSeat((p) => ({ ...p, weight: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label style={{ fontSize: 12 }}>Довжина, см</Label>
+                    <Input type="number" step="1" min="1" value={npManualSeat.length}
+                      onChange={(e) => setNpManualSeat((p) => ({ ...p, length: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label style={{ fontSize: 12 }}>Ширина, см</Label>
+                    <Input type="number" step="1" min="1" value={npManualSeat.width}
+                      onChange={(e) => setNpManualSeat((p) => ({ ...p, width: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label style={{ fontSize: 12 }}>Висота, см</Label>
+                    <Input type="number" step="1" min="1" value={npManualSeat.height}
+                      onChange={(e) => setNpManualSeat((p) => ({ ...p, height: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {npManualError && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.1)" }}>
+                <XCircle size={16} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 13, color: "#dc2626" }}>{npManualError}</span>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+              <Button variant="outline" onClick={() => setShowNpManualDialog(false)}>Скасувати</Button>
+              <Button
+                onClick={submitNpManual} disabled={npManualSubmitting || !npCitySelected || !npWhSelected}
+                style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8 }}
+              >
+                {npManualSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
+                Створити ТТН
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* ── CASH ON DELIVERY (НАКЛАДЕНИЙ ПЛАТІЖ) ───────────────────────── */}
         <Dialog open={showCodDialog} onOpenChange={setShowCodDialog}>
           <DialogContent style={{ maxWidth: 460 }}>
@@ -1250,9 +1491,16 @@ export default function OrderDetailPage() {
                     <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); setShowCancelTtnDialog(true); }}>Скасувати</Button>
                   )
                 ) : (
-                  <Button variant="outline" size="sm" onClick={generateTtnManually} disabled={generatingTtn}>
-                    {ttnGenError ? "Перегенерувати" : "Згенерувати"}
-                  </Button>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <Button variant="outline" size="sm" onClick={generateTtnManually} disabled={generatingTtn}>
+                      {ttnGenError ? "Перегенерувати" : "Згенерувати"}
+                    </Button>
+                    {ttnGenError && (
+                      <Button variant="outline" size="sm" onClick={() => { setShowManualPanel(false); openNpManualDialog(); }}>
+                        <MapPin size={13} /> Вручну
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
 

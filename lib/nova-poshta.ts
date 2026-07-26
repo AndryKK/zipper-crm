@@ -20,13 +20,46 @@ export async function npFindWarehouseRef(apiKey: string, cityRef: string, wareho
   return r.success && r.data?.length ? r.data[0].Ref : null;
 }
 
+// Search-as-you-type city/warehouse lookups for the manual TTN form (used
+// when parseNpAddress can't make sense of a free-text delivery address —
+// e.g. a postomat name with an operator label NP itself adds, like
+// `Поштомат "Нова Пошта" №25029`) — lets a manager pick the real
+// city/warehouse straight from Nova Poshta instead of fixing the address
+// text first.
+export interface NpCityOption { ref: string; description: string; }
+export async function npSearchCities(apiKey: string, q: string, limit = 10): Promise<NpCityOption[]> {
+  if (!q.trim()) return [];
+  const r = await npCall(apiKey, "Address", "getCities", { FindByString: q.trim(), Limit: limit });
+  if (!r.success) return [];
+  return (r.data ?? []).map((c: { Ref: string; Description: string }) => ({ ref: c.Ref, description: c.Description }));
+}
+
+export interface NpWarehouseOption { ref: string; description: string; number: string; isPostomat: boolean; }
+export async function npSearchWarehouses(apiKey: string, cityRef: string, q: string, limit = 20): Promise<NpWarehouseOption[]> {
+  const r = await npCall(apiKey, "Address", "getWarehouses", { CityRef: cityRef, FindByString: q.trim() || undefined, Limit: limit });
+  if (!r.success) return [];
+  return (r.data ?? []).map((w: { Ref: string; Description: string; Number: string; CategoryOfWarehouse: string }) => ({
+    ref: w.Ref,
+    description: w.Description,
+    number: w.Number,
+    isPostomat: w.CategoryOfWarehouse === "Postomat",
+  }));
+}
+
 // Parses "Дніпро — Відділення №31 (до 30 кг): вул. Робоча, 89". isPostomat
 // matters downstream: postomats are release-on-full-payment-only (Nova
 // Poshta doesn't support cash-on-delivery there) and want per-parcel
 // dimensions (OptionsSeat) rather than the flat Weight a regular warehouse
 // shipment uses.
 export function parseNpAddress(addr: string): { city: string; warehouseNum: number; isPostomat: boolean } | null {
-  const m = addr.match(/^(.+?)\s*[—–-]+\s*(Відділення|Поштомат|відділення|поштомат)\s*№\s*(\d+)/i);
+  // Between the "Відділення"/"Поштомат" keyword and the "№" there can be
+  // extra text — postomats in particular often carry an operator label NP
+  // itself adds, e.g. `Рівне — Поштомат "Нова Пошта" №25029: вул. Миру, 16
+  // (Мінімаркет М)`. [^№]* tolerates any of that instead of requiring the
+  // number to follow immediately (real bug: it didn't, on exactly this
+  // shape of address, so TTN creation errored with "не вдалося
+  // розпарсити адресу" for every postomat with a labeled name).
+  const m = addr.match(/^(.+?)\s*[—–-]+\s*(Відділення|Поштомат)[^№]*№\s*(\d+)/i);
   if (!m) return null;
   return { city: m[1].trim(), warehouseNum: parseInt(m[3]), isPostomat: /поштомат/i.test(m[2]) };
 }

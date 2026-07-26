@@ -39,36 +39,19 @@ export type CreateTtnResult =
   | { ok: true; ttn: string; demo: boolean }
   | { ok: false; kind: "skipped" | "warn" | "error"; error: string };
 
-export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {}): Promise<CreateTtnResult> {
-  const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
-  if (!order) return { ok: false, kind: "error", error: "Замовлення не знайдено" };
-
-  if (order.ttn) return { ok: false, kind: "skipped", error: `ТТН вже існує: ${order.ttn}` };
-
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
-  if (!items?.length) return { ok: false, kind: "error", error: "Замовлення без товарів" };
-
-  const orderTotal = (items as { price: number; quantity: number }[]).reduce(
-    (s, i) => s + i.price * i.quantity, 0
-  );
-
-  if (!order.phone) return { ok: false, kind: "skipped", error: "Телефон отримувача відсутній" };
-  if (!order.addr_delivery) return { ok: false, kind: "skipped", error: "Адреса доставки відсутня" };
-
-  const parsed = parseNpAddress(order.addr_delivery);
-  if (!parsed) {
-    return { ok: false, kind: "warn", error: "Не вдалося розпарсити адресу (підтримується формат «Місто — Відділення №N» або «Місто — Поштомат №N»)" };
-  }
-  if (opts.requirePostomat && !parsed.isPostomat) {
-    return { ok: false, kind: "error", error: "Адреса доставки — не поштомат" };
-  }
-  if (opts.skipPostomat && parsed.isPostomat) {
-    return { ok: false, kind: "skipped", error: "Це поштомат — скористайтесь кнопкою «Відправити на поштомат» нижче" };
-  }
-  if (opts.forbidPostomat && parsed.isPostomat) {
-    return { ok: false, kind: "error", error: "Накладений платіж не підтримується Новою Поштою для поштоматів (видача лише після повної передоплати) — скористайтесь ручним керуванням." };
-  }
-
+// Shared tail once we have a resolved recipient city AND warehouse ref
+// (the address-parsing flow resolves warehouseNum -> ref itself first,
+// since that lookup needs the parsed number; the manual flow already has
+// a ref straight from npSearchWarehouses) — so demo-mode handling,
+// sender-settings validation and the actual npCreateTtn call only live in
+// one place.
+async function finishTtnCreation(
+  orderId: number,
+  order: { person: string | null; login: string | null; phone: string | null },
+  orderTotal: number,
+  recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat">
+): Promise<CreateTtnResult> {
   const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
   const settings = allSettings ?? [];
 
@@ -97,12 +80,6 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
   if (missing.length) return { ok: false, kind: "skipped", error: `Не налаштовано: ${missing.join(", ")}` };
 
   try {
-    const recipientCityRef = await npFindCityRef(npApiKey, parsed.city);
-    if (!recipientCityRef) return { ok: false, kind: "error", error: `Місто не знайдено в НП: ${parsed.city}` };
-
-    const recipientWhRef = await npFindWarehouseRef(npApiKey, recipientCityRef, parsed.warehouseNum);
-    if (!recipientWhRef) return { ok: false, kind: "error", error: `${parsed.isPostomat ? "Поштомат" : "Відділення"} №${parsed.warehouseNum} не знайдено в ${parsed.city}` };
-
     const result = await npCreateTtn({
       apiKey:               npApiKey,
       senderRef:            npSenderRef,
@@ -111,9 +88,9 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
       senderWarehouseRef:   npSenderWhRef,
       senderPhone:          npSenderPhone,
       recipientName:        order.person ?? order.login ?? "Отримувач",
-      recipientPhone:       order.phone,
-      recipientCityRef,
-      recipientWarehouseRef: recipientWhRef,
+      recipientPhone:       order.phone!,
+      recipientCityRef:      recipient.cityRef,
+      recipientWarehouseRef: recipient.warehouseRef,
       weight:      opts.seat?.weight ?? 0.5,
       cost:        orderTotal,
       description: "Товари",
@@ -128,6 +105,99 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
   } catch (e) {
     return { ok: false, kind: "error", error: (e as Error).message };
   }
+}
+
+export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {}): Promise<CreateTtnResult> {
+  const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
+  if (!order) return { ok: false, kind: "error", error: "Замовлення не знайдено" };
+
+  if (order.ttn) return { ok: false, kind: "skipped", error: `ТТН вже існує: ${order.ttn}` };
+
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  if (!items?.length) return { ok: false, kind: "error", error: "Замовлення без товарів" };
+
+  const orderTotal = (items as { price: number; quantity: number }[]).reduce(
+    (s, i) => s + i.price * i.quantity, 0
+  );
+
+  if (!order.phone) return { ok: false, kind: "skipped", error: "Телефон отримувача відсутній" };
+  if (!order.addr_delivery) return { ok: false, kind: "skipped", error: "Адреса доставки відсутня" };
+
+  const parsed = parseNpAddress(order.addr_delivery);
+  if (!parsed) {
+    return { ok: false, kind: "warn", error: "Не вдалося розпарсити адресу (підтримується формат «Місто — Відділення №N» або «Місто — Поштомат №N») — скористайтесь ручним введенням нижче" };
+  }
+  if (opts.requirePostomat && !parsed.isPostomat) {
+    return { ok: false, kind: "error", error: "Адреса доставки — не поштомат" };
+  }
+  if (opts.skipPostomat && parsed.isPostomat) {
+    return { ok: false, kind: "skipped", error: "Це поштомат — скористайтесь кнопкою «Відправити на поштомат» нижче" };
+  }
+  if (opts.forbidPostomat && parsed.isPostomat) {
+    return { ok: false, kind: "error", error: "Накладений платіж не підтримується Новою Поштою для поштоматів (видача лише після повної передоплати) — скористайтесь ручним керуванням." };
+  }
+
+  const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
+  const npApiKey = getSetting(allSettings ?? [], "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
+  if (!npApiKey) return { ok: false, kind: "skipped", error: "Не налаштовано: np_api_key" };
+
+  const recipientCityRef = await npFindCityRef(npApiKey, parsed.city);
+  if (!recipientCityRef) {
+    return {
+      ok: false, kind: "error",
+      error: `Місто не знайдено в НП: ${parsed.city} — скористайтесь ручним введенням нижче`,
+    };
+  }
+
+  const recipientWhRef = await npFindWarehouseRef(npApiKey, recipientCityRef, parsed.warehouseNum);
+  if (!recipientWhRef) {
+    return {
+      ok: false, kind: "error",
+      error: `${parsed.isPostomat ? "Поштомат" : "Відділення"} №${parsed.warehouseNum} не знайдено в ${parsed.city} — скористайтесь ручним введенням нижче`,
+    };
+  }
+
+  return finishTtnCreation(
+    orderId, order, orderTotal,
+    { cityRef: recipientCityRef, warehouseRef: recipientWhRef, isPostomat: parsed.isPostomat },
+    opts
+  );
+}
+
+// Escape hatch for when parseNpAddress can't make sense of the order's
+// free-text delivery address (or the city/warehouse it names can't be
+// found in Nova Poshta) — the manual TTN form resolves city/warehouse
+// refs itself via npSearchCities/npSearchWarehouses, so this skips
+// address parsing entirely and goes straight to TTN creation with the
+// refs a manager picked.
+export async function createOrderTtnManual(
+  orderId: number,
+  params: { cityRef: string; warehouseRef: string; isPostomat: boolean; seat?: { weight: number; length: number; width: number; height: number }; codAmount?: number }
+): Promise<CreateTtnResult> {
+  const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
+  if (!order) return { ok: false, kind: "error", error: "Замовлення не знайдено" };
+  if (order.ttn) return { ok: false, kind: "skipped", error: `ТТН вже існує: ${order.ttn}` };
+
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  if (!items?.length) return { ok: false, kind: "error", error: "Замовлення без товарів" };
+  const orderTotal = (items as { price: number; quantity: number }[]).reduce(
+    (s, i) => s + i.price * i.quantity, 0
+  );
+
+  if (!order.phone) return { ok: false, kind: "skipped", error: "Телефон отримувача відсутній" };
+  if (params.isPostomat && params.codAmount) {
+    return { ok: false, kind: "error", error: "Накладений платіж не підтримується Новою Поштою для поштоматів" };
+  }
+
+  const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
+  const npApiKey = getSetting(allSettings ?? [], "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
+  if (!npApiKey) return { ok: false, kind: "skipped", error: "Не налаштовано: np_api_key" };
+
+  return finishTtnCreation(
+    orderId, order, orderTotal,
+    { cityRef: params.cityRef, warehouseRef: params.warehouseRef, isPostomat: params.isPostomat },
+    { seat: params.seat, codAmount: params.codAmount }
+  );
 }
 
 // Read-only resolution used by the COD confirmation screen — returns what
