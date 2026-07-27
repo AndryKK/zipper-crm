@@ -39,7 +39,8 @@ const LABELS: Record<string, string> = {
   np_sender_ref:         "Ref відправника (Counterparty)",
   np_sender_contact_ref: "Ref контакту відправника",
   np_sender_city_ref:    "Ref міста відправника",
-  np_sender_warehouse_ref: "Ref відділення відправника",
+  np_sender_warehouse_ref: "Ref відділення відправника (основне, Відділення №100)",
+  np_sender_warehouse_ref_oversized: "Ref відділення відправника (габаритні товари, Відділення №18)",
   np_sender_phone:       "Телефон відправника",
   np_demo_mode:          "Демо-режим",
   // Viber
@@ -60,8 +61,8 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Nova Poshta",
-    keys: ["np_demo_mode", "np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_phone"],
-    description: "У демо-режимі при оплаті замовлення генерується випадковий 14-значний номер ТТН замість реального звернення до API Нової Пошти — зручно для перевірки решти функцій без справжньої відправки.",
+    keys: ["np_demo_mode", "np_api_key", "np_sender_ref", "np_sender_contact_ref", "np_sender_city_ref", "np_sender_warehouse_ref", "np_sender_warehouse_ref_oversized", "np_sender_phone"],
+    description: "У демо-режимі при оплаті замовлення генерується випадковий 14-значний номер ТТН замість реального звернення до API Нової Пошти — зручно для перевірки решти функцій без справжньої відправки. Відділення відправника «габаритні товари» використовується для ТТН замовлень, позначених як габаритні на попапі підтвердження наявності — інакше використовується основне відділення.",
   },
   { title: "Viber", keys: ["viber_token"] },
   {

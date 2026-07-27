@@ -542,6 +542,10 @@ model Order {
   callme       Int?     @default(0)
   prepayment   Float    @default(0)
   ttnAutoCreated Boolean @default(false) @map("ttn_auto_created")
+  // Set from the stock-confirmation popup ("Товари габаритні?") — decides
+  // which Nova Poshta sender warehouse a later TTN creation step uses, see
+  // np_sender_warehouse_ref / np_sender_warehouse_ref_oversized in settings.
+  isOversized  Boolean  @default(false) @map("is_oversized")
 
   items        OrderItem[]
   returns      OrderReturn[]

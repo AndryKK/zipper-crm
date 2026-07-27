@@ -47,7 +47,7 @@ export type CreateTtnResult =
 // one place.
 async function finishTtnCreation(
   orderId: number,
-  order: { person: string | null; login: string | null; phone: string | null },
+  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
   opts: Pick<CreateTtnOptions, "codAmount" | "seat">
@@ -66,7 +66,14 @@ async function finishTtnCreation(
   const npSenderRef        = getSetting(settings, "np_sender_ref");
   const npSenderContactRef = getSetting(settings, "np_sender_contact_ref");
   const npSenderCityRef    = getSetting(settings, "np_sender_city_ref");
-  const npSenderWhRef      = getSetting(settings, "np_sender_warehouse_ref");
+  // Товари, позначені як габаритні на попапі підтвердження наявності
+  // (orders.is_oversized), відправляються з окремого відділення (Відділення
+  // №18 — витримує великі/важкі посилки), решта — з основного (Відділення
+  // №100). Якщо оверсайз-реф не налаштовано, тихо падаємо назад на основний,
+  // а не вимагаємо його для КОЖНОГО замовлення.
+  const npSenderWhRef =
+    (order.is_oversized && getSetting(settings, "np_sender_warehouse_ref_oversized")) ||
+    getSetting(settings, "np_sender_warehouse_ref");
   const npSenderPhone      = getSetting(settings, "np_sender_phone");
 
   const missing = [

@@ -95,6 +95,11 @@ export default function OrderDetailPage() {
   // stock before the invoice/email pipeline fires.
   const [showStockConfirm, setShowStockConfirm] = useState(false);
   const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
+  // Decides which Nova Poshta sender warehouse a later TTN creation step
+  // uses (see lib/order-ttn.ts) — asked here because this is the one place
+  // a manager already looks the physical items over before anything else
+  // happens to the order.
+  const [isOversized, setIsOversized] = useState(false);
 
   // Resend email — lets a manager fix a typo'd address before either the
   // payment-request or payment-confirmed letter is (re)sent via the
@@ -306,20 +311,25 @@ export default function OrderDetailPage() {
 
   function openStockConfirm() {
     setStockChecks({});
+    setIsOversized(false);
     setShowStockConfirm(true);
   }
 
   async function confirmStockAndProcess() {
     setShowStockConfirm(false);
-    await autoProcess();
+    await autoProcess(isOversized);
   }
 
-  async function autoProcess() {
+  async function autoProcess(oversized?: boolean) {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
     try {
-      const res  = await fetch(`/api/orders/${params.id}/process`, { method: "POST" });
+      const res  = await fetch(`/api/orders/${params.id}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isOversized: oversized }),
+      });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
       setProcessLog(data.log);
@@ -1215,6 +1225,26 @@ export default function OrderDetailPage() {
                 </label>
               ))}
             </div>
+            <label
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
+                background: isOversized ? "rgba(245,158,11,0.08)" : "transparent",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isOversized}
+                onChange={(e) => setIsOversized(e.target.checked)}
+                style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Товари габаритні</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                  ТТН буде сформовано з відділення для габаритних відправлень (№18) замість основного (№100)
+                </div>
+              </div>
+            </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
               <Button variant="outline" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
               <Button

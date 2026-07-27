@@ -8,17 +8,26 @@ import { isValidEmail } from "@/lib/email";
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const orderId = parseInt(id);
+  const body = await req.json().catch(() => ({}));
   const log: StepLog[] = [];
 
   /* ── Fetch order + items ─────────────────────────────────────────── */
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
   if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
+
+  // Set from the stock-confirmation popup ("Товари габаритні?") — decides
+  // which Nova Poshta sender warehouse a later TTN-creation step uses (see
+  // finishTtnCreation in lib/order-ttn.ts). Only written when explicitly
+  // passed so a bare/legacy call to this route never silently resets it.
+  if (typeof body.isOversized === "boolean") {
+    await supabaseServer.from("orders").update({ is_oversized: body.isOversized }).eq("id", orderId);
+  }
 
   const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
   if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
