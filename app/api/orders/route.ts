@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   // Only the columns the list actually renders — see app/(admin)/orders/page.tsx.
   let query = supabaseServer
     .from("orders")
-    .select("id, status, person, login, addr_delivery, type, phone, date", { count: "exact" })
+    .select("id, status, person, login, addr_delivery, type, phone, date, ttn", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 
-  if (q) query = query.or(`person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*`);
+  if (q) query = query.or(`person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*,ttn.ilike.*${q}*`);
 
   const { data: orderRows, count } = await query;
 

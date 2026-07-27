@@ -153,6 +153,7 @@ interface OrderRow {
   type: string | null;
   phone: string | null;
   date: string;
+  ttn: string | null;
   items: { price: number; quantity: number }[];
   isPremiumUser: boolean;
 }
@@ -227,7 +228,7 @@ export default function OrdersPage() {
           <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input
             className="crm-input"
-            placeholder="Пошук за клієнтом, телефоном, логіном..."
+            placeholder="Пошук за клієнтом, телефоном, логіном, ТТН..."
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             style={{ paddingLeft: 36 }}
@@ -280,7 +281,14 @@ export default function OrdersPage() {
                         </span>
                       </td>
                       <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
-                      <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>{order.addr_delivery ?? "—"}</td>
+                      <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>
+                        {order.addr_delivery ?? "—"}
+                        {order.ttn && (
+                          <div className="font-mono" style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                            ТТН: {order.ttn}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ textAlign: "center" }}>
                         <SiteBadge type={order.type} isPremiumUser={order.isPremiumUser} />
                       </td>
