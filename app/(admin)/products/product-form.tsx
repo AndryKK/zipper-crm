@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { transliterate, getImgUrl, cn } from "@/lib/utils";
-import { Loader2, Plus, Trash2, X, Link2Off, Search } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { ImageCropModal } from "@/components/admin/image-crop-modal";
 
 // Matches measures.short_title's CSS-class convention from the storefront
 // (text-success/text-ends/text-muted/text-primary/text-danger) — keyed by
@@ -244,7 +245,7 @@ function EditForm({
     return map;
   });
 
-  // imgMap: головне фото (products.img) per translationId
+  // imgMap: головне фото (products.img, 300x300 картка) per translationId
   const [imgMap, setImgMap] = useState<Record<number, string>>(() => {
     const map: Record<number, string> = {};
     const ukBase = langVariants.find((v: any) => v.lang === "uk") ?? langVariants[0];
@@ -255,7 +256,21 @@ function EditForm({
     }
     return map;
   });
+  // imgFullMap: повний нестиснутий оригінал (products.img_full) per translationId —
+  // falls back to imgMap's own value (main directory, not the cropped copy)
+  // when img_full hasn't been set for this product yet.
+  const [imgFullMap, setImgFullMap] = useState<Record<number, string>>(() => {
+    const map: Record<number, string> = {};
+    const ukBase = langVariants.find((v: any) => v.lang === "uk") ?? langVariants[0];
+    if (ukBase) map[(ukBase as any).translationId] = (ukBase as any).img_full || (ukBase as any).img || "";
+    for (const cg of initialColorGroups) {
+      const ukV = cg.langVariants.find((v: any) => v.lang === "uk") ?? cg.langVariants[0];
+      if (ukV) map[(ukV as any).translationId] = (ukV as any).img_full || (ukV as any).img || "";
+    }
+    return map;
+  });
   const [mainImgUploading, setMainImgUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   // ── Shared fields (price, qty, etc.) ─────────────────────────────
   const [common, setCommon] = useState({
@@ -440,23 +455,34 @@ function EditForm({
     setAddUriInput("");
   }
 
-  async function handleUploadMainImg(e: React.ChangeEvent<HTMLInputElement>) {
+  // File input just picks the file — the actual upload happens after the
+  // admin places the crop frame in ImageCropModal (see confirmMainImgCrop).
+  function handlePickMainImg(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+    setCropFile(file);
+  }
+
+  async function confirmMainImgCrop(thumbBlob: Blob) {
+    const file = cropFile;
+    if (!file) return;
+    setCropFile(null);
     setMainImgUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
+      fd.append("thumb", thumbBlob, "thumb.webp");
       const res = await fetch(`/api/products/${activeProductId}/main-image`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || "Помилка завантаження"); return; }
       setImgMap((prev) => ({ ...prev, [activeColorTrId]: data.img }));
+      setImgFullMap((prev) => ({ ...prev, [activeColorTrId]: data.img_full }));
       toast.success("Головне фото оновлено");
     } catch {
       toast.error("Помилка з'єднання");
     } finally {
       setMainImgUploading(false);
-      e.target.value = "";
     }
   }
 
@@ -466,6 +492,7 @@ function EditForm({
       const res = await fetch(`/api/products/${activeProductId}/main-image`, { method: "DELETE" });
       if (!res.ok) { toast.error("Помилка видалення"); return; }
       setImgMap((prev) => ({ ...prev, [activeColorTrId]: "" }));
+      setImgFullMap((prev) => ({ ...prev, [activeColorTrId]: "" }));
       toast.success("Головне фото видалено");
     } catch {
       toast.error("Помилка з'єднання");
@@ -544,6 +571,20 @@ function EditForm({
     } finally {
       setAddingColor(false);
     }
+  }
+
+  // ── Make a different color "main" (the one all others link off of) ─
+  // There's no persisted "is main" flag anywhere in the schema — main is
+  // simply whichever product id this edit page was opened with (see
+  // app/(admin)/products/[id]/page.tsx: baseTrId comes straight from the
+  // URL's :id, and findColorGroup treats everything else in the group as
+  // secondary). So "making" a color main is just navigating to its own
+  // product id — the page reloads with that color as the new base and the
+  // rest of the group (including the old main) become the linked colors.
+  function handleMakeMain(color: AllColor) {
+    const ukV = color.langVariants.find((v: any) => v.lang === "uk") ?? color.langVariants[0];
+    if (!ukV?.id) return;
+    router.push(`/products/${ukV.id}`);
   }
 
   // ── Soft unlink color from group ──────────────────────────────────
@@ -823,20 +864,34 @@ function EditForm({
                       {isActiveColor && <span style={{ fontSize: 9, marginLeft: "auto", opacity: 0.5 }}>✓</span>}
                     </button>
                     {!color.isMain && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteColor(color.trId)}
-                        disabled={isDeletingThis}
-                        title="Видалити обидві версії (UK + RU)"
-                        style={{
-                          background: "none", border: "none", cursor: isDeletingThis ? "wait" : "pointer",
-                          color: "#ef4444", padding: "4px 6px", flexShrink: 0, borderRadius: 4,
-                          opacity: isDeletingThis ? 0.5 : 1,
-                          display: "flex", alignItems: "center",
-                        }}
-                      >
-                        {isDeletingThis ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={12} />}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleMakeMain(color)}
+                          title="Зробити головним кольором групи"
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            color: "var(--text-muted)", padding: "4px 6px", flexShrink: 0, borderRadius: 4,
+                            display: "flex", alignItems: "center",
+                          }}
+                        >
+                          <Star size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteColor(color.trId)}
+                          disabled={isDeletingThis}
+                          title="Видалити обидві версії (UK + RU)"
+                          style={{
+                            background: "none", border: "none", cursor: isDeletingThis ? "wait" : "pointer",
+                            color: "#ef4444", padding: "4px 6px", flexShrink: 0, borderRadius: 4,
+                            opacity: isDeletingThis ? 0.5 : 1,
+                            display: "flex", alignItems: "center",
+                          }}
+                        >
+                          {isDeletingThis ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={12} />}
+                        </button>
+                      </>
                     )}
                   </div>
                 );
@@ -1066,37 +1121,68 @@ function EditForm({
       {/* ── Фото ─────────────────────────────────────────────────── */}
       {activeTab === "photos" && (
         <div className="max-w-3xl space-y-8">
-          {/* Основне фото — поле products.img */}
+          {/* Основне фото — products.img (картка) + products.img_full (оригінал) */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-3">Основне фото</p>
-            <div className="flex flex-wrap gap-3 mb-3">
-              {imgMap[activeColorTrId] ? (
-                <div className="relative group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getImgUrl(imgMap[activeColorTrId], "products") ?? ""}
-                    alt=""
-                    className="h-32 w-32 rounded-md object-cover border"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleDeleteMainImg}
-                    disabled={mainImgUploading}
-                    className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"
+            <div className="flex flex-wrap gap-5 mb-3">
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">Картка (300×300, обрізана)</p>
+                {imgMap[activeColorTrId] ? (
+                  <div className="relative group">
+                    <a href={getImgUrl(imgMap[activeColorTrId], "products")} target="_blank" rel="noreferrer" title="Відкрити фото">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={getImgUrl(imgMap[activeColorTrId], "products") ?? ""}
+                        alt=""
+                        className="h-32 w-32 rounded-md object-cover border cursor-zoom-in"
+                      />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleDeleteMainImg}
+                      disabled={mainImgUploading}
+                      className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-32 w-32 rounded-md border border-dashed flex items-center justify-center text-xs text-gray-400 text-center px-2">
+                    Немає фото
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">Повний розмір (оригінал, без обрізки)</p>
+                {imgFullMap[activeColorTrId] ? (
+                  <a
+                    href={getImgUrl(imgFullMap[activeColorTrId], "products")}
+                    target="_blank" rel="noreferrer" title="Відкрити повний розмір"
+                    className="relative group block h-32 w-32"
                   >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 self-center">Основне фото відсутнє</p>
-              )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={getImgUrl(imgFullMap[activeColorTrId], "products") ?? ""}
+                      alt=""
+                      className="h-32 w-32 rounded-md object-cover border cursor-zoom-in"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/0 group-hover:bg-black/30 transition-colors">
+                      <ExternalLink className="h-5 w-5 text-white opacity-0 group-hover:opacity-100" />
+                    </span>
+                  </a>
+                ) : (
+                  <div className="h-32 w-32 rounded-md border border-dashed flex items-center justify-center text-xs text-gray-400 text-center px-2">
+                    Немає фото
+                  </div>
+                )}
+              </div>
             </div>
             <label className="cursor-pointer">
               <input
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleUploadMainImg}
+                onChange={handlePickMainImg}
                 disabled={mainImgUploading}
               />
               <Button variant="outline" size="sm" disabled={mainImgUploading} asChild>
@@ -1285,6 +1371,14 @@ function EditForm({
                 </button>
                 {!color.isMain && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => handleMakeMain(color)}
+                      title="Зробити головним кольором групи"
+                      style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}
+                    >
+                      <Star size={14} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleRemoveColor(color.trId)}
@@ -1548,6 +1642,15 @@ function EditForm({
           onCancel={() => setConfirmState(null)}
         />
       )}
+
+      {/* ── Crop main photo before upload ─────────────────────────── */}
+      {cropFile && (
+        <ImageCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={confirmMainImgCrop}
+        />
+      )}
     </div>
   );
 }
@@ -1565,13 +1668,47 @@ function PhotosSection({
 }) {
   const [uploading, setUploading] = useState(false);
   const [confirmPhoto, setConfirmPhoto] = useState<{ allIds: number[] } | null>(null);
+  // Multi-file gallery upload is cropped one photo at a time: queue holds
+  // the originals still waiting for a crop, cropped collects {file, thumb}
+  // pairs as the admin confirms each one. Only once every queued file has
+  // a thumb do we actually POST the batch.
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [cropIndex, setCropIndex] = useState(0);
+  const croppedRef = useRef<{ file: File; thumb: Blob }[]>([]);
 
-  async function upload(files: FileList | null) {
+  function startUpload(files: FileList | null) {
     if (!files?.length) return;
+    croppedRef.current = [];
+    setCropQueue(Array.from(files));
+    setCropIndex(0);
+  }
+
+  function cancelCropQueue() {
+    setCropQueue([]);
+    setCropIndex(0);
+    croppedRef.current = [];
+  }
+
+  function onCropConfirmed(thumbBlob: Blob) {
+    croppedRef.current.push({ file: cropQueue[cropIndex], thumb: thumbBlob });
+    if (cropIndex + 1 < cropQueue.length) {
+      setCropIndex(cropIndex + 1);
+    } else {
+      const pairs = croppedRef.current;
+      setCropQueue([]);
+      setCropIndex(0);
+      croppedRef.current = [];
+      void upload(pairs);
+    }
+  }
+
+  async function upload(pairs: { file: File; thumb: Blob }[]) {
+    if (!pairs.length) return;
     setUploading(true);
     try {
       const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("files", f));
+      pairs.forEach(({ file }) => fd.append("files", file));
+      pairs.forEach(({ thumb }) => fd.append("thumbs", thumb, "thumb.webp"));
       fd.append("gallery", "1");
       const res = await fetch(`/api/products/${productId}/photos`, { method: "POST", body: fd });
       const body = await res.json();
@@ -1606,8 +1743,13 @@ function PhotosSection({
         <div className="flex flex-wrap gap-3 mb-3">
           {photos.map((p: any) => (
             <div key={p.allIds?.[0] ?? p.id} className="relative group">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={getImgUrl(p.img, "products")} alt="" className="h-24 w-24 rounded-md object-cover border" />
+              {/* Thumbnail is itself the click target — opens the full-size,
+                  uncropped original in a new tab; falls back to the thumb's
+                  own URL for photos uploaded before img_full existed. */}
+              <a href={getImgUrl(p.img_full || p.img, "products")} target="_blank" rel="noopener noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={getImgUrl(p.img, "products")} alt="" className="h-24 w-24 rounded-md object-cover border" />
+              </a>
               <button onClick={() => setConfirmPhoto({ allIds: p.allIds ?? [p.id] })}
                 className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white">
                 <Trash2 className="h-3 w-3" />
@@ -1616,13 +1758,22 @@ function PhotosSection({
           ))}
         </div>
         <label className="cursor-pointer">
-          <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => upload(e.target.files)} />
+          <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => { startUpload(e.target.files); e.target.value = ""; }} />
           <Button variant="outline" size="sm" disabled={uploading} asChild>
             <span>{uploading ? "Завантаження..." : "Додати до галереї"}</span>
           </Button>
         </label>
       </div>
     </div>
+
+    {cropQueue.length > 0 && (
+      <ImageCropModal
+        file={cropQueue[cropIndex]}
+        label={cropQueue.length > 1 ? `${cropIndex + 1} з ${cropQueue.length}` : undefined}
+        onCancel={cancelCropQueue}
+        onConfirm={onCropConfirmed}
+      />
+    )}
 
     {confirmPhoto && (
       <ConfirmDialog
@@ -1734,6 +1885,13 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
         }),
       });
       const saved = await res.json();
+      if (chars.length > 0) {
+        await fetch(`/api/products/${saved.id}/chars`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chars, lang: form.lang }),
+        });
+      }
       toast.success("Товар створено!");
       router.push(`/products/${saved.id}`);
     } catch {
@@ -1747,6 +1905,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     { id: "main", label: "Основне" },
     { id: "prices", label: "Ціни" },
     { id: "categories", label: "Категорії" },
+    { id: "filters", label: "Фільтри" },
     { id: "chars", label: "Характеристики" },
     { id: "seo", label: "SEO" },
   ];

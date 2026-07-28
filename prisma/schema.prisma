@@ -170,6 +170,10 @@ model Product {
   price2n       Float?
   price3n       Float?
   img           String? @db.VarChar(255)
+  // Full-size original, uncropped — img itself is the 300x300 thumbnail
+  // used everywhere on the storefront (catalog, cards, cart). Falls back to
+  // img (from the main directory rather than the cropped copy) when null.
+  img_full      String? @db.VarChar(255)
   img2          String? @db.VarChar(255)
   measure       Int?
   minquantity   Float   @default(1)
@@ -220,6 +224,10 @@ model ProductPhoto {
   id       Int     @id @default(autoincrement())
   pid      Int
   img      String  @db.VarChar(255)
+  // Full-size original, uncropped — img itself is the 300x300 thumbnail.
+  // Mirrors products.img/img_full's split; null on photos uploaded before
+  // this column existed.
+  img_full String? @db.VarChar(255)
   priority Int     @default(0)
 
   product  Product @relation(fields: [pid], references: [id], onDelete: Cascade)
@@ -231,6 +239,7 @@ model ProductPhoto2 {
   id       Int     @id @default(autoincrement())
   pid      Int
   img      String  @db.VarChar(255)
+  img_full String? @db.VarChar(255)
   priority Int     @default(0)
 
   product  Product @relation(fields: [pid], references: [id], onDelete: Cascade)

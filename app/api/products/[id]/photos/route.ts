@@ -11,6 +11,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const productId = parseInt(id);
   const formData = await req.formData();
   const files = formData.getAll("files") as File[];
+  // Cropped 300x300 thumbnails from ImageCropModal, one per file in `files`
+  // at the same index (client always pairs them 1:1 — see PhotosSection's
+  // upload() in product-form.tsx). Falls back to using the original as its
+  // own thumbnail if a particular index wasn't sent.
+  const thumbs = formData.getAll("thumbs") as File[];
   const gallery = formData.get("gallery") === "2";
 
   const folder = gallery ? "products2" : "products";
@@ -39,19 +44,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const created = [];
 
-  for (const file of files) {
-    const bytes = await file.arrayBuffer();
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const thumb = thumbs[i] as File | undefined;
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
-    const key = `${folder}/${filename}`;
 
-    const publicUrl = await uploadToR2(key, bytes, file.type || "image/jpeg");
+    const fullBytes = await file.arrayBuffer();
+    const fullUrl = await uploadToR2(`${folder}/full/${filename}`, fullBytes, file.type || "image/jpeg");
+
+    let thumbUrl = fullUrl;
+    if (thumb) {
+      const thumbBytes = await thumb.arrayBuffer();
+      thumbUrl = await uploadToR2(`${folder}/${filename}`, thumbBytes, thumb.type || "image/webp");
+    }
 
     const { data: rows, error: insertError } = await supabaseServer
       .from(table)
       .insert(
         langs.map((lang) => ({
           pid: trId,
-          img: publicUrl,
+          img: thumbUrl,
+          img_full: fullUrl,
           lang,
           translation_id: trId,
           title: "",

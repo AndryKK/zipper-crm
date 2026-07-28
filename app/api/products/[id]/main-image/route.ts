@@ -22,17 +22,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  // Cropped 300x300 thumbnail from ImageCropModal — the card/catalog/cart
+  // image everywhere on the storefront. `file` itself is kept untouched as
+  // img_full (full-size original) — mirrors the layout every already-
+  // imported product uses: main directory for the thumb, `full/` for the
+  // original, same filename in both.
+  const thumb = formData.get("thumb") as File | null;
   if (!file) return NextResponse.json({ error: "Файл не передано" }, { status: 400 });
 
-  const bytes = await file.arrayBuffer();
   const safeName = file.name.replace(/[^a-z0-9.]/gi, "_");
-  const key = `products/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
 
-  const imgValue = await uploadToR2(key, bytes, file.type || "image/jpeg");
+  const fullBytes = await file.arrayBuffer();
+  const fullUrl = await uploadToR2(`products/full/${filename}`, fullBytes, file.type || "image/jpeg");
 
-  await supabaseServer.from("products").update({ img: imgValue }).eq("translation_id", trId);
+  let thumbUrl = fullUrl;
+  if (thumb) {
+    const thumbBytes = await thumb.arrayBuffer();
+    thumbUrl = await uploadToR2(`products/${filename}`, thumbBytes, thumb.type || "image/webp");
+  }
 
-  return NextResponse.json({ img: imgValue });
+  await supabaseServer.from("products").update({ img: thumbUrl, img_full: fullUrl }).eq("translation_id", trId);
+
+  return NextResponse.json({ img: thumbUrl, img_full: fullUrl });
 }
 
 // DELETE — очистити головне фото для всіх мовних варіантів
@@ -52,7 +64,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   await supabaseServer
     .from("products")
-    .update({ img: "" })
+    .update({ img: "", img_full: "" })
     .eq("translation_id", (prod as any).translation_id);
 
   return NextResponse.json({ success: true });
