@@ -5,10 +5,17 @@ import { formatDate } from "@/lib/utils";
 import { DashboardCharts } from "@/components/admin/dashboard-charts";
 import { StatCard } from "@/components/admin/stat-card";
 import { TranslateButton } from "@/components/admin/translate-button";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+// This is the CRM's most-visited page — force-dynamic meant every single
+// visit re-ran all 11 queries below from scratch, including a full fetch of
+// every order (and every one of THEIR order_item rows) from the last 30
+// days. Wrapped in unstable_cache so repeat visits within the window reuse
+// the same result instead of re-querying — dashboard stats don't need to be
+// second-by-second fresh.
+const getStats = unstable_cache(_getStats, ["dashboard-stats"], { revalidate: 120 });
 
-async function getStats() {
+async function _getStats() {
   const now = new Date();
   const monthAgo = new Date(now);
   monthAgo.setDate(monthAgo.getDate() - 30);

@@ -14,7 +14,7 @@ type User = {
   phone: string | null;
   rank: number | null;
   addr_delivery: string | null;
-  password: string | null;
+  isPremium: boolean;
 };
 
 interface UsersTableProps {
@@ -89,8 +89,8 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  const classicUsers = users.filter((u) => u.password !== "SUPABASE_AUTH");
-  const premiumUsers = users.filter((u) => u.password === "SUPABASE_AUTH");
+  const classicUsers = users.filter((u) => !u.isPremium);
+  const premiumUsers = users.filter((u) => u.isPremium);
 
   const pool = activeTab === "classic" ? classicUsers : premiumUsers;
 

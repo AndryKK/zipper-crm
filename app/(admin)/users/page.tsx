@@ -2,7 +2,15 @@ import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import { Users, ShoppingCart } from "lucide-react";
 import { UsersTable } from "./users-table";
+import { unstable_cache } from "next/cache";
 
+// UsersTable (client component) calls useSearchParams() for the tab state,
+// which Next requires a Suspense boundary for during static generation —
+// force-dynamic is what already exempted this route from that (has been
+// true since before this file's caching was added), not something to
+// unpick here. unstable_cache below is what actually removes the repeated
+// full-table fetch; it works the same regardless of this route's own
+// dynamic/static rendering mode.
 export const dynamic = "force-dynamic";
 
 const PAGE = 1000;
@@ -22,24 +30,42 @@ async function fetchAllUsers() {
     if (data.length < PAGE) break;
     page++;
   }
-  return rows;
+  // `password` is only ever a real hash or the "SUPABASE_AUTH" migration
+  // marker (see UsersTable's classic/premium split) — never displayed, so it
+  // has no reason to leave the server. Collapsed to a boolean here instead
+  // of shipping the raw value down to the browser as page props.
+  return rows.map(({ password, ...u }) => ({ ...u, isPremium: password === "SUPABASE_AUTH" }));
 }
 
-export default async function UsersPage() {
-  /* Accurate counts — no row transfer */
-  const [{ count: totalUsers }, { count: totalOrders }] = await Promise.all([
-    supabaseServer.from("users").select("*", { count: "exact", head: true }),
-    supabaseServer.from("orders").select("*", { count: "exact", head: true }),
-  ]);
+// This page previously paginated through the ENTIRE users table (including
+// the password column, unnecessarily — see fetchAllUsers above) on every
+// single force-dynamic visit. Wrapped in unstable_cache — the customer list
+// doesn't need to be second-by-second fresh, so repeat visits within the
+// window reuse the cached result instead of re-fetching the whole table.
+const getUsersPageData = unstable_cache(
+  async () => {
+    const [{ count: totalUsers }, { count: totalOrders }] = await Promise.all([
+      supabaseServer.from("users").select("*", { count: "exact", head: true }),
+      supabaseServer.from("orders").select("*", { count: "exact", head: true }),
+    ]);
 
-  /* Full user list via pagination + per-customer order counts from the
-     user_order_counts view (scripts/create-user-order-counts-view.sql) —
-     one row per distinct login instead of paginating through every order
-     row just to count them client-side. */
-  const [allUsers, orderCountRows] = await Promise.all([
-    fetchAllUsers(),
-    supabaseServer.from("user_order_counts").select("login, order_count").then((r) => r.data ?? []),
-  ]);
+    /* Full user list via pagination + per-customer order counts from the
+       user_order_counts view (scripts/create-user-order-counts-view.sql) —
+       one row per distinct login instead of paginating through every order
+       row just to count them client-side. */
+    const [allUsers, orderCountRows] = await Promise.all([
+      fetchAllUsers(),
+      supabaseServer.from("user_order_counts").select("login, order_count").then((r) => r.data ?? []),
+    ]);
+
+    return { totalUsers: totalUsers ?? 0, totalOrders: totalOrders ?? 0, allUsers, orderCountRows };
+  },
+  ["users-page"],
+  { revalidate: 180 }
+);
+
+export default async function UsersPage() {
+  const { totalUsers, totalOrders, allUsers, orderCountRows } = await getUsersPageData();
 
   const orderCountMap: Record<string, number> = Object.fromEntries(
     orderCountRows.map((r: any) => [r.login, r.order_count])

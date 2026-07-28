@@ -3,45 +3,47 @@ import { supabaseServer } from "@/lib/supabase";
 import { getImgUrl } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
 import { ProductQuickView } from "./product-quick-view";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+// This page used to fetch the ENTIRE orders_item table (every line item ever
+// placed, no WHERE, no LIMIT) on every visit to sum quantities client-side —
+// the single largest full-table scan found in the app (hundreds of
+// thousands of units across the order history). top_selling_products
+// (scripts/create-top-selling-products-view.sql) does the SUM/GROUP BY/LIMIT
+// 30 in Postgres instead, so this only ever transfers 30 rows. Wrapped in
+// unstable_cache on top of that — sales rankings don't need to be
+// second-by-second fresh, so repeat visits within the window reuse the
+// cached result instead of re-querying at all.
+const getTopSales = unstable_cache(
+  async () => {
+    const { data: sales } = await supabaseServer
+      .from("top_selling_products")
+      .select("product, total_quantity, total_revenue")
+      .order("total_quantity", { ascending: false })
+      .limit(30);
 
-async function getTopSales() {
-  const { data: items } = await supabaseServer
-    .from("orders_item")
-    .select("product, quantity, price");
+    if (!sales || sales.length === 0) return [];
 
-  if (!items || items.length === 0) return [];
+    const pids = sales.map((s: any) => s.product);
+    const { data: products } = await supabaseServer
+      .from("products")
+      .select("id, title, pcode, img, price, price_sale, active")
+      .in("id", pids);
 
-  const map: Record<number, { quantity: number; revenue: number }> = {};
-  for (const item of items) {
-    if (!map[item.product]) map[item.product] = { quantity: 0, revenue: 0 };
-    map[item.product].quantity += item.quantity;
-    map[item.product].revenue += item.price * item.quantity;
-  }
+    const prodMap: Record<number, any> = {};
+    for (const p of products || []) prodMap[p.id] = p;
 
-  const sorted = Object.entries(map)
-    .map(([pid, v]) => ({ pid: Number(pid), ...v }))
-    .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 30);
-
-  if (sorted.length === 0) return [];
-
-  const pids = sorted.map((s) => s.pid);
-  const { data: products } = await supabaseServer
-    .from("products")
-    .select("id, title, pcode, img, price, price_sale, active")
-    .in("id", pids);
-
-  const prodMap: Record<number, any> = {};
-  for (const p of products || []) prodMap[p.id] = p;
-
-  return sorted.map((s, i) => ({
-    rank: i + 1,
-    ...s,
-    product: prodMap[s.pid],
-  }));
-}
+    return sales.map((s: any, i: number) => ({
+      rank: i + 1,
+      pid: s.product,
+      quantity: Number(s.total_quantity),
+      revenue: Number(s.total_revenue),
+      product: prodMap[s.product],
+    }));
+  },
+  ["top-sales"],
+  { revalidate: 300 }
+);
 
 export default async function TopSalesPage() {
   const items = await getTopSales();

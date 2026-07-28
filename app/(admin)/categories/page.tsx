@@ -4,30 +4,37 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { CategoryTree } from "@/components/admin/category-tree";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+// Product counts per category come from the category_product_counts view
+// (scripts/create-category-product-counts-view.sql), a single GROUP BY
+// query — this used to be ~150-160 separate per-category HEAD-count
+// requests (one per row in `cats`). That fan-out is fixed, but this page was
+// still force-dynamic (re-fetching both queries on every visit) — wrapped
+// in unstable_cache since the category tree changes rarely.
+const getCategoriesPageData = unstable_cache(
+  async () => {
+    const { data: categories } = await supabaseServer
+      .from("categories")
+      .select("id, translation_id, pid, title, priority, visibility, discount, ndiscount")
+      .eq("lang", "uk")
+      .order("priority", { ascending: true });
+
+    const { data: countRows } = await supabaseServer
+      .from("category_product_counts")
+      .select("translation_id, product_count");
+
+    return { cats: (categories || []) as any[], countRows: countRows || [] };
+  },
+  ["categories-page"],
+  { revalidate: 180 }
+);
 
 export default async function CategoriesPage() {
-  const { data: categories } = await supabaseServer
-    .from("categories")
-    .select("id, translation_id, pid, title, priority, visibility, discount, ndiscount")
-    .eq("lang", "uk")
-    .order("priority", { ascending: true });
-
-  const cats = (categories || []) as any[];
-
-  // Product counts per category come from the category_product_counts view
-  // (scripts/create-category-product-counts-view.sql), a single GROUP BY
-  // query — this used to be ~150-160 separate per-category HEAD-count
-  // requests (one per row in `cats`), which was by far the largest source
-  // of this project's Supabase egress usage since this page is
-  // force-dynamic and re-fetches on every visit.
-  const { data: countRows } = await supabaseServer
-    .from("category_product_counts")
-    .select("translation_id, product_count");
+  const { cats, countRows } = await getCategoriesPageData();
 
   const productCounts: Record<number, number> = Object.fromEntries(
-    (countRows || []).map((r: any) => [r.translation_id, r.product_count])
+    countRows.map((r: any) => [r.translation_id, r.product_count])
   );
 
   return (

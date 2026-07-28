@@ -1,17 +1,29 @@
 import { Sidebar } from "@/components/admin/sidebar";
 import { supabaseServer } from "@/lib/supabase";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+// This layout wraps every single admin page — the sidebar category fetch
+// below ran on every navigation click anywhere in the CRM, not just once,
+// since force-dynamic here made even nested pages with their own caching
+// re-render this layout from scratch. Categories change rarely (an admin
+// editing the catalog tree), so a few minutes of staleness here is
+// unnoticeable but removes a query from every single click.
+const getSidebarCategories = unstable_cache(
+  async () => {
+    const { data: allCats } = await supabaseServer
+      .from("categories")
+      .select("id, translation_id, title, pid")
+      .eq("lang", "uk")
+      .order("priority", { ascending: true });
+    return allCats || [];
+  },
+  ["admin-sidebar-categories"],
+  { revalidate: 300 }
+);
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Fetch all UK categories for the sidebar tree (roots + up to 2 more levels)
-  const { data: allCats } = await supabaseServer
-    .from("categories")
-    .select("id, translation_id, title, pid")
-    .eq("lang", "uk")
-    .order("priority", { ascending: true });
-
-  const cats = allCats || [];
+  const cats = await getSidebarCategories();
   const roots = cats.filter((c: any) => c.pid === 0);
 
   const catalogRoots = roots.map((root: any) => ({

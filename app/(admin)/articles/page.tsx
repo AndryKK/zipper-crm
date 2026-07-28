@@ -4,18 +4,24 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { ArticleRow } from "@/components/admin/article-row";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+const getArticles = unstable_cache(
+  async () => {
+    const { data } = await supabaseServer
+      .from("articles")
+      .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
+      .eq("lang", "uk")
+      .order("priority", { ascending: true })
+      .order("data", { ascending: false });
+    return (data || []) as any[];
+  },
+  ["articles-page"],
+  { revalidate: 180 }
+);
 
 export default async function ArticlesPage() {
-  const { data } = await supabaseServer
-    .from("articles")
-    .select("*, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr")
-    .eq("lang", "uk")
-    .order("priority", { ascending: true })
-    .order("data", { ascending: false });
-
-  const articles = (data || []) as any[];
+  const articles = await getArticles();
 
   return (
     <>
