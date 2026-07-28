@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { transliterate, getImgUrl, cn } from "@/lib/utils";
-import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink, Copy } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ImageCropModal } from "@/components/admin/image-crop-modal";
@@ -1799,7 +1799,6 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
   const [form, setForm] = useState({
     title: product?.title ?? "",
     main_title: product?.main_title ?? "",
-    pcode: product?.pcode ?? "",
     uri: product?.uri ?? "",
     price: product?.price ?? 0,
     price_sale: product?.price_sale ?? "",
@@ -1829,6 +1828,77 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
   const [cascadeSub, setCascadeSub] = useState("0");
   const [cascadeType, setCascadeType] = useState("0");
   const [chars, setChars] = useState<{ title: string; value: string }[]>([]);
+
+  // ── "Скопіювати з" — search an existing product and clone its fields
+  // (main info, prices, categories, filters, characteristics) as a
+  // starting point. The new product's pcode inherits the source's
+  // letter prefix (see save()); everything else is left editable.
+  const [copySearch, setCopySearch] = useState("");
+  const [copyResults, setCopyResults] = useState<any[]>([]);
+  const [copySearching, setCopySearching] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copiedFrom, setCopiedFrom] = useState<{ id: number; title: string } | null>(null);
+
+  async function searchCopySource(q: string) {
+    setCopySearch(q);
+    if (!q.trim()) { setCopyResults([]); return; }
+    setCopySearching(true);
+    try {
+      const res = await fetch(`/api/products?q=${encodeURIComponent(q)}&lang=uk&limit=8`);
+      const body = await res.json();
+      setCopyResults(body?.items ?? []);
+    } finally {
+      setCopySearching(false);
+    }
+  }
+
+  async function applyCopyFrom(src: { id: number; title: string }) {
+    setCopying(true);
+    setCopySearch("");
+    setCopyResults([]);
+    try {
+      const [detailRes, filtersRes] = await Promise.all([
+        fetch(`/api/products/${src.id}`),
+        fetch(`/api/products/${src.id}/filters`),
+      ]);
+      const detail = await detailRes.json();
+      const filtersBody = await filtersRes.json();
+
+      setForm((p) => ({
+        ...p,
+        title: detail.title ?? "",
+        main_title: detail.main_title ?? "",
+        uri: transliterate(detail.title ?? ""),
+        price: detail.price ?? 0,
+        price_sale: detail.price_sale ?? "",
+        price2: detail.price2 ?? "",
+        price2n: detail.price2n ?? "",
+        price3: detail.price3 ?? "",
+        price3n: detail.price3n ?? "",
+        minquantity: detail.minquantity ?? 1,
+        measure: detail.measure ? String(detail.measure) : "0",
+        package: detail.package ?? 1,
+        labelAction: detail.labelAction ?? 0,
+        popular: detail.popular ?? 0,
+        priority: detail.priority ?? 0,
+        descr: detail.descr ?? "",
+        heading: detail.heading ?? "",
+        text: detail.text ?? "",
+        seoTitle: detail.seoTitle ?? "",
+        seoKey: detail.seoKey ?? "",
+        seoDescr: detail.seoDescr ?? "",
+      }));
+      setSelectedCategories((detail.categories ?? []).map((c: any) => c.cid));
+      setSelectedFilters(filtersBody?.filterIds ?? []);
+      setChars((detail.chars ?? []).map((c: any) => ({ title: c.title, value: c.value })));
+      setCopiedFrom({ id: src.id, title: src.title });
+      toast.success(`Скопійовано поля з «${src.title}»`);
+    } catch {
+      toast.error("Не вдалося скопіювати товар");
+    } finally {
+      setCopying(false);
+    }
+  }
 
   const mainCats = categories.filter((c: any) => c.pid === 0);
   const subCats = cascadeMain !== "0"
@@ -1865,8 +1935,9 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: form.title, main_title: form.main_title, pcode: form.pcode, uri: form.uri,
+          title: form.title, main_title: form.main_title, uri: form.uri,
           heading: form.heading, text: form.text, descr: form.descr, lang: form.lang,
+          copyFromId: copiedFrom?.id,
           price: parseFloat(String(form.price)) || 0,
           price_sale: form.price_sale !== "" ? parseFloat(String(form.price_sale)) : 0,
           price2: form.price2 !== "" ? parseFloat(String(form.price2)) : 0,
@@ -1921,6 +1992,48 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
         ))}
       </div>
 
+      {/* ── Скопіювати з ─────────────────────────────────────────────── */}
+      <div className="max-w-3xl mb-6">
+        {copiedFrom ? (
+          <div className="flex items-center gap-2 text-sm bg-[var(--bg)] border border-[var(--border)] rounded-md px-3 py-2">
+            <Copy className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span>Скопійовано з: <span className="font-medium">{copiedFrom.title}</span></span>
+            <button type="button" onClick={() => setCopiedFrom(null)} className="ml-auto text-gray-400 hover:text-red-500">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <div className="flex items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+              <Input
+                value={copySearch}
+                onChange={(e) => searchCopySource(e.target.value)}
+                placeholder="Скопіювати з... (пошук за назвою або артикулом)"
+              />
+              {(copySearching || copying) && <Loader2 className="h-4 w-4 animate-spin shrink-0 text-gray-400" />}
+            </div>
+            {copyResults.length > 0 && (
+              <div className="absolute z-10 left-0 right-0 mt-1 bg-[var(--bg)] border border-[var(--border)] rounded-md overflow-hidden shadow-lg">
+                {copyResults.map((p: any) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyCopyFrom(p)}
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm text-left hover:bg-[var(--bg-secondary)]"
+                  >
+                    <span>
+                      {p.pcode && <span className="font-mono text-xs text-gray-400 mr-2">{p.pcode}</span>}
+                      {p.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {activeTab === "main" && (
         <div className="grid gap-6 max-w-3xl">
           <div className="grid grid-cols-2 gap-4">
@@ -1928,7 +2041,12 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
             <div className="space-y-1.5"><Label>Заголовок (H1)</Label><Input value={form.main_title} onChange={(e) => set("main_title", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label>Артикул</Label><Input value={form.pcode} onChange={(e) => set("pcode", e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Артикул</Label>
+              <p className="text-sm text-gray-400 h-9 flex items-center">
+                {copiedFrom ? "Буде згенеровано з букви скопійованого товару" : "Буде згенеровано автоматично"}
+              </p>
+            </div>
             <div className="space-y-1.5"><Label>URI (slug)</Label><Input value={form.uri} onChange={(e) => set("uri", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">

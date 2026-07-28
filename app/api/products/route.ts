@@ -42,12 +42,49 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ items: items || [], total: count ?? 0, page, limit });
 }
 
+// Артикул (pcode) is always auto-generated, never typed by hand: the
+// number is the highest existing numeric part + 1 (checked against the
+// most recently created products — that counter has always tracked
+// closely with id, e.g. id 10321 -> pcode "bs10280", so the last 200 rows
+// are enough without scanning the whole products table for one column).
+// The letter prefix is inherited from the "Скопіювати з" source product
+// (if any), or otherwise a random single English letter, since nothing
+// about a from-scratch product implies which letter it should get.
+async function generatePcode(copyFromId?: number): Promise<string> {
+  const { data: recent } = await supabaseServer
+    .from("products")
+    .select("pcode")
+    .order("id", { ascending: false })
+    .limit(200);
+
+  let maxNum = 0;
+  for (const row of recent ?? []) {
+    const n = parseInt(String((row as any).pcode ?? "").replace(/^\D+/, ""), 10);
+    if (Number.isFinite(n) && n > maxNum) maxNum = n;
+  }
+
+  let letter = "";
+  if (copyFromId) {
+    const { data: src } = await supabaseServer
+      .from("products")
+      .select("pcode")
+      .eq("id", copyFromId)
+      .single();
+    letter = String((src as any)?.pcode ?? "").match(/^\D*/)?.[0] ?? "";
+  }
+  if (!letter) {
+    letter = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+  }
+
+  return `${letter}${maxNum + 1}`;
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { categoryIds, filterIds: _filterIds, ...data } = body;
+  const { categoryIds, filterIds: _filterIds, copyFromId, pcode: _clientPcode, ...data } = body;
 
   const { data: maxTransRow } = await supabaseServer
     .from("products")
@@ -57,6 +94,8 @@ export async function POST(req: NextRequest) {
     .single();
   const translationId = ((maxTransRow as any)?.translation_id ?? 0) + 1;
 
+  const pcode = await generatePcode(copyFromId);
+
   const { data: langs } = await supabaseServer.from("langs").select("*").eq("active", 1);
   const activeLangs = langs || [];
 
@@ -64,6 +103,7 @@ export async function POST(req: NextRequest) {
     activeLangs.map(async (l: any) => {
       const { data: p } = await supabaseServer.from("products").insert({
         ...data,
+        pcode,
         lang: l.code,
         translation_id: translationId,
         title: l.code === data.lang ? data.title : `[${l.code}] ${data.title}`,

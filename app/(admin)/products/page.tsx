@@ -90,8 +90,10 @@ export default async function ProductsPage({
     query = query.or(`title.ilike.%${q}%,pcode.ilike.%${q}%`);
   }
 
+  // Newest-added first — order of addition, not the storefront's manual
+  // "priority" position (which used to sort this list too, interleaving
+  // old and new products instead of showing them in creation order).
   const { data: products, count } = await query
-    .order("priority", { ascending: true })
     .order("id", { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 
