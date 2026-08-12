@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   // Only the columns the list actually renders — see app/(admin)/orders/page.tsx.
   let query = supabaseServer
     .from("orders")
-    .select("id, status, person, login, addr_delivery, type, phone, date, ttn", { count: "exact" })
+    .select("id, status, person, login, addr_delivery, type, phone, date, ttn, welcome_email_sent_at", { count: "exact" })
     .order("date", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 

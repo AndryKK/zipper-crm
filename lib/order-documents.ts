@@ -79,9 +79,12 @@ export type OrderDocumentItem = {
   idx: number;
   pcode: string;
   name: string;
+  img: string | null;
   quantity: number;
   price: number;
+  priceBase: number;
   sum: number;
+  sumBase: number;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,7 +128,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
   // product row had if no Ukrainian translation exists).
   const productIds = (items ?? []).map((i: { product: number }) => i.product);
   const { data: products } = productIds.length
-    ? await supabaseServer.from("products").select("id, translation_id, title, pcode").in("id", productIds)
+    ? await supabaseServer.from("products").select("id, translation_id, title, pcode, img").in("id", productIds)
     : { data: [] };
 
   const translationIds = [...new Set((products ?? []).map((p: { translation_id: number }) => p.translation_id))];
@@ -136,10 +139,10 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     (ukProducts ?? []).map((p: { translation_id: number; title: string; pcode: string | null }) => [p.translation_id, p])
   );
 
-  const prodMap: Record<number, { title: string; pcode: string | null }> = {};
+  const prodMap: Record<number, { title: string; pcode: string | null; img: string | null }> = {};
   for (const p of products ?? []) {
     const uk = ukByTranslation.get(p.translation_id);
-    prodMap[p.id] = { title: uk?.title ?? p.title, pcode: uk?.pcode ?? p.pcode };
+    prodMap[p.id] = { title: uk?.title ?? p.title, pcode: uk?.pcode ?? p.pcode, img: p.img ?? null };
   }
 
   const orderTotal = (items ?? []).reduce(
@@ -173,15 +176,19 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
   ].filter(Boolean).join("<br/>");
 
   const docItems: OrderDocumentItem[] = (items ?? []).map(
-    (item: { product: number; quantity: number; price: number }, idx: number) => {
+    (item: { product: number; quantity: number; price: number; price_base: number }, idx: number) => {
       const prod = prodMap[item.product];
+      const priceBase = item.price_base > 0 ? item.price_base : item.price;
       return {
         idx: idx + 1,
         pcode: prod?.pcode ?? "",
         name: prod?.title ?? `Товар #${item.product}`,
+        img: prod?.img ?? null,
         quantity: item.quantity,
         price: item.price,
+        priceBase,
         sum: item.price * item.quantity,
+        sumBase: priceBase * item.quantity,
       };
     }
   );
@@ -366,6 +373,99 @@ export function renderWaybillHtml(doc: OrderDocumentData): string {
     <div class="sign-col">Від постачальника<div class="sign-line"></div></div>
     <div class="sign-col">Отримав(ла)<div class="sign-line"></div></div>
   </div>
+</body>
+</html>`;
+}
+
+/* ── Order confirmation ("вітальне повідомлення") ────────────────────────
+   Mirrors the legacy storefront's order-confirmation letter (adm/letter*.php)
+   — a red-headed items table with product thumbnails and struck-through
+   pre-discount prices, plus an order-summary header block. Shared by:
+   - the "Фактура" quick-view button (app/api/orders/[id]/receipt), which
+     renders it standalone (no greeting) for browsing/printing any time, and
+   - the automatic "order received, checking stock" email
+     (lib/order-emails.ts sendWelcomeEmail), which renders it with the
+     greeting paragraph prepended — same table both places, sent once. */
+
+const CONFIRMATION_ACCENT = "#bc0f0d";
+
+function confirmationItemRowsHtml(items: OrderDocumentItem[]): string {
+  return items.map((item) => {
+    const discounted = item.priceBase > item.price + 0.001;
+    return `
+      <tr>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; color:#888; font-size:13px;">${item.idx}.</td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; width:56px;">
+          ${item.img
+            ? `<img src="${item.img}" alt="" width="48" height="48" style="width:48px; height:48px; object-fit:cover; border-radius:6px; display:block;"/>`
+            : `<div style="width:48px; height:48px; border-radius:6px; background:#f1f1f1;"></div>`}
+        </td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee;">
+          <div style="font-weight:600; color:${CONFIRMATION_ACCENT}; font-size:14px;">${item.name}</div>
+          <div style="color:#888; font-size:12px; margin-top:2px;">Код товару: ${item.pcode || "—"}</div>
+        </td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">
+          ${item.price.toFixed(2)} грн
+          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.priceBase.toFixed(2)} грн</span>` : ""}
+        </td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">${item.quantity} шт.</td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">
+          ${item.sum.toFixed(2)} грн
+          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.sumBase.toFixed(2)} грн</span>` : ""}
+        </td>
+      </tr>`;
+  }).join("");
+}
+
+export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { greeting?: boolean } = {}): string {
+  const { order, items, orderTotal } = doc;
+  const name = order.person || order.login || "клієнте";
+  const dateStr = new Date(order.date).toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" });
+  const baseTotal = items.reduce((s, i) => s + i.sumBase, 0);
+  const discountedTotal = baseTotal > orderTotal + 0.001;
+
+  const greetingHtml = opts.greeting ? `
+    <p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#1c1d1f;">
+      Дякуємо за замовлення, ${name}! Ваше замовлення №${order.id} наразі перевіряється на наявність
+      необхідної кількості товару на наших складах. Щойно ми підтвердимо наявність — надішлемо вам
+      повідомлення та рахунок на оплату.<br/><br/>
+      Дякуємо, що обираєте Zipper — ми намагаємось опрацювати кожне замовлення якнайшвидше!
+    </p>` : "";
+
+  return `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="UTF-8"/><title>Замовлення №${order.id}</title></head>
+<body style="margin:0; padding:16px; font-family:Tahoma,Arial,sans-serif; font-size:14px; line-height:1.35; color:#1c1d1f;">
+  <img src="https://zipper.in.ua/img/logo.jpg" alt="Zipper" style="width:150px; margin-bottom:24px; display:block;"/>
+
+  ${greetingHtml}
+
+  <div style="font-weight:700; font-size:15px; margin-bottom:6px;">Замовлення №${order.id} від ${dateStr}</div>
+  <div><b>Замовник:</b> ${order.person || "—"}</div>
+  <div><b>Телефон:</b> ${order.phone || "—"}</div>
+  <div><b>Адреса доставки:</b> ${order.addr_delivery || "—"}</div>
+  ${order.notes ? `<div><b>Примітка:</b> ${order.notes}</div>` : ""}
+
+  <table cellpadding="0" cellspacing="0" style="width:100%; border-collapse:collapse; margin-top:18px;">
+    <thead>
+      <tr style="background:${CONFIRMATION_ACCENT}; color:#fff;">
+        <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:4%;"></th>
+        <th style="padding:10px 8px; font-size:12px; font-weight:600;" colspan="2">Товар</th>
+        <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:17%;">Ціна</th>
+        <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:15%;">Кількість</th>
+        <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:17%;">Всього</th>
+      </tr>
+    </thead>
+    <tbody>${confirmationItemRowsHtml(items)}</tbody>
+    <tfoot>
+      <tr style="background:#778085; color:#fff;">
+        <td colspan="6" style="padding:14px 18px; text-align:right;">
+          <div style="font-weight:700;">Всього по замовленню: ${orderTotal.toFixed(2)} грн</div>
+          ${discountedTotal ? `<div style="font-size:12px; text-decoration:line-through; color:#d8dcdd;">${baseTotal.toFixed(2)} грн</div>` : ""}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
 </body>
 </html>`;
 }

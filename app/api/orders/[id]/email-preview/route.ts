@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getOrderDocumentData } from "@/lib/order-documents";
+import { getOrderDocumentData, renderOrderConfirmationHtml } from "@/lib/order-documents";
 import { renderPaymentRequestEmail, renderPaymentConfirmedEmail } from "@/lib/email-templates";
 
 // Read-only — renders the exact subject/HTML the resend/automatic pipeline
@@ -13,12 +13,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const kind = req.nextUrl.searchParams.get("kind");
   const note = req.nextUrl.searchParams.get("note") || undefined;
-  if (kind !== "invoice" && kind !== "confirmed") {
+  if (kind !== "invoice" && kind !== "confirmed" && kind !== "welcome") {
     return NextResponse.json({ error: "Невідомий тип листа" }, { status: 400 });
   }
 
   const doc = await getOrderDocumentData(parseInt(id));
   if (!doc) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
+
+  if (kind === "welcome") {
+    return NextResponse.json({
+      subject: `Замовлення №${doc.order.id} отримано — перевіряємо наявність на складі`,
+      html: renderOrderConfirmationHtml(doc, { greeting: true }),
+    });
+  }
 
   const { subject, html } = kind === "confirmed"
     ? renderPaymentConfirmedEmail(doc, doc.order.ttn ?? null, { note })

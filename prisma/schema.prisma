@@ -555,6 +555,11 @@ model Order {
   // which Nova Poshta sender warehouse a later TTN creation step uses, see
   // np_sender_warehouse_ref / np_sender_warehouse_ref_oversized in settings.
   isOversized  Boolean  @default(false) @map("is_oversized")
+  // Whether the automatic "order received, checking stock" greeting email
+  // has already been sent — see app/api/cron/send-welcome-emails. Existing
+  // orders were backfilled to true so only new orders receive it.
+  welcomeEmailSent   Boolean   @default(false) @map("welcome_email_sent")
+  welcomeEmailSentAt DateTime? @map("welcome_email_sent_at")
 
   items        OrderItem[]
   returns      OrderReturn[]

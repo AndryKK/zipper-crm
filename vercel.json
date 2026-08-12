@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-ttn-status",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/send-welcome-emails",
+      "schedule": "* * * * *"
     }
   ]
 }

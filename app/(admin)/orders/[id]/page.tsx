@@ -208,7 +208,7 @@ export default function OrderDetailPage() {
   // Email preview/edit — review the exact rendered email (and optionally
   // add a personal note) before actually sending it.
   const [showEmailPreview, setShowEmailPreview] = useState(false);
-  const [emailPreviewKind, setEmailPreviewKind] = useState<"invoice" | "confirmed" | null>(null);
+  const [emailPreviewKind, setEmailPreviewKind] = useState<"invoice" | "confirmed" | "welcome" | null>(null);
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [emailPreviewSubject, setEmailPreviewSubject] = useState("");
   const [emailPreviewNote, setEmailPreviewNote] = useState("");
@@ -466,7 +466,7 @@ export default function OrderDetailPage() {
     finally { setNpManualSubmitting(false); }
   }
 
-  async function openEmailPreview(kind: "invoice" | "confirmed") {
+  async function openEmailPreview(kind: "invoice" | "confirmed" | "welcome") {
     setEmailPreviewKind(kind);
     setEmailPreviewNote("");
     setEmailPreviewSubject("");
@@ -510,6 +510,7 @@ export default function OrderDetailPage() {
       if (!res.ok) { toast.error(data.error ?? "Помилка надсилання"); return; }
       toast.success("Лист надіслано!");
       setShowEmailPreview(false);
+      if (emailPreviewKind === "welcome") await refreshOrder();
     } catch { toast.error("Помилка з'єднання"); }
     finally { setEmailSending(false); }
   }
@@ -1181,7 +1182,7 @@ export default function OrderDetailPage() {
 
         {/* ── WAREHOUSE STOCK-CONFIRMATION POPUP ─────────────────────────── */}
         <Dialog open={showStockConfirm} onOpenChange={setShowStockConfirm}>
-          <DialogContent style={{ maxWidth: 480 }}>
+          <DialogContent style={{ maxWidth: 680 }}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Package size={16} /> Перевірка наявності на складі
@@ -1190,6 +1191,28 @@ export default function OrderDetailPage() {
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
               Позначте кожен товар, переконавшись, що він фізично є на складі, перед формуванням рахунку та відправкою листа клієнту.
             </p>
+            {!!order.items?.length && (
+              <label
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                  borderRadius: 8, border: "1px dashed var(--border)", cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={order.items.every((i: { id: number }) => stockChecks[i.id])}
+                  ref={(el) => {
+                    if (el) el.indeterminate = order.items!.some((i: { id: number }) => stockChecks[i.id]) && !order.items!.every((i: { id: number }) => stockChecks[i.id]);
+                  }}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setStockChecks(Object.fromEntries(order.items!.map((i: { id: number }) => [i.id, checked])));
+                  }}
+                  style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>Вибрати всі товари</span>
+              </label>
+            )}
             <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {order.items?.map((item: any) => (
@@ -1215,9 +1238,23 @@ export default function OrderDetailPage() {
                     </div>
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.productTitle ?? `Товар #${item.product}`}
-                    </div>
+                    {item.productUrl ? (
+                      <a
+                        href={item.productUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ fontSize: 13, fontWeight: 500, color: "inherit", textDecoration: "none" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                      >
+                        {item.productTitle ?? `Товар #${item.product}`}
+                      </a>
+                    ) : (
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>
+                        {item.productTitle ?? `Товар #${item.product}`}
+                      </div>
+                    )}
                     <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {item.productPcode ? `${item.productPcode} · ` : ""}{item.quantity} шт
                     </div>
@@ -1661,7 +1698,7 @@ export default function OrderDetailPage() {
           <DialogContent style={{ maxWidth: 640 }}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Mail size={16} /> {emailPreviewKind === "confirmed" ? "Лист-подяка" : "Рахунок клієнту"} — перегляд перед надсиланням
+                <Mail size={16} /> {emailPreviewKind === "confirmed" ? "Лист-подяка" : emailPreviewKind === "welcome" ? "Вітальне повідомлення" : "Рахунок клієнту"} — перегляд перед надсиланням
               </DialogTitle>
             </DialogHeader>
 
@@ -1748,6 +1785,10 @@ export default function OrderDetailPage() {
               )}
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="outline" size="sm" onClick={() => openEmailPreview("welcome")}>
+                  <Mail size={14} color={order.welcome_email_sent_at ? "#059669" : undefined} />
+                  {order.welcome_email_sent_at ? "Вітальне повідомлення — переглянути / надіслати повторно" : "Вітальне повідомлення — переглянути й надіслати"}
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => openEmailPreview("invoice")}>
                   <Mail size={14} />
                   {step === -1 ? "Рахунок — переглянути й надіслати" : "Рахунок — переглянути й надіслати повторно"}
@@ -1884,8 +1925,8 @@ export default function OrderDetailPage() {
                 </div>
               )}
               {order.doc_field_1 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="text-gray-500">Рахунок:</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className="text-gray-500">рахунок</span>
                   <span className="font-mono font-semibold">{order.doc_field_1}</span>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
@@ -1898,6 +1939,12 @@ export default function OrderDetailPage() {
                     style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.1)", color: "#059669", border: "none", cursor: "pointer" }}
                   >
                     <ClipboardList size={12} /> Накладна
+                  </button>
+                  <button
+                    onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706", border: "none", cursor: "pointer" }}
+                  >
+                    <FileText size={12} /> Фактура
                   </button>
                 </div>
               )}

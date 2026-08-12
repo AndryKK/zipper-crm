@@ -72,9 +72,9 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRen
   const branch = order.addr_delivery || "—";
 
   const body = `
-    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Дякуємо за замовлення, ${name}!</h1>
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Наявність підтверджено, ${name}!</h1>
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
-      Ваше замовлення №${order.id} прийнято в обробку. Рахунок №${docNumber} та видаткова накладна додані до цього листа файлами.
+      Ми підтвердили наявність товару за замовленням №${order.id} на наших складах. Рахунок №${docNumber} на оплату та видаткова накладна додані до цього листа файлами.
     </p>
     ${noteBlock(opts.note)}
 

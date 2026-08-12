@@ -5,7 +5,7 @@ import { Header } from "@/components/admin/header";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search } from "lucide-react";
+import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail } from "lucide-react";
 import { Pagination } from "@/components/admin/data-table-controls";
 
 const PAGE_SIZE = 15;
@@ -154,6 +154,7 @@ interface OrderRow {
   phone: string | null;
   date: string;
   ttn: string | null;
+  welcome_email_sent_at: string | null;
   items: { price: number; quantity: number }[];
   isPremiumUser: boolean;
 }
@@ -269,7 +270,16 @@ export default function OrdersPage() {
                   const orderTotal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
                   return (
                     <tr key={order.id} className={orderRowClass(order.status)}>
-                      <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{order.id}</td>
+                      <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          {order.id}
+                          {order.welcome_email_sent_at && (
+                            <span title="Вітальне повідомлення надіслано">
+                              <Mail size={12} color="#059669" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <Link href={`/orders/${order.id}`}>
                           <Button variant="outline" size="sm">Переглянути</Button>
