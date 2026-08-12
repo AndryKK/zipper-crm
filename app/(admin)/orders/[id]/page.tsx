@@ -2026,9 +2026,22 @@ export default function OrderDetailPage() {
                           </div>
                         )}
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
-                            {item.productTitle ?? `Товар #${item.product}`}
-                          </div>
+                          {item.productUrl ? (
+                            <a
+                              href={item.productUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontWeight: 500, color: "inherit", textDecoration: "none" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                            >
+                              {item.productTitle ?? `Товар #${item.product}`}
+                            </a>
+                          ) : (
+                            <div style={{ fontWeight: 500 }}>
+                              {item.productTitle ?? `Товар #${item.product}`}
+                            </div>
+                          )}
                           <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {item.productPcode ? `${item.productPcode} · ` : ""}#{item.product}{item.type ? ` · ${item.type}` : ""}
                           </div>
