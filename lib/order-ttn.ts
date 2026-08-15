@@ -10,6 +10,22 @@ function getSetting(settings: { value: string; text: string }[], key: string) {
   return settings.find((s) => s.value === key)?.text?.trim() ?? "";
 }
 
+// Every zipper/accessory in this catalog is dense metal/plastic hardware —
+// weight tracks order value far more reliably than any flat guess. Rate is
+// "скільки грн товару важить 1 кг" (Налаштування → Nova Poshta), business
+// rule: 1000 грн ≈ 1 кг, rounded to the nearest whole kg — so a 500 грн
+// order already rounds up to 1 кг (Math.round rounds .5 up), a 1499 грн
+// order is still 1 кг, and 1500 грн becomes 2 кг. Only used when no real
+// per-parcel weight was measured (a postomat/manual TTN's OptionsSeat) —
+// those already carry a physically weighed value and must never be
+// overridden by this estimate.
+const DEFAULT_WEIGHT_RATE_UAH_PER_KG = 1000;
+
+function estimateWeightKg(orderTotal: number, settings: { value: string; text: string }[]): number {
+  const rate = parseFloat(getSetting(settings, "np_weight_uah_per_kg")) || DEFAULT_WEIGHT_RATE_UAH_PER_KG;
+  return Math.max(0.1, Math.round(orderTotal / rate));
+}
+
 // Демо-режим (Налаштування → Nova Poshta → "np_demo_mode") — генерує
 // випадковий 14-значний номер замість звернення до реального API НП.
 function randomDemoTtn(): string {
@@ -98,7 +114,12 @@ async function finishTtnCreation(
       recipientPhone:       order.phone!,
       recipientCityRef:      recipient.cityRef,
       recipientWarehouseRef: recipient.warehouseRef,
-      weight:      opts.seat?.weight ?? 0.5,
+      // No real measured seat (postomat/manual) — estimate from order value.
+      weight:      opts.seat?.weight ?? estimateWeightKg(orderTotal, settings),
+      // Declared value passed straight through to Nova Poshta's Cost field —
+      // that field IS the insurance basis (NP compensates loss/damage up to
+      // whatever Cost says, calculated automatically as ~0.5% of it), so this
+      // must always be the full order total, never a discounted/net figure.
       cost:        orderTotal,
       description: "Товари",
       codAmount:   opts.codAmount,
@@ -261,7 +282,7 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
     city: parsed.city,
     warehouseNum: parsed.warehouseNum,
     isPostomat: parsed.isPostomat,
-    weight: 0.5,
+    weight: estimateWeightKg(orderTotal, settings),
     cost: orderTotal,
     orderTotal,
     prepayment,
