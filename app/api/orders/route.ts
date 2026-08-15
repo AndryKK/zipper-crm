@@ -23,10 +23,17 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") ?? "1");
 
   // Only the columns the list actually renders — see app/(admin)/orders/page.tsx.
+  // Sorted by id, not date: `date` is a naive `timestamp without time zone`,
+  // and orders synced in from the legacy MySQL DB (scripts/sync-legacy-mysql.js)
+  // keep MySQL's original local-time value there while natively-created
+  // orders get UTC — mixing the two in one column makes "ORDER BY date"
+  // occasionally rank an older legacy order above a genuinely newer one. `id`
+  // is a strictly increasing sequence immune to that mismatch and always
+  // reflects real creation order, for both sources.
   let query = supabaseServer
     .from("orders")
     .select("id, status, person, login, addr_delivery, type, phone, date, ttn, welcome_email_sent_at", { count: "exact" })
-    .order("date", { ascending: false })
+    .order("id", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
   // Inside .or()'s embedded filter-list syntax, PostgREST requires "*" in
