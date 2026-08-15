@@ -229,7 +229,7 @@ export default function OrdersPage() {
           <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input
             className="crm-input"
-            placeholder="Пошук за клієнтом, телефоном, логіном, ТТН..."
+            placeholder="Пошук за номером замовлення, клієнтом, телефоном, логіном, ТТН..."
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             style={{ paddingLeft: 36 }}

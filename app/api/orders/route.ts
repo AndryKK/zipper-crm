@@ -54,7 +54,14 @@ export async function GET(req: NextRequest) {
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 
-  if (q) query = query.or(`person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*,ttn.ilike.*${q}*`);
+  if (q) {
+    // A pure-digit query also matches the order number exactly (id is an
+    // int column — PostgREST's ilike can't fuzzy-match it as text), on top
+    // of the existing fuzzy matches so a numeric query still finds it in a
+    // phone/ttn field too.
+    const idClause = /^\d+$/.test(q.trim()) ? `id.eq.${q.trim()},` : "";
+    query = query.or(`${idClause}person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*,ttn.ilike.*${q}*`);
+  }
 
   const { data: orderRows, count } = await query;
 
