@@ -74,7 +74,7 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRen
   const body = `
     <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Наявність підтверджено, ${name}!</h1>
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
-      Ми підтвердили наявність товару за замовленням №${order.id} на наших складах. Рахунок №${docNumber} на оплату та видаткова накладна додані до цього листа файлами.
+      Ми підтвердили наявність товару за замовленням №${order.id} на наших складах. Чекаємо оплату та готуємо ваше замовлення до відправки — рахунок №${docNumber} та видаткова накладна додані до цього листа файлами. Одразу після оплати ви отримаєте номер ТТН для відстеження посилки.
     </p>
     ${noteBlock(opts.note)}
 
@@ -105,11 +105,7 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRen
           <p style="margin:0; font-size:13px; color:#334155; line-height:1.7;">${supplierLines}</p>
         </td>
       </tr>
-    </table>
-
-    <p style="margin:24px 0 0; font-size:13px; color:#94a3b8; line-height:1.6;">
-      Після надходження оплати ми одразу сформуємо накладну Нової Пошти та повідомимо вас номером ТТН.
-    </p>`;
+    </table>`;
 
   return {
     subject: opts.subject?.trim() || `Рахунок №${docNumber} до сплати — замовлення №${order.id} (${orderTotal.toFixed(2)} грн)`,
@@ -135,9 +131,11 @@ export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string 
     </table>` : "";
 
   const body = `
-    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Дякуємо за оплату, ${name}!</h1>
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Оплату підтверджено, ${name}!</h1>
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
-      Ми отримали оплату за замовлення №${order.id}. Товар вже готується до відправки — незабаром ви отримаєте його на відділенні Нової Пошти.
+      Ми отримали й підтвердили оплату за замовленням №${order.id}. ${ttn
+        ? "Замовлення вже передано в доставку — номер ТТН для відстеження посилки додано нижче."
+        : "Замовлення готується до відправки — номер ТТН для відстеження посилки надішлемо окремим повідомленням, щойно його буде створено."}
     </p>
     ${noteBlock(opts.note)}
     ${trackBlock}
