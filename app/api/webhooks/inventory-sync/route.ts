@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, deductOrderItems } from "@/lib/inventory";
+import { supabaseServer } from "@/lib/supabase";
+import { sendWelcomeEmail } from "@/lib/order-emails";
 
 const CANCELLED_STATUS = "Скасовано";
 // Statuses reached before the order physically leaves the warehouse — an
@@ -10,20 +12,29 @@ const PRE_SHIPMENT_STATUSES = new Set(["Новий", "В роботі", "Опл�
 const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSES.has(status);
 
 type OrdersItemRow = { oid: number; product: number; quantity: number };
-type OrdersRow = { id: number; status: string | null };
+type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean };
 
 type WebhookPayload =
   | { type: "INSERT"; table: "orders_item"; record: OrdersItemRow; old_record: null }
   | { type: "UPDATE"; table: "orders_item"; record: OrdersItemRow; old_record: OrdersItemRow }
   | { type: "DELETE"; table: "orders_item"; record: null; old_record: OrdersItemRow }
+  | { type: "INSERT"; table: "orders"; record: OrdersRow; old_record: null }
   | { type: "UPDATE"; table: "orders"; record: OrdersRow; old_record: OrdersRow };
 
 // Receives Supabase Database Webhooks (configured in the Supabase dashboard,
 // see docs/inventory-webhooks.md) that fire on INSERT/UPDATE/DELETE of
-// `orders_item` and on UPDATE of `orders` — this is what keeps warehouse
-// stock in sync with the order lifecycle without any code in this app ever
-// creating an order itself (orders always arrive already-created from the
-// storefront/import).
+// `orders_item` and on INSERT/UPDATE of `orders` — this is what keeps
+// warehouse stock in sync with the order lifecycle, and (orders INSERT)
+// sends the one-time "checking stock availability" greeting email, without
+// any code in this app ever creating an order itself (orders always arrive
+// already-created from the storefront/import). Requires the Supabase
+// dashboard webhook to have the "Insert" event enabled for `orders` — it
+// previously only had "Update" wired up; see the 2026-08 note in
+// docs/inventory-webhooks.md.
+//
+// The welcome-email branch runs before the warehouse-id early-return below
+// on purpose — sending an email has nothing to do with inventory, and must
+// not silently no-op just because no warehouse is configured yet.
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
   if (!secret || secret !== process.env.INVENTORY_WEBHOOK_SECRET) {
@@ -31,6 +42,24 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = (await req.json()) as WebhookPayload;
+
+  if (payload.table === "orders" && payload.type === "INSERT") {
+    // Guards against double-sends from scripts/sync-legacy-mysql.js, which
+    // explicitly inserts historical orders with welcome_email_sent=true —
+    // those are mirrors of orders the customer already completed on the
+    // legacy site, not fresh ones, and must never get this email.
+    if (!payload.record.welcome_email_sent) {
+      const result = await sendWelcomeEmail(payload.record.id);
+      if (result.ok) {
+        await supabaseServer
+          .from("orders")
+          .update({ welcome_email_sent: true, welcome_email_sent_at: new Date().toISOString() })
+          .eq("id", payload.record.id);
+      }
+    }
+    return NextResponse.json({ success: true });
+  }
+
   const warehouseId = await getDefaultWarehouseId();
   if (!warehouseId) {
     return NextResponse.json({ error: "No active warehouse configured" }, { status: 200 });

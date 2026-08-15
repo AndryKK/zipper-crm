@@ -3,22 +3,24 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/order-emails";
 
-// Orders always arrive already-created from the storefront (this CRM never
-// creates one itself), so there's no in-app event to hang an "order placed"
-// email off of — this cron polls for orders that haven't gotten their
-// one-time "order received, checking stock" greeting yet (welcome_email_sent
-// = false) and sends it, same pattern as sync-ttn-status polling Nova
-// Poshta. See scripts/add-welcome-email-sent-column.sql for why existing
-// orders are excluded (backfilled to true) and only new ones show up here.
+// SAFETY NET, not the primary send path — the real-time send happens
+// immediately via the Supabase Database Webhook on `orders` INSERT (see
+// app/api/webhooks/inventory-sync's "orders"+"INSERT" branch). That's what
+// actually fires the moment a new order lands; this cron only exists to
+// catch the rare straggler the webhook missed (misconfigured trigger,
+// transient failure, invalid email retried after being fixed, etc).
 //
-// Deliberately capped at ONE order per run (paired with the every-minute
-// vercel.json schedule, so throughput is ~1/min) — after the 2026-08-12
-// incident where an 18k-row bulk UPDATE on `orders` fired its webhook
-// trigger 18k times at once and took the DB down, this cron must never be
-// the thing that fires that same orders-UPDATE webhook in a burst. One
-// row updated per run, a full cron tick apart, is exactly the same
-// single-row-update shape every other order-status change already does
-// safely elsewhere in this app — just paced, never batched.
+// A minute-level schedule was tried first but Vercel silently dropped the
+// cron registration for it (Hobby-plan accounts cap cron at once/day —
+// confirmed by the route 404ing in production despite deploying fine), so
+// this now runs once daily instead. That's fine for a safety net; it would
+// NOT be fine as the only send path, which is why the webhook exists.
+//
+// Capped at a small batch per run — after the 2026-08-12 incident where an
+// 18k-row bulk UPDATE on `orders` fired its webhook trigger 18k times at
+// once and took the DB down, this cron must never be the thing that fires
+// that same orders-UPDATE webhook in a burst. A handful of individual
+// row updates, once a day, is nowhere near that scale.
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const isCron = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
@@ -35,7 +37,7 @@ export async function GET(req: NextRequest) {
     .select("id, login")
     .eq("welcome_email_sent", false)
     .order("date", { ascending: true })
-    .limit(1);
+    .limit(10);
   if (onlyOrderId) query = query.eq("id", parseInt(onlyOrderId));
   const { data: orders } = await query;
 
