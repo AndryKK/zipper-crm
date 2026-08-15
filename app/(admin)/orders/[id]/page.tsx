@@ -1832,6 +1832,12 @@ export default function OrderDetailPage() {
               {processLog && order.doc_field_1 && (
                 <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
+                    onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
+                  >
+                    <FileText size={14} /> Видаткова зі знижкою
+                  </button>
+                  <button
                     onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
@@ -1924,32 +1930,36 @@ export default function OrderDetailPage() {
                   </a>
                 </div>
               )}
-              {order.doc_field_1 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span className="text-gray-500">рахунок</span>
-                  <span className="font-mono font-semibold">{order.doc_field_1}</span>
-                  <button
-                    onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
-                  >
-                    <FileText size={12} /> PDF
-                  </button>
-                  <button
-                    onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.1)", color: "#059669", border: "none", cursor: "pointer" }}
-                  >
-                    <ClipboardList size={12} /> Накладна
-                  </button>
-                  <button
-                    onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706", border: "none", cursor: "pointer" }}
-                  >
-                    <FileText size={12} /> Фактура
-                  </button>
-                </div>
-              )}
               {order.pay_method && <div><span className="text-gray-500">Оплата:</span> {order.pay_method}</div>}
               <div><span className="text-gray-500">Дата:</span> {formatDate(order.date)}</div>
+              {order.doc_field_1 && (
+                <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <span className="text-gray-500">рахунок</span>{" "}
+                    <span className="font-mono font-semibold">{order.doc_field_1}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
+                    >
+                      <FileText size={14} /> Видаткова зі знижкою
+                    </button>
+                    <button
+                      onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
+                    >
+                      <FileText size={14} /> Рахунок-фактура
+                    </button>
+                    <button
+                      onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
+                    >
+                      <ClipboardList size={14} /> Накладна
+                    </button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
