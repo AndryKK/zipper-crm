@@ -560,6 +560,10 @@ model Order {
   // orders were backfilled to true so only new orders receive it.
   welcomeEmailSent   Boolean   @default(false) @map("welcome_email_sent")
   welcomeEmailSentAt DateTime? @map("welcome_email_sent_at")
+  // NULL = automatic supplier pick (amount vs supplier_threshold, see
+  // getOrderDocumentData); 1/2 = forced to that supplier for this order.
+  // Set from the stock-confirmation popup.
+  supplierOverride   Int?      @map("supplier_override") @db.SmallInt
 
   items        OrderItem[]
   returns      OrderReturn[]

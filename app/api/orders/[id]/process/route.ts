@@ -29,6 +29,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await supabaseServer.from("orders").update({ is_oversized: body.isOversized }).eq("id", orderId);
   }
 
+  // Manual supplier override (also from the stock-confirmation popup) —
+  // must be written before STEP 3 below generates the invoice/sends the
+  // email, since getOrderDocumentData reads it fresh from the order row.
+  // 1/2 forces that supplier; anything else (including omitted) leaves the
+  // automatic amount-vs-threshold pick alone.
+  if (body.supplierOverride === 1 || body.supplierOverride === 2 || body.supplierOverride === null) {
+    await supabaseServer.from("orders").update({ supplier_override: body.supplierOverride }).eq("id", orderId);
+  }
+
   const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
   if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
 

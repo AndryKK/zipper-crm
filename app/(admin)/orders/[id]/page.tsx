@@ -100,6 +100,11 @@ export default function OrderDetailPage() {
   // a manager already looks the physical items over before anything else
   // happens to the order.
   const [isOversized, setIsOversized] = useState(false);
+  // Forces which supplier (settings "Постачальник 1"/"Постачальник 2") the
+  // invoice/waybill for this order is generated from, overriding the
+  // automatic amount-vs-threshold pick — "auto" leaves that pick alone.
+  const [supplierOverride, setSupplierOverride] = useState<"auto" | "1" | "2">("auto");
+  const [supplierNames, setSupplierNames] = useState<{ 1: string; 2: string }>({ 1: "", 2: "" });
 
   // Resend email — lets a manager fix a typo'd address before either the
   // payment-request or payment-confirmed letter is (re)sent via the
@@ -255,6 +260,19 @@ export default function OrderDetailPage() {
     });
   }, [params.id]);
 
+  // Supplier names shown in parens on the "Постачальник для рахунку"
+  // picker in the stock-confirmation popup, so a manager can tell the two
+  // apart by who they actually are, not just "1"/"2".
+  useEffect(() => {
+    apiFetch<{ value: string; text: string }[]>("/api/settings").then((data) => {
+      if (!data) return;
+      setSupplierNames({
+        1: data.find((s) => s.value === "supplier_name")?.text ?? "",
+        2: data.find((s) => s.value === "supplier2_name")?.text ?? "",
+      });
+    });
+  }, []);
+
   async function refreshOrder() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updated = await apiFetch<any>(`/api/orders/${params.id}`);
@@ -312,15 +330,16 @@ export default function OrderDetailPage() {
   function openStockConfirm() {
     setStockChecks({});
     setIsOversized(false);
+    setSupplierOverride("auto");
     setShowStockConfirm(true);
   }
 
   async function confirmStockAndProcess() {
     setShowStockConfirm(false);
-    await autoProcess(isOversized);
+    await autoProcess(isOversized, supplierOverride);
   }
 
-  async function autoProcess(oversized?: boolean) {
+  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2") {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
@@ -328,7 +347,10 @@ export default function OrderDetailPage() {
       const res  = await fetch(`/api/orders/${params.id}/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isOversized: oversized }),
+        body: JSON.stringify({
+          isOversized: oversized,
+          supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
@@ -1282,6 +1304,20 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             </label>
+            <div className="space-y-1.5">
+              <Label style={{ fontSize: 13, fontWeight: 500 }}>Постачальник для рахунку</Label>
+              <Select value={supplierOverride} onValueChange={(v) => setSupplierOverride(v as "auto" | "1" | "2")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Автоматично (за налаштуваннями)</SelectItem>
+                  <SelectItem value="1">Постачальник 1{supplierNames[1] ? ` (${supplierNames[1]})` : ""}</SelectItem>
+                  <SelectItem value="2">Постачальник 2{supplierNames[2] ? ` (${supplierNames[2]})` : ""}</SelectItem>
+                </SelectContent>
+              </Select>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                За замовчуванням постачальник обирається автоматично за сумою замовлення й порогом у налаштуваннях — тут можна змінити лише для цього конкретного замовлення.
+              </div>
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
               <Button variant="outline" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
               <Button

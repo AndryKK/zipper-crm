@@ -154,8 +154,14 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
 
   // Supplier selection — supplier2_* is used once the order total exceeds
   // the configured threshold, falling back to supplier_* if not configured.
+  // A manager can force this per order (stock-confirmation popup →
+  // orders.supplier_override, 1 or 2) when the automatic pick isn't right
+  // for a specific case; NULL/unset keeps the automatic behavior.
   const threshold = parseFloat(s["supplier_threshold"]) || DEFAULT_THRESHOLD;
-  const useSupplier2 = orderTotal > threshold && (s["supplier2_name"] || "").trim() !== "";
+  const autoUseSupplier2 = orderTotal > threshold && (s["supplier2_name"] || "").trim() !== "";
+  const useSupplier2 = order.supplier_override === 2 ? true
+    : order.supplier_override === 1 ? false
+    : autoUseSupplier2;
 
   const supplierName    = (useSupplier2 ? s["supplier2_name"]    : s["supplier_name"])    || "";
   const supplierAccount = (useSupplier2 ? s["supplier2_account"] : s["supplier_account"]) || "";
