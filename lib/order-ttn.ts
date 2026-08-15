@@ -26,6 +26,28 @@ function estimateWeightKg(orderTotal: number, settings: { value: string; text: s
   return Math.max(0.1, Math.round(orderTotal / rate));
 }
 
+// Nova Poshta's own published standard-box sizes (L×W×H, cm) by weight
+// bracket (https://novaposhta.ua packaging price list) — used as a rough
+// stand-in for a real measured parcel so a TTN never goes out with
+// "0×0×0" dimensions. This is explicitly an approximation (no one measures
+// the actual box here), picked as "smallest NP box that fits this weight."
+const NP_BOX_BRACKETS: { maxKg: number; l: number; w: number; h: number }[] = [
+  { maxKg: 0.5,  l: 17, w: 12, h: 9 },
+  { maxKg: 1,    l: 24, w: 17, h: 9 },
+  { maxKg: 2,    l: 24, w: 24, h: 16 },
+  { maxKg: 3,    l: 24, w: 24, h: 20 },
+  { maxKg: 5,    l: 40, w: 24, h: 20 },
+  { maxKg: 10,   l: 40, w: 35, h: 29 },
+  { maxKg: 15,   l: 60, w: 35, h: 28 },
+  { maxKg: 20,   l: 47, w: 40, h: 42 },
+  { maxKg: 30,   l: 70, w: 40, h: 42 },
+];
+
+function estimateDimensionsCm(weightKg: number): { length: number; width: number; height: number } {
+  const bracket = NP_BOX_BRACKETS.find((b) => weightKg <= b.maxKg) ?? NP_BOX_BRACKETS[NP_BOX_BRACKETS.length - 1];
+  return { length: bracket.l, width: bracket.w, height: bracket.h };
+}
+
 // Демо-режим (Налаштування → Nova Poshta → "np_demo_mode") — генерує
 // випадковий 14-значний номер замість звернення до реального API НП.
 function randomDemoTtn(): string {
@@ -102,6 +124,13 @@ async function finishTtnCreation(
   ].filter(Boolean);
   if (missing.length) return { ok: false, kind: "skipped", error: `Не налаштовано: ${missing.join(", ")}` };
 
+  // No real measured seat (postomat/manual already carry one, physically
+  // sized to the parcel) — estimate weight from order value, then pick the
+  // smallest matching Nova Poshta standard box for it, so the TTN always
+  // carries plausible dimensions instead of going out as "0×0×0".
+  const weightKg = opts.seat?.weight ?? estimateWeightKg(orderTotal, settings);
+  const seat = opts.seat ?? { weight: weightKg, ...estimateDimensionsCm(weightKg) };
+
   try {
     const result = await npCreateTtn({
       apiKey:               npApiKey,
@@ -114,8 +143,7 @@ async function finishTtnCreation(
       recipientPhone:       order.phone!,
       recipientCityRef:      recipient.cityRef,
       recipientWarehouseRef: recipient.warehouseRef,
-      // No real measured seat (postomat/manual) — estimate from order value.
-      weight:      opts.seat?.weight ?? estimateWeightKg(orderTotal, settings),
+      weight:      weightKg,
       // Declared value passed straight through to Nova Poshta's Cost field —
       // that field IS the insurance basis (NP compensates loss/damage up to
       // whatever Cost says, calculated automatically as ~0.5% of it), so this
@@ -123,7 +151,7 @@ async function finishTtnCreation(
       cost:        orderTotal,
       description: "Товари",
       codAmount:   opts.codAmount,
-      seat:        opts.seat,
+      seat,
     });
 
     if ("error" in result) return { ok: false, kind: "error", error: result.error };
@@ -240,6 +268,9 @@ export type ResolvePreview =
       warehouseNum: number;
       isPostomat: boolean;
       weight: number;
+      length: number;
+      width: number;
+      height: number;
       cost: number;
       orderTotal: number;
       prepayment: number;
@@ -274,6 +305,8 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
 
   const prepayment = Number(order.prepayment) || 0;
   const codAmount = Math.max(0, orderTotal - prepayment);
+  const weight = estimateWeightKg(orderTotal, settings);
+  const dims = estimateDimensionsCm(weight);
 
   return {
     ok: true,
@@ -282,7 +315,10 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
     city: parsed.city,
     warehouseNum: parsed.warehouseNum,
     isPostomat: parsed.isPostomat,
-    weight: estimateWeightKg(orderTotal, settings),
+    weight,
+    length: dims.length,
+    width: dims.width,
+    height: dims.height,
     cost: orderTotal,
     orderTotal,
     prepayment,

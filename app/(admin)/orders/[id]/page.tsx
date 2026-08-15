@@ -276,7 +276,14 @@ export default function OrderDetailPage() {
   async function refreshOrder() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updated = await apiFetch<any>(`/api/orders/${params.id}`);
-    if (updated) { setOrder(updated); setStatus(updated.status ?? ""); setPrepaymentInput(String(updated.prepayment ?? 0)); }
+    // Keep the separate `ttn` input state (manual "Ручне керування" field)
+    // in sync with the server value — otherwise it goes stale the moment a
+    // TTN is created automatically (confirmPayment/postomat/COD, which
+    // only update `order.ttn` via this same refresh), and the next save()
+    // from that panel would silently overwrite the real TTN with the
+    // stale empty value. See advanceStatus() above for the other half of
+    // this same bug class.
+    if (updated) { setOrder(updated); setStatus(updated.status ?? ""); setPrepaymentInput(String(updated.prepayment ?? 0)); setTtn(updated.ttn ?? ""); }
   }
 
   // Silently checks Nova Poshta's delivery status once whenever a shipped
@@ -634,10 +641,19 @@ export default function OrderDetailPage() {
   }
 
   async function advanceStatus(newStatus: string) {
+    // Only ever touches status — must NOT include `ttn` here. This is
+    // called right after automatic TTN creation (confirmPayment etc.),
+    // which updates order.ttn server-side but never syncs the separate
+    // local `ttn` input state (that's only for the manual "Ручне
+    // керування" TTN field) — sending that stale/empty `ttn` here used to
+    // silently null out a just-created real TTN on the very next status
+    // click, while leaving ttn_auto_created=true (this PUT never touched
+    // it), which is exactly the ttn=null / ttn_auto_created=true state
+    // that broke "Перевірити статус НП" for real, trackable shipments.
     await fetch(`/api/orders/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus, notes, ttn: ttn.trim() || null }),
+      body: JSON.stringify({ status: newStatus, notes }),
     });
     setStatus(newStatus);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1563,6 +1579,7 @@ export default function OrderDetailPage() {
                   <div><span style={{ color: "var(--text-muted)" }}>Отримувач:</span> <strong>{String(codPreview.recipientName)}</strong> · {String(codPreview.recipientPhone)}</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Місто / відділення:</span> {String(codPreview.city)} — Відділення №{String(codPreview.warehouseNum)}</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вага:</span> {String(codPreview.weight)} кг</div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Розміри (орієнтовно):</span> {String(codPreview.length)}×{String(codPreview.width)}×{String(codPreview.height)} см</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вартість оголошена:</span> {Number(codPreview.cost).toFixed(2)} грн</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Сума замовлення:</span> {Number(codPreview.orderTotal).toFixed(2)} грн</div>
                   {Number(codPreview.prepayment) > 0 && (

@@ -29,6 +29,14 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      // None of this app's dialogs use DialogDescription (there isn't even
+      // one exported here) — Radix otherwise logs a "Missing Description"
+      // console warning on every single dialog open. `aria-describedby`
+      // explicitly set to undefined is Radix's own documented opt-out for
+      // "this dialog genuinely has no description," not a suppressed bug.
+      // A caller passing a real aria-describedby (none currently do) still
+      // wins, since `...props` is spread after this.
+      aria-describedby={undefined}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out sm:rounded-lg",
         className
