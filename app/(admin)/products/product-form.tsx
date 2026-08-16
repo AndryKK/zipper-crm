@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { transliterate, getImgUrl, cn } from "@/lib/utils";
-import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink, Copy } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink, Copy, ChevronRight, ChevronDown } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ImageCropModal } from "@/components/admin/image-crop-modal";
@@ -43,6 +43,110 @@ function dedupeByImg(rows: any[]): any[] {
 function stripHtml(html: string | null | undefined): string {
   if (!html) return "";
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Expandable main → sub → type category tree, replacing the old 3-select
+// cascade. `selected`/`onToggle` work in translation_id terms (the
+// language-invariant category identifier — see getCategoryPath's comment
+// on why: a category's own per-language row id only coincides with its
+// translation_id for whichever language was imported first).
+function CategoryTreePicker({
+  categories,
+  selected,
+  onToggle,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  categories: any[];
+  selected: number[];
+  onToggle: (translationId: number) => void;
+}) {
+  // Starts fully expanded — every category with at least one child (i.e.
+  // every translation_id some other row's `pid` points at) — so the whole
+  // tree is visible at a glance instead of having to hunt for a branch.
+  // Chevrons still let a manager collapse a branch back down manually.
+  const [expanded, setExpanded] = useState<Set<number>>(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parentIds = new Set<number>(categories.map((c: any) => c.pid));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new Set(categories.filter((c: any) => parentIds.has(c.translationId)).map((c: any) => c.translationId));
+  });
+
+  function toggleExpand(translationId: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(translationId)) next.delete(translationId); else next.add(translationId);
+      return next;
+    });
+  }
+
+  const DEPTH_STYLE = [
+    { fontSize: 13.5, fontWeight: 600 },
+    { fontSize: 13,   fontWeight: 500 },
+    { fontSize: 12.5, fontWeight: 400 },
+  ] as const;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function renderNode(cat: any, depth: number) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const children = categories.filter((c: any) => c.pid === cat.translationId);
+    const hasChildren = children.length > 0;
+    const isExpanded = expanded.has(cat.translationId);
+    const isSelected = selected.includes(cat.translationId);
+    const depthStyle = DEPTH_STYLE[Math.min(depth, DEPTH_STYLE.length - 1)];
+    return (
+      <div key={cat.id}>
+        <div
+          className="hover:bg-[var(--bg-hover)]"
+          style={{
+            display: "flex", alignItems: "center", gap: 2, borderRadius: 6,
+            background: isSelected ? "rgba(99,102,241,0.12)" : "transparent",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => hasChildren && toggleExpand(cat.translationId)}
+            style={{
+              width: 20, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+              background: "none", border: "none", cursor: hasChildren ? "pointer" : "default",
+              padding: 0, flexShrink: 0, color: "var(--text-muted)", opacity: hasChildren ? 1 : 0,
+            }}
+          >
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          <label
+            style={{
+              display: "flex", alignItems: "center", gap: 7, cursor: "pointer", flex: 1,
+              padding: "5px 8px 5px 0", ...depthStyle,
+              color: depth === 2 && !isSelected ? "var(--text-muted)" : "var(--text)",
+            }}
+          >
+            <input
+              type="checkbox" checked={isSelected} onChange={() => onToggle(cat.translationId)}
+              style={{ cursor: "pointer", accentColor: "var(--accent)", width: 14, height: 14, flexShrink: 0 }}
+            />
+            {cat.title}
+          </label>
+        </div>
+        {hasChildren && isExpanded && (
+          <div style={{ marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--border)" }}>
+            {children.map((child) => renderNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const roots = categories.filter((c: any) => c.pid === 0);
+  return (
+    <div style={{ maxHeight: 440, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", background: "var(--bg-card)" }}>
+      {roots.map((cat, i) => (
+        <div key={cat.id} style={{ marginTop: i === 0 ? 0 : 10 }}>
+          {renderNode(cat, 0)}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -331,9 +435,6 @@ function EditForm({
   // ── Categories ────────────────────────────────────────────────────
   const [selectedCategories, setSelectedCategories] = useState<number[]>(productCategories);
   const [selectedFilters, setSelectedFilters] = useState<number[]>(productFilters);
-  const [cascadeMain, setCascadeMain] = useState("0");
-  const [cascadeSub, setCascadeSub] = useState("0");
-  const [cascadeType, setCascadeType] = useState("0");
 
   // ── Color dropdown + add modal ────────────────────────────────────
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
@@ -396,16 +497,6 @@ function EditForm({
   const setC = (k: string, v: unknown) => setCommon((prev) => ({ ...prev, [k]: v }));
 
   // ── Category helpers ──────────────────────────────────────────────
-  const mainCats = categories.filter((c: any) => c.pid === 0);
-  const subCats =
-    cascadeMain !== "0"
-      ? (() => { const m = categories.find((x: any) => x.id === parseInt(cascadeMain)); return m ? categories.filter((c: any) => c.pid === m.translationId) : []; })()
-      : [];
-  const typeCats =
-    cascadeSub !== "0"
-      ? (() => { const s = categories.find((x: any) => x.id === parseInt(cascadeSub)); return s ? categories.filter((c: any) => c.pid === s.translationId) : []; })()
-      : [];
-
   // products_categories.cid (and selectedCategories here) stores a
   // category's translation_id — the language-invariant identifier shared
   // across all its language rows — never the per-language row's own serial
@@ -429,15 +520,6 @@ function EditForm({
       toast("Категорії будуть змінені для ВСІХ кольорів та мовних версій цього товару", { icon: "⚠️" } as any);
       setCategoriesWarned(true);
     }
-  }
-
-  function addCascadeCategory() {
-    const idStr = cascadeType !== "0" ? cascadeType : cascadeSub !== "0" ? cascadeSub : cascadeMain;
-    const rowId = parseInt(idStr);
-    const cat = categories.find((c: any) => c.id === rowId);
-    if (!cat || selectedCategories.includes(cat.translationId)) return;
-    warnCategoriesChange();
-    setSelectedCategories((prev) => [...prev, cat.translationId]);
   }
 
   // ── Add color (with copy + color name replace) ────────────────────
@@ -1209,41 +1291,14 @@ function EditForm({
               <span>Зміна категорій застосується до <strong>всіх {allColors.length} кольорів</strong> цього товару.</span>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Основна категорія</Label>
-              <Select value={cascadeMain} onValueChange={(v) => { setCascadeMain(v); setCascadeSub("0"); setCascadeType("0"); }}>
-                <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">— Оберіть —</SelectItem>
-                  {mainCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Підкатегорія</Label>
-              <Select value={cascadeSub} onValueChange={(v) => { setCascadeSub(v); setCascadeType("0"); }} disabled={subCats.length === 0}>
-                <SelectTrigger><SelectValue placeholder={subCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">— Оберіть —</SelectItem>
-                  {subCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Тип</Label>
-              <Select value={cascadeType} onValueChange={setCascadeType} disabled={typeCats.length === 0}>
-                <SelectTrigger><SelectValue placeholder={typeCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">— Оберіть —</SelectItem>
-                  {typeCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={addCascadeCategory} disabled={cascadeMain === "0"}>
-            <Plus className="h-4 w-4 mr-1" />Додати до категорій
-          </Button>
+          <CategoryTreePicker
+            categories={categories}
+            selected={selectedCategories}
+            onToggle={(catId) => {
+              warnCategoriesChange();
+              setSelectedCategories((prev) => prev.includes(catId) ? prev.filter((x) => x !== catId) : [...prev, catId]);
+            }}
+          />
           {selectedCategories.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Обрано</p>
@@ -1824,9 +1879,6 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
 
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [selectedFilters, setSelectedFilters] = useState<number[]>([]);
-  const [cascadeMain, setCascadeMain] = useState("0");
-  const [cascadeSub, setCascadeSub] = useState("0");
-  const [cascadeType, setCascadeType] = useState("0");
   const [chars, setChars] = useState<{ title: string; value: string }[]>([]);
 
   // ── "Скопіювати з" — search an existing product and clone its fields
@@ -1900,14 +1952,6 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     }
   }
 
-  const mainCats = categories.filter((c: any) => c.pid === 0);
-  const subCats = cascadeMain !== "0"
-    ? (() => { const m = categories.find((x: any) => x.id === parseInt(cascadeMain)); return m ? categories.filter((c: any) => c.pid === m.translationId) : []; })()
-    : [];
-  const typeCats = cascadeSub !== "0"
-    ? (() => { const s = categories.find((x: any) => x.id === parseInt(cascadeSub)); return s ? categories.filter((c: any) => c.pid === s.translationId) : []; })()
-    : [];
-
   function getCategoryPath(catId: number): string {
     const cat = categories.find((c: any) => c.translationId === catId);
     if (!cat) return `#${catId}`;
@@ -1916,14 +1960,6 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     if (!parent || parent.pid === 0) return `${parent?.title ?? "?"} › ${cat.title}`;
     const grand = categories.find((c: any) => c.translationId === parent.pid);
     return `${grand?.title ?? "?"} › ${parent.title} › ${cat.title}`;
-  }
-
-  function addCascadeCategory() {
-    const idStr = cascadeType !== "0" ? cascadeType : cascadeSub !== "0" ? cascadeSub : cascadeMain;
-    const rowId = parseInt(idStr);
-    const cat = categories.find((c: any) => c.id === rowId);
-    if (!cat || selectedCategories.includes(cat.translationId)) return;
-    setSelectedCategories((p) => [...p, cat.translationId]);
   }
 
   const set = (k: string, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
@@ -2111,32 +2147,11 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
 
       {activeTab === "categories" && (
         <div className="max-w-2xl space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Основна категорія</Label>
-              <Select value={cascadeMain} onValueChange={(v) => { setCascadeMain(v); setCascadeSub("0"); setCascadeType("0"); }}>
-                <SelectTrigger><SelectValue placeholder="Оберіть..." /></SelectTrigger>
-                <SelectContent><SelectItem value="0">— Оберіть —</SelectItem>{mainCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Підкатегорія</Label>
-              <Select value={cascadeSub} onValueChange={(v) => { setCascadeSub(v); setCascadeType("0"); }} disabled={subCats.length === 0}>
-                <SelectTrigger><SelectValue placeholder={subCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
-                <SelectContent><SelectItem value="0">— Оберіть —</SelectItem>{subCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Тип</Label>
-              <Select value={cascadeType} onValueChange={setCascadeType} disabled={typeCats.length === 0}>
-                <SelectTrigger><SelectValue placeholder={typeCats.length === 0 ? "—" : "Оберіть..."} /></SelectTrigger>
-                <SelectContent><SelectItem value="0">— Оберіть —</SelectItem>{typeCats.map((c: any) => (<SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>))}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={addCascadeCategory} disabled={cascadeMain === "0"}>
-            <Plus className="h-4 w-4 mr-1" />Додати до категорій
-          </Button>
+          <CategoryTreePicker
+            categories={categories}
+            selected={selectedCategories}
+            onToggle={(catId) => setSelectedCategories((prev) => prev.includes(catId) ? prev.filter((x) => x !== catId) : [...prev, catId])}
+          />
           {selectedCategories.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Обрано</p>
