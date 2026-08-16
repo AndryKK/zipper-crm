@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { unlinkProductColors } from "@/lib/products";
+import { unlinkProductColors, setMainColor } from "@/lib/products";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -32,15 +32,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const productId = parseInt(id);
   const body = await req.json();
   const { categoryIds, filterIds, ...data } = body;
 
   const { data: product } = await supabaseServer
     .from("products")
     .update(data)
-    .eq("id", parseInt(id))
+    .eq("id", productId)
     .select("*")
     .single();
+
+  // A color saved as active=1 must be the ONLY active=1 in its color
+  // group — the storefront treats active=1 as "this is the main/
+  // searchable color" (see docs/product-colors.md); two active=1 rows in
+  // one group makes the site show them as two separate products instead
+  // of one with a color picker. setMainColor sweeps the rest of the group
+  // down to active=0, and makes sure BOTH language rows of this color end
+  // up active=1 (the .update(data) above only touched the one row `id`
+  // points at).
+  if (Number(data.active) === 1 && product) {
+    await setMainColor(productId);
+  }
 
   if (categoryIds !== undefined && product) {
     await supabaseServer.from("products_categories").delete().eq("pid", (product as any).id);

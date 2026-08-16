@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { generatePcode, buildAutoUri, unlinkProductColors, setMainColor } from "@/lib/products";
+import { generatePcode, buildAutoUri, unlinkProductColors, setMainColor, findColorGroupTrIds } from "@/lib/products";
 
 // POST /api/products/[id]/colors
 // Body: { pcode?, uri?, copyText?: { currentColorName, newColorName, currentColorNameRu?, newColorNameRu? } }
@@ -131,6 +131,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let createdTrId: number | null = null;
     const newVarsByLang: Record<string, number> = {};
 
+    // A duplicated color must never be born as a second active=1 in its
+    // group (see docs/product-colors.md — exactly one active=1 per group
+    // is what the storefront's search/color-picker depends on). Checked
+    // against the WHOLE existing group, not just `src` itself, since src
+    // might be a non-active member of a group whose active=1 row is some
+    // other color entirely.
+    const groupTrIds = await findColorGroupTrIds(sourceId);
+    const { data: groupActiveRows } = await supabaseServer
+      .from("products")
+      .select("id")
+      .in("translation_id", groupTrIds.length ? groupTrIds : [sourceTrId])
+      .eq("active", 1)
+      .limit(1);
+    const groupAlreadyHasActive = !!groupActiveRows?.length;
+
     for (const src of sourceVars) {
       const insertResult = await supabaseServer
         .from("products")
@@ -155,7 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           minquantity: src.minquantity,
           popular: src.popular,
           priority: src.priority,
-          active: src.active,
+          active: groupAlreadyHasActive ? 0 : src.active,
           label_action: src.label_action,
           pcode: pcode.trim(),
           lang: src.lang,
