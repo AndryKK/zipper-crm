@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProductsSearch } from "./products-search";
 import { DeleteProductButton } from "./delete-product-button";
 import { EditProductLink } from "./edit-product-link";
+import { DuplicateProductButton } from "./duplicate-product-button";
 import { UrlPagination } from "@/components/admin/url-pagination";
 
 export const dynamic = "force-dynamic";
@@ -251,6 +252,7 @@ export default async function ProductsPage({
                   <td>
                     <div className="flex items-center justify-end gap-1">
                       <EditProductLink productId={product.id} />
+                      <DuplicateProductButton productId={product.id} />
                       <DeleteProductButton productId={product.id} />
                     </div>
                   </td>

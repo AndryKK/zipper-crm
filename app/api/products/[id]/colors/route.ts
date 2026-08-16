@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { generatePcode, buildAutoUri, unlinkProductColors, setMainColor } from "@/lib/products";
 
 // POST /api/products/[id]/colors
-// Body: { pcode, uri, copyText?: { currentColorName, newColorName, currentColorNameRu?, newColorNameRu? } }
+// Body: { pcode?, uri?, copyText?: { currentColorName, newColorName, currentColorNameRu?, newColorNameRu? } }
 // Якщо товар з таким pcode існує — лінкує (uk↔uk, ru↔ru).
 // Якщо НЕ існує — створює UK+RU копії з основного товару з новим uri, потім лінкує.
 // Повертає: { success, newTrId, newVariants } для оновлення стейту форми без перезавантаження.
+//
+// pcode/uri обидва необов'язкові: якщо їх не передали (як робить кнопка
+// "Копіювати товар" у списку товарів — жодного ручного вводу), артикул і
+// slug генеруються самі через lib/products.ts (generatePcode/buildAutoUri)
+// — ті самі функції, що й при створенні товару з нуля. Ручна модалка
+// "Додати колір" у product-form.tsx як і раніше передає обидва явно.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json();
-  const { pcode, uri, copyText } = body as {
-    pcode: string;
+  const { pcode: pcodeInput, uri, copyText } = body as {
+    pcode?: string;
     uri?: string;
     copyText?: {
       currentColorName: string;
@@ -24,9 +31,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     };
   };
 
-  if (!pcode?.trim()) return NextResponse.json({ error: "Вкажіть артикул" }, { status: 400 });
-
   const sourceId = parseInt(id);
+  const pcode = pcodeInput?.trim() || await generatePcode(sourceId);
 
   const { data: sourceProd } = await supabaseServer
     .from("products")
@@ -66,7 +72,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select("id, translation_id")
     .eq("pcode", pcode.trim());
 
-  let toLink: { srcId: number; tgtId: number }[] = [];
+  // Exactly one bidirectional pair per color-group relationship, keyed by
+  // translation_id — NOT per-language row ids. This must match the
+  // storefront's own query (product.php: `SELECT ... FROM products_colors
+  // WHERE pid = :edit`, where :edit is always $row['translationId']); the
+  // storefront has no idea a specific language row's own id even exists
+  // here, and never resolves one. A translation_id happens to double as
+  // one particular language row's own id (whichever row was created
+  // first — see buildAutoUri's comment on the same convention for uri),
+  // which is exactly why a row-id-keyed link used to *look* like it
+  // worked from inside the CRM (findColorGroup in
+  // app/(admin)/products/[id]/page.tsx does its own row-id ->
+  // translation_id resolution and isn't picky about which one it's given)
+  // while silently never showing up as a real variant option on the live
+  // site — the storefront has no such resolution step.
+  let toLink: { srcId: number; tgtId: number } | null = null;
   let newTrId: number;
   let newVariants: any[];
 
@@ -85,11 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Це вже поточний товар" }, { status: 400 });
     }
 
-    // Match by lang: uk↔uk, ru↔ru
-    for (const srcVar of sourceVars) {
-      const tgtVar = (targetVarsShort || []).find((t: any) => t.lang === srcVar.lang);
-      if (tgtVar) toLink.push({ srcId: srcVar.id, tgtId: tgtVar.id });
-    }
+    toLink = { srcId: sourceTrId, tgtId: targetTrIds[0] };
 
     // Copy + replace text if requested
     if (copyText) {
@@ -121,6 +137,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .insert({
           title: replaceColor(src.title, src.lang),
           main_title: replaceColor(src.main_title, src.lang),
+          // Placeholder — an explicit `uri` wins as-is, but the auto-derived
+          // case (no `uri` given) needs createdTrId, which only exists once
+          // the first row below is inserted, so that case gets patched in
+          // the translation_id update just below instead.
           uri: uri?.trim() || src.uri,
           heading: replaceColor(src.heading, src.lang),
           descr: replaceColor(src.descr, src.lang),
@@ -157,12 +177,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (createdTrId === null) {
         createdTrId = newId;
       }
-      await supabaseServer.from("products").update({ translation_id: createdTrId }).eq("id", newId);
+      const patch: Record<string, unknown> = { translation_id: createdTrId };
+      // No explicit uri override — differentiate it from the source's own
+      // uri now that createdTrId (the new color group's id) is known, per
+      // buildAutoUri's doc comment. Without this every auto-created color
+      // would silently keep the SOURCE product's exact uri (a real gap in
+      // the old "falls back to src.uri" behavior — two live products with
+      // an identical uri, only distinguishable by id).
+      if (!uri?.trim()) patch.uri = buildAutoUri(createdTrId, src.uri);
+      await supabaseServer.from("products").update(patch).eq("id", newId);
     }
 
-    for (const src of sourceVars) {
-      const newId = newVarsByLang[src.lang];
-      if (newId) toLink.push({ srcId: src.id, tgtId: newId });
+    toLink = { srcId: sourceTrId, tgtId: createdTrId! };
+
+    // ── Copy categories + filters onto the new rows ──────────────────
+    // Two different keying schemes, both inherited from the storefront's
+    // own schema — not something to "fix" here, just something to get
+    // right when copying:
+    //   - products_categories.pid is a specific per-language product ROW
+    //     id (see app/(admin)/products/page.tsx's category-name lookup,
+    //     which cross-references it against the "ru" row's own id) — so
+    //     each new language row needs its own copied rows, source-row-id
+    //     to new-row-id, matched by lang.
+    //   - all_filters_filters_items.pid is the shared translation_id (see
+    //     GET/PUT /api/products/[id]/filters's doc comment) — one set
+    //     covers every language variant, so this only needs copying once,
+    //     sourceTrId -> createdTrId.
+    const sourceIds = sourceVars.map((s: any) => s.id);
+    const [{ data: sourceCats }, { data: sourceFilters }] = await Promise.all([
+      supabaseServer.from("products_categories").select("pid, cid").in("pid", sourceIds),
+      supabaseServer.from("all_filters_filters_items").select("fid").eq("pid", sourceTrId),
+    ]);
+
+    const srcIdToNewId = new Map(sourceVars.map((s: any) => [s.id, newVarsByLang[s.lang]]));
+    const newCatRows = (sourceCats ?? [])
+      .map((c: any) => ({ pid: srcIdToNewId.get(c.pid), cid: c.cid }))
+      .filter((c) => c.pid);
+    if (newCatRows.length) await supabaseServer.from("products_categories").insert(newCatRows);
+
+    if (sourceFilters?.length) {
+      await supabaseServer.from("all_filters_filters_items").insert(
+        sourceFilters.map((f: any) => ({ pid: createdTrId, fid: f.fid }))
+      );
     }
 
     newTrId = createdTrId!;
@@ -170,29 +226,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     newVariants = fullVars ?? [];
   }
 
-  // ── Insert same-lang links (bidirectional, skip if already exist) ─
-  if (toLink.length) {
-    const allSrcIds = toLink.map((p) => p.srcId);
-    const allTgtIds = toLink.map((p) => p.tgtId);
-
-    const [{ data: existingFwd }, { data: existingRev }] = await Promise.all([
-      supabaseServer.from("products_colors").select("pid, pid_with").in("pid", allSrcIds).in("pid_with", allTgtIds),
-      supabaseServer.from("products_colors").select("pid, pid_with").in("pid", allTgtIds).in("pid_with", allSrcIds),
-    ]);
-    const existingSet = new Set([
-      ...(existingFwd || []).map((l: any) => `${l.pid}-${l.pid_with}`),
-      ...(existingRev || []).map((l: any) => `${l.pid}-${l.pid_with}`),
-    ]);
-
-    const rows: { pid: number; pid_with: number }[] = [];
-    for (const { srcId, tgtId } of toLink) {
-      if (!existingSet.has(`${srcId}-${tgtId}`)) rows.push({ pid: srcId, pid_with: tgtId });
-      if (!existingSet.has(`${tgtId}-${srcId}`)) rows.push({ pid: tgtId, pid_with: srcId });
+  // ── Insert the translation_id link (bidirectional, skip if already exists) ─
+  if (toLink) {
+    const { srcId, tgtId } = toLink;
+    const { data: existingLink } = await supabaseServer
+      .from("products_colors")
+      .select("pid")
+      .or(`and(pid.eq.${srcId},pid_with.eq.${tgtId}),and(pid.eq.${tgtId},pid_with.eq.${srcId})`);
+    if (!existingLink?.length) {
+      await supabaseServer.from("products_colors").insert([
+        { pid: srcId, pid_with: tgtId },
+        { pid: tgtId, pid_with: srcId },
+      ]);
     }
-    if (rows.length) await supabaseServer.from("products_colors").insert(rows);
   }
 
   return NextResponse.json({ success: true, newTrId, newVariants });
+}
+
+// PATCH /api/products/[id]/colors — makes this product's color the group's
+// "main" one (active=1), demoting every other color in the group to
+// active=0. See setMainColor's doc comment in lib/products.ts for why
+// active is what actually controls this on the live site.
+export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  await setMainColor(parseInt(id));
+  return NextResponse.json({ success: true });
 }
 
 // DELETE /api/products/[id]/colors
@@ -207,22 +269,29 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const sourceId = parseInt(id);
 
   const { data: sourceProd } = await supabaseServer.from("products").select("translation_id").eq("id", sourceId).single();
-  const { data: sourceVars } = await supabaseServer.from("products").select("id").eq("translation_id", (sourceProd as any)?.translation_id);
+  const sourceTrId = (sourceProd as any)?.translation_id;
+  const { data: sourceVars } = await supabaseServer.from("products").select("id").eq("translation_id", sourceTrId);
   const sourceIds = (sourceVars || []).map((s: any) => s.id);
 
   const { data: targetVars } = await supabaseServer.from("products").select("id").eq("translation_id", colorTranslationId);
   const targetIds = (targetVars || []).map((t: any) => t.id);
 
-  if (sourceIds.length && targetIds.length) {
+  // Unlinking checks both translation_id (how POST above links things now)
+  // and the per-language row ids (how it used to, incorrectly — see the
+  // POST handler's comment) so this still cleans up a pre-existing,
+  // wrongly-keyed link too, not just newly-created ones.
+  const sourceKeys = [...new Set([sourceTrId, ...sourceIds].filter(Boolean))];
+  const targetKeys = [...new Set([colorTranslationId, ...targetIds].filter(Boolean))];
+
+  if (sourceKeys.length && targetKeys.length) {
     await Promise.all([
-      supabaseServer.from("products_colors").delete().in("pid", sourceIds).in("pid_with", targetIds),
-      supabaseServer.from("products_colors").delete().in("pid", targetIds).in("pid_with", sourceIds),
+      supabaseServer.from("products_colors").delete().in("pid", sourceKeys).in("pid_with", targetKeys),
+      supabaseServer.from("products_colors").delete().in("pid", targetKeys).in("pid_with", sourceKeys),
     ]);
   }
 
   if (hardDelete && targetIds.length) {
-    await supabaseServer.from("products_colors").delete()
-      .or(`pid.in.(${targetIds.join(",")}),pid_with.in.(${targetIds.join(",")})`);
+    await unlinkProductColors([...targetKeys]);
     await supabaseServer.from("products_photos").delete().in("pid", targetIds);
     await supabaseServer.from("products_photos2").delete().in("pid", targetIds);
     await supabaseServer.from("products").delete().in("id", targetIds);

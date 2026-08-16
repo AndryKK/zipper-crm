@@ -656,16 +656,25 @@ function EditForm({
   }
 
   // ── Make a different color "main" (the one all others link off of) ─
-  // There's no persisted "is main" flag anywhere in the schema — main is
-  // simply whichever product id this edit page was opened with (see
-  // app/(admin)/products/[id]/page.tsx: baseTrId comes straight from the
-  // URL's :id, and findColorGroup treats everything else in the group as
-  // secondary). So "making" a color main is just navigating to its own
-  // product id — the page reloads with that color as the new base and the
-  // rest of the group (including the old main) become the linked colors.
-  function handleMakeMain(color: AllColor) {
+  // The live site decides which color of a group is the searchable/
+  // representative one purely from `active` (product.php redirects an
+  // active=0 row to whichever sibling has active=1) — this used to just
+  // router.push to the color's own edit page and call that "making it
+  // main," which only changed what the CRM *displayed* as ★, never the
+  // `active` column the storefront actually reads. Now it flips `active`
+  // for real (PATCH .../colors, see setMainColor in lib/products.ts) and
+  // only then navigates — same UX (the page reloads on that color), now
+  // backed by data the site agrees with.
+  async function handleMakeMain(color: AllColor) {
     const ukV = color.langVariants.find((v: any) => v.lang === "uk") ?? color.langVariants[0];
     if (!ukV?.id) return;
+    try {
+      const res = await fetch(`/api/products/${ukV.id}/colors`, { method: "PATCH" });
+      if (!res.ok) { toast.error("Не вдалося зробити колір головним"); return; }
+    } catch {
+      toast.error("Помилка з'єднання");
+      return;
+    }
     router.push(`/products/${ukV.id}`);
   }
 
@@ -906,6 +915,22 @@ function EditForm({
             </span>
           )}
         </button>
+
+        {activeColorEntry && !activeColorEntry.isMain && (
+          <button
+            type="button"
+            onClick={() => handleMakeMain(activeColorEntry)}
+            title="Ставить active=1 для цього кольору й active=0 для решти групи — саме це визначає, який колір сайт показує в пошуку"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              marginLeft: 8, padding: "6px 12px", borderRadius: 8,
+              border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)",
+              fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            <Star size={12} /> Зробити цей колір основним
+          </button>
+        )}
 
         {colorDropdownOpen && (
           <div

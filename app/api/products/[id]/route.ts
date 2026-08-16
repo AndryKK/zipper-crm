@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { unlinkProductColors } from "@/lib/products";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -59,6 +60,11 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await supabaseServer.from("products").delete().eq("id", parseInt(id));
+  const productId = parseInt(id);
+  // Must run before the delete below — see unlinkProductColors's doc
+  // comment (this was the actual bug: a deleted product kept showing up
+  // as a color of its group because nothing ever cleaned this up).
+  await unlinkProductColors([productId]);
+  await supabaseServer.from("products").delete().eq("id", productId);
   return NextResponse.json({ success: true });
 }
