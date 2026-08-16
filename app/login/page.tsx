@@ -19,17 +19,31 @@ export default function LoginPage() {
     setError("");
 
     const data = new FormData(e.currentTarget);
-    const result = await signIn("credentials", {
-      username: data.get("username"),
-      password: data.get("password"),
-      redirect: false,
-    });
+    try {
+      const result = await signIn("credentials", {
+        username: data.get("username"),
+        password: data.get("password"),
+        redirect: false,
+      });
 
-    if (result?.ok) {
-      router.push("/");
-      router.refresh();
-    } else {
+      if (result?.ok) {
+        router.push("/");
+        router.refresh();
+        return;
+      }
+      // signIn resolves (doesn't throw) for a wrong login/password — it
+      // just comes back with ok:false/an error code instead. This is the
+      // path that was silently doing nothing before: nothing ever called
+      // setLoading(false), so the button's spinner just stuck around
+      // forever with no error shown ("вічний логін") the moment `result`
+      // itself came back falsy/malformed instead of a clean {ok:false}.
       setError("Невірний логін або пароль");
+    } catch {
+      // signIn can also reject outright (network blip, NextAuth/Supabase
+      // error) — same fix applies: never leave the button spinning with
+      // no feedback.
+      setError("Помилка з'єднання. Спробуйте ще раз.");
+    } finally {
       setLoading(false);
     }
   }
