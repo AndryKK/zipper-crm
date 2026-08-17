@@ -540,8 +540,11 @@ function InventoryContent() {
           </div>
         ) : (
           <>
-            {/* ── Desktop/tablet table ─────────────────────────────────── */}
-            <div className="crm-card hidden md:block" style={{ overflowX: "auto" }}>
+            {/* ── Desktop table (>=1024px, matches Sidebar's own
+                drawer/push breakpoint — the table is too cramped below
+                that, same width the sidebar itself switches to a mobile
+                drawer at) ────────────────────────────────────────────── */}
+            <div className="crm-card hidden lg:block" style={{ overflowX: "auto" }}>
               <table className="crm-table">
                 <thead>
                   <tr>
@@ -651,8 +654,9 @@ function InventoryContent() {
               </table>
             </div>
 
-            {/* ── Phone-only card list ─────────────────────────────────── */}
-            <div className="md:hidden flex flex-col gap-2.5">
+            {/* ── Card list below 1024px (phone + tablet, and narrow
+                laptop windows) ────────────────────────────────────────── */}
+            <div className="lg:hidden flex flex-col gap-2.5">
               {rows.map((row) => {
                 const available = Number(row.quantity) - Number(row.reserved);
                 const isLow = Number(row.quantity) <= Number(row.min_quantity) && Number(row.min_quantity) > 0;

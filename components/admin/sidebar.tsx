@@ -150,12 +150,16 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className="lg:hidden"
+          // display must come from the className, not the inline style
+          // below — an inline `display` always wins over a class-based
+          // rule (including this one's own `lg:hidden`), which is exactly
+          // why this stayed visible on desktop until now: the old inline
+          // display:flex silently overrode lg:hidden's display:none.
+          className="lg:hidden flex items-center justify-center"
           aria-label="Відкрити меню"
           style={{
             position: "fixed", top: 14, left: 14, zIndex: 60,
             width: 38, height: 38, borderRadius: 10,
-            display: "flex", alignItems: "center", justifyContent: "center",
             background: "var(--bg-card)", border: "1px solid var(--border)",
             color: "var(--text)", cursor: "pointer", boxShadow: "var(--shadow-card)",
           }}
@@ -293,8 +297,14 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
         </button>
       </div>
 
-      {isNavigating && <BusyOverlay />}
       </aside>
+
+      {/* Rendered as a sibling of <aside>, not inside it — the sidebar
+          carries a CSS transform (the slide-in/out drawer classes above),
+          and any transform on an ancestor creates a new containing block
+          for position:fixed descendants, which silently confined this to
+          the sidebar's own 248px-wide box instead of the full viewport. */}
+      {isNavigating && <BusyOverlay />}
     </>
   );
 }
