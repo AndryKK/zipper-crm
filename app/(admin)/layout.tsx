@@ -21,9 +21,49 @@ const getSidebarCategories = unstable_cache(
   { revalidate: 300 }
 );
 
+// Sidebar badge counts (Замовлення: нові + очікують відправку; Повернення:
+// нові/неопрацьовані) — scoped to the last 7 days per the ask ("бери лише
+// за останній тиждень"), same short-cache treatment as the categories
+// above since this layout re-renders on every admin navigation. The "new
+// order" status match mirrors app/api/orders/route.ts's own "new" quick
+// filter exactly (kept as the same literal .or() string on purpose, not
+// re-derived, so the sidebar count and the "Нові" list filter never
+// silently drift apart from each other).
+const getSidebarCounts = unstable_cache(
+  async () => {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [newOrders, awaitingShipment, newReturns] = await Promise.all([
+      supabaseServer
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .gte("date", weekAgo)
+        .or("status.is.null,status.ilike.new,status.ilike.*нов*,status.ilike.*отримано*,status.ilike.*получен*"),
+      supabaseServer
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .gte("date", weekAgo)
+        .ilike("status", "%оплач%"),
+      supabaseServer
+        .from("orders_returns")
+        .select("id", { count: "exact", head: true })
+        .gte("date", weekAgo)
+        .or("status.is.null,status.eq.Нове"),
+    ]);
+
+    return {
+      newOrders: newOrders.count ?? 0,
+      awaitingShipment: awaitingShipment.count ?? 0,
+      newReturns: newReturns.count ?? 0,
+    };
+  },
+  ["admin-sidebar-counts"],
+  { revalidate: 120 }
+);
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Fetch all UK categories for the sidebar tree (roots + up to 2 more levels)
-  const cats = await getSidebarCategories();
+  const [cats, counts] = await Promise.all([getSidebarCategories(), getSidebarCounts()]);
   const roots = cats.filter((c: any) => c.pid === 0);
 
   const catalogRoots = roots.map((root: any) => ({
@@ -42,7 +82,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         background: "var(--bg)",
       }}
     >
-      <Sidebar catalogRoots={catalogRoots} />
+      <Sidebar catalogRoots={catalogRoots} counts={counts} />
       <main
         style={{
           flex: 1,

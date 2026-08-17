@@ -21,7 +21,13 @@ const navGroups = [
     label: "Головне",
     items: [
       { href: "/", label: "Дашборд", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Продажі",
+    items: [
       { href: "/orders", label: "Замовлення", icon: ShoppingCart },
+      { href: "/returns", label: "Повернення", icon: RotateCcw },
       { href: "/top-sales", label: "Топ продажів", icon: TrendingUp },
     ],
   },
@@ -42,10 +48,9 @@ const navGroups = [
     ],
   },
   {
-    label: "Продажі",
+    label: "Клієнти",
     items: [
       { href: "/users", label: "Клієнти", icon: Users },
-      { href: "/returns", label: "Повернення", icon: RotateCcw },
       { href: "/user-categories", label: "Ранги клієнтів", icon: Star },
     ],
   },
@@ -72,7 +77,27 @@ const navGroups = [
   },
 ];
 
-export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
+type SidebarCounts = { newOrders: number; awaitingShipment: number; newReturns: number };
+
+// Small colored pill next to a nav item — green "+N" (new, last 7 days),
+// blue "N" (awaiting shipment), red "+N" (new/unprocessed returns). Only
+// rendered when the count is actually > 0, so a quiet week doesn't clutter
+// the sidebar with "+0" badges everywhere.
+function NavBadge({ count, color, prefix }: { count: number; color: string; prefix?: string }) {
+  if (!count) return null;
+  return (
+    <span
+      style={{
+        fontSize: 10.5, fontWeight: 700, lineHeight: 1, padding: "2px 6px",
+        borderRadius: 999, background: `${color}22`, color, flexShrink: 0,
+      }}
+    >
+      {prefix}{count}
+    </span>
+  );
+}
+
+export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]; counts?: SidebarCounts }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
@@ -179,7 +204,16 @@ export function Sidebar({ catalogRoots }: { catalogRoots?: CatalogRoot[] }) {
                             className={cn("crm-sidebar-item", active && "crm-sidebar-item--active")}
                           >
                             <Icon size={15} style={{ flexShrink: 0 }} />
-                            <span>{label}</span>
+                            <span style={{ flex: 1 }}>{label}</span>
+                            {href === "/orders" && counts && (
+                              <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                <NavBadge count={counts.newOrders} color="#22c55e" prefix="+" />
+                                <NavBadge count={counts.awaitingShipment} color="#3b82f6" />
+                              </span>
+                            )}
+                            {href === "/returns" && counts && (
+                              <NavBadge count={counts.newReturns} color="#ef4444" prefix="+" />
+                            )}
                           </Link>
                         )}
                         {hasCatalogDropdown && catalogNavOpen && (
