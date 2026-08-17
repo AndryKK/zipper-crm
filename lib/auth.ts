@@ -17,7 +17,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { data: user } = await supabaseServer
           .from("adm_users")
-          .select("id, login, pass")
+          .select("id, login, pass, role")
           .eq("login", credentials.username as string)
           .single();
 
@@ -29,7 +29,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         );
         if (!valid) return null;
 
-        return { id: String(user.id), name: user.login, email: user.login };
+        return {
+          id: String(user.id), name: user.login, email: user.login,
+          // Custom field beyond next-auth's default User shape — read back
+          // in auth.config.ts's jwt() callback. See lib/roles.ts.
+          role: user.role,
+        } as { id: string; name: string; email: string; role: string };
       },
     }),
   ],

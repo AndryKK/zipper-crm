@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
+import { isPathAllowed } from "@/lib/roles";
 
 const { auth } = NextAuth(authConfig);
 
@@ -25,6 +26,22 @@ export default auth((req) => {
   if (isLoggedIn && isLoginPage) {
     return NextResponse.redirect(new URL("/", req.nextUrl.origin));
   }
+
+  // Role-based access — see lib/roles.ts for what each role can reach.
+  // superadmin (and "/" for every role) always passes; a restricted role
+  // hitting a page outside its allowed set is bounced to the dashboard,
+  // hitting an API outside it gets a 403 instead of leaking data via a
+  // direct fetch to a route its own UI never shows it.
+  if (isLoggedIn) {
+    const role = (req.auth?.user as { role?: string } | undefined)?.role;
+    if (!isPathAllowed(role, req.nextUrl.pathname)) {
+      if (isApiRoute) {
+        return NextResponse.json({ error: "Доступ заборонено для цієї ролі" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    }
+  }
+
   return NextResponse.next();
 });
 

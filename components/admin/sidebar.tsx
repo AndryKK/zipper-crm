@@ -10,11 +10,12 @@ import {
   FileSpreadsheet, ChevronDown, LogOut, Zap, Warehouse, Boxes,
   TrendingUp, RotateCcw, Menu, X,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useState, Fragment as F } from "react";
 import { CatalogNav, type CatalogRoot } from "./catalog-nav";
 import { BusyOverlay } from "./busy-overlay";
+import { isPathAllowed } from "@/lib/roles";
 
 const navGroups = [
   {
@@ -100,6 +101,27 @@ function NavBadge({ count, color, prefix }: { count: number; color: string; pref
 export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]; counts?: SidebarCounts }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  // While the session is still resolving (status "loading"), don't filter
+  // yet — isPathAllowed treats a missing role as "deny" (see lib/roles.ts),
+  // which would otherwise flash a near-empty sidebar for a split second on
+  // every load, even for superadmins.
+  const visibleNavGroups = status === "loading"
+    ? navGroups
+    : navGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter(
+            // "Адміністратори" (/adm-users) isn't a business-data page a
+            // restricted role should ever see, even though it's not gated
+            // via isPathAllowed's prefix list (there's no /adm-users-only
+            // role) — it's superadmin-only by its own page/API logic, so
+            // just hide the nav link outside superadmin.
+            ({ href }) => isPathAllowed(role, href) && (href !== "/adm-users" || role === "superadmin")
+          ),
+        }))
+        .filter((group) => group.items.length > 0);
   const [isNavigating, startNavigation] = useTransition();
   const [collapsed, setCollapsed] = useState<string[]>(["Контент", "Система"]);
   const [catalogNavOpen, setCatalogNavOpen] = useState(false);
@@ -204,7 +226,7 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
-        {navGroups.map((group) => {
+        {visibleNavGroups.map((group) => {
           const isCollapsed = collapsed.includes(group.label);
           return (
             <div key={group.label} style={{ marginBottom: 2 }}>
