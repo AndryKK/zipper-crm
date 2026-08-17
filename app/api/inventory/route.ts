@@ -19,6 +19,17 @@ export async function GET(req: Request) {
   const q = searchParams.get("q");
   const page = searchParams.get("page");
   const limit = Number(searchParams.get("limit") ?? 50);
+  // "Не відображати не введені позиції" (inventory page toggle) — a row
+  // whose initial_quantity is still 0 has never gone through a manual
+  // "Змінити"/"Поставка"/"Додати запис" save (those are the only paths
+  // that ever set initial_quantity — see the PUT/POST handlers below); it
+  // exists only because adjustInventory() (lib/inventory.ts, the
+  // webhook-driven auto-deduct/restock path for orders/returns) inserted a
+  // bare row with no initial_quantity at all. That's exactly the "поки
+  // реальні залишки не введені" case docs/setup-inventory-sync.md already
+  // warns about — a number nobody has actually confirmed against the
+  // physical shelf, not a real recorded stock position.
+  const hideUnentered = searchParams.get("hide_unentered") === "1";
 
   const sortDir = searchParams.get("sort_dir") === "desc" ? false : true; // ascending param for .order()
   // Sorting the parent (inventory) rows by an embedded to-one resource's
@@ -68,6 +79,7 @@ export async function GET(req: Request) {
     if (warehouseId) query = query.eq("warehouse_id", Number(warehouseId));
     if (productId) query = query.eq("product_id", Number(productId));
     if (productIds) query = query.in("product_id", productIds);
+    if (hideUnentered) query = query.gt("initial_quantity", 0);
     if (sortColumn) {
       query = query.order(sortColumn, { ascending: sortDir });
     }
@@ -117,14 +129,19 @@ export async function GET(req: Request) {
    * looks like a bug — so recompute those two numbers over just the
    * filtered set here. Cheap: search results are always a small subset. */
   async function computeFilteredAggregate() {
-    if (!productIds) return null;
+    // Same "don't show the whole-warehouse total next to a narrower table"
+    // reasoning applies to the hide-unentered toggle as it does to a text
+    // search — recompute over the actually-visible set whenever either one
+    // narrows it, not just for search.
+    if (!productIds && !hideUnentered) return null;
     const matched: { quantity: number; min_quantity: number }[] = [];
     const pageSize = 1000;
     for (let from = 0; ; from += pageSize) {
       let q2 = supabaseServer.from("inventory").select("quantity, min_quantity");
       if (warehouseId) q2 = q2.eq("warehouse_id", Number(warehouseId));
       if (productId) q2 = q2.eq("product_id", Number(productId));
-      q2 = q2.in("product_id", productIds!);
+      if (productIds) q2 = q2.in("product_id", productIds);
+      if (hideUnentered) q2 = q2.gt("initial_quantity", 0);
       const { data, error } = await q2.range(from, from + pageSize - 1);
       if (error || !data || data.length === 0) break;
       matched.push(...data);
@@ -143,6 +160,7 @@ export async function GET(req: Request) {
       if (warehouseId) q2 = q2.eq("warehouse_id", Number(warehouseId));
       if (productId) q2 = q2.eq("product_id", Number(productId));
       if (productIds) q2 = q2.in("product_id", productIds);
+      if (hideUnentered) q2 = q2.gt("initial_quantity", 0);
       const { data, error } = await q2.range(from, from + pageSize - 1);
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) break;

@@ -8,7 +8,7 @@ import {
   FileText, Newspaper, Image, Settings, Filter, UserCog,
   PackageCheck, DollarSign, Globe, MessageSquare, Briefcase, Star,
   FileSpreadsheet, ChevronDown, LogOut, Zap, Warehouse, Boxes,
-  TrendingUp, RotateCcw,
+  TrendingUp, RotateCcw, Menu, X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -103,6 +103,13 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   const [isNavigating, startNavigation] = useTransition();
   const [collapsed, setCollapsed] = useState<string[]>(["Контент", "Система"]);
   const [catalogNavOpen, setCatalogNavOpen] = useState(false);
+  // Below `lg` (tablet/phone) the sidebar is an off-canvas drawer — fixed
+  // position but translated fully off-screen until opened, so it never
+  // reserves layout space (see the `main` margin in app/(admin)/layout.tsx,
+  // which is 0 below `lg` for the same reason). At `lg` and up this state
+  // is ignored entirely (CSS `lg:translate-x-0` always wins) and it's back
+  // to the classic always-visible sidebar that pushes content over.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleGroup = (label: string) => {
     setCollapsed((prev) =>
@@ -119,6 +126,7 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   // stopped a manager from clicking elsewhere while a heavier page (e.g.
   // Товари, Замовлення) was still loading.
   function navigate(href: string) {
+    setMobileOpen(false);
     if (href === pathname) return;
     startNavigation(() => {
       router.push(href);
@@ -134,16 +142,60 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   }
 
   return (
-    <aside className="crm-sidebar">
+    <>
+      {/* Mobile/tablet-only hamburger to open the drawer — only rendered
+          while closed, since it sits in the same top-left corner the open
+          drawer's own logo/close-button row occupies (see below); showing
+          both at once would overlap. */}
+      {!mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="lg:hidden"
+          aria-label="Відкрити меню"
+          style={{
+            position: "fixed", top: 14, left: 14, zIndex: 60,
+            width: 38, height: 38, borderRadius: 10,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "var(--bg-card)", border: "1px solid var(--border)",
+            color: "var(--text)", cursor: "pointer", boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <Menu size={18} />
+        </button>
+      )}
+
+      {/* Backdrop — tap outside the open drawer to close it. */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden"
+          style={{ position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.5)" }}
+        />
+      )}
+
+      <aside
+        className={cn(
+          "crm-sidebar transition-transform duration-200 ease-out lg:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
       {/* Logo */}
       <div className="crm-sidebar-logo">
         <div className="crm-sidebar-logo-icon">
           <Zap size={16} color="#fff" />
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Zipper</div>
           <div style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.5 }}>CRM</div>
         </div>
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden"
+          aria-label="Закрити меню"
+          style={{ background: "none", border: "none", color: "var(--text-sidebar)", cursor: "pointer", padding: 4 }}
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {/* Nav */}
@@ -242,6 +294,7 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
       </div>
 
       {isNavigating && <BusyOverlay />}
-    </aside>
+      </aside>
+    </>
   );
 }

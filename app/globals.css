@@ -569,6 +569,17 @@ a > .crm-stat-card:hover .stat-card-value {
 }
 .crm-input::placeholder { color: var(--text-muted); }
 
+/* Big centered numeric input for editing warehouse quantities (see
+   app/(admin)/inventory/page.tsx) — used with type="text"
+   inputMode="numeric" rather than type="number", so a 0 can actually be
+   cleared to empty and there's no OS spin-button/scroll-wheel quirks to
+   fight with; this just gives it the large, easy-to-read digit styling. */
+.crm-input-qty {
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Chart tooltip ─── */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
   background: var(--bg-card) !important;

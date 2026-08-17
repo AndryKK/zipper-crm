@@ -83,10 +83,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       }}
     >
       <Sidebar catalogRoots={catalogRoots} counts={counts} />
+      {/* marginLeft is a Tailwind class, not inline style, on purpose — the
+          sidebar is an off-canvas drawer below `lg` (see Sidebar's own
+          comment) and must not have layout space reserved for it there,
+          only from `lg` up where it's back to pushing content over. */}
       <main
+        className="ml-0 lg:ml-[248px]"
         style={{
           flex: 1,
-          marginLeft: 248,
           display: "flex",
           flexDirection: "column",
           minHeight: "100vh",

@@ -16,11 +16,19 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
 
   return (
     <header
+      // Left padding is a Tailwind class, not part of the inline shorthand,
+      // specifically so it can be wider on phone/tablet — the fixed
+      // hamburger button in Sidebar.tsx (top:14,left:14, ~38px wide) sits
+      // in this same top-left corner below `lg`, and would otherwise
+      // overlap the title text.
+      className="pl-16 lg:pl-7"
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "14px 28px",
+        paddingTop: 14,
+        paddingRight: 28,
+        paddingBottom: 14,
         background: "var(--bg-card)",
         borderBottom: "1px solid var(--border)",
         position: "sticky",
