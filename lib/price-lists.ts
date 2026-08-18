@@ -16,7 +16,11 @@ import * as XLSX from "xlsx";
 
 const BUCKET = "price-lists";
 const LANGS = ["uk", "ru"] as const;
-const SITE_URL: Record<string, string> = {
+// Exported — also used by app/(admin)/products/page.tsx to link a
+// ru-only orphan product (no uk sibling row at all, so MAIN_DOMAIN/
+// lib/products.ts's uk-centric resolveStorefrontGroups doesn't apply) to
+// its real page on the ru storefront instead.
+export const SITE_URL: Record<string, string> = {
   uk: "https://com.zipper-shop.online",
   ru: "https://in.zipper-shop.online",
 };

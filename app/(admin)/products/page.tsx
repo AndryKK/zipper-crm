@@ -13,6 +13,7 @@ import { UrlPagination } from "@/components/admin/url-pagination";
 import { CopyableText } from "@/components/admin/copyable-text";
 import { ImageZoom } from "@/components/admin/image-zoom";
 import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
+import { SITE_URL } from "@/lib/price-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -105,19 +106,52 @@ export default async function ProductsPage({
   const totalPages = Math.ceil(total / limit);
   const allProducts = (products || []) as any[];
 
+  // Артикул (pcode) is normally identical across a group's uk/ru rows
+  // (verified against real data), so the uk-only query above already finds
+  // a match either way in the common case. A handful of groups are
+  // entirely missing their uk row though (e.g. translation_id 10318,
+  // pcode "bs10318" — reported as "CRM не шукає bs10318") — invisible to
+  // this uk-scoped list no matter what, browsing or search. Only matters
+  // when searching: look for a pcode match among non-uk rows whose group
+  // isn't already covered above, and fold them in (badged by language,
+  // linked straight to the ru storefront since there's no uk page for
+  // them — see SITE_URL below).
+  let orphanProducts: any[] = [];
+  if (q) {
+    const coveredGroupIds = new Set(allProducts.map((p) => p.translation_id));
+    const { data: nonUkMatches } = await supabaseServer
+      .from("products")
+      .select("id, img, title, pcode, price, price_sale, package, translation_id, uri, label_action, lang")
+      .neq("lang", "uk")
+      .ilike("pcode", `%${q}%`);
+    const seenGroupIds = new Set<number>();
+    for (const p of (nonUkMatches ?? []) as any[]) {
+      if (coveredGroupIds.has(p.translation_id) || seenGroupIds.has(p.translation_id)) continue;
+      seenGroupIds.add(p.translation_id);
+      orphanProducts.push(p);
+    }
+  }
+  const allProductsWithOrphans = [...allProducts, ...orphanProducts];
+
   // Storefront link per row — see lib/products.ts's resolveStorefrontGroups
   // for why this needs a batch lookup and can't just be `${uri}`: an
   // inactive color variant has no live page of its own, the site shows it
-  // on the active sibling's page instead.
+  // on the active sibling's page instead. Only run against allProducts
+  // (the uk rows) — orphanProducts get their own direct ru-domain link
+  // below since they have no uk group to resolve against.
   const { ukRowByGroupId, mainUkUriByGroupId } = await resolveStorefrontGroups(
     allProducts.map((p) => p.translation_id)
   );
-  const productUrlById = new Map<number, string | null>(
-    allProducts.map((p) => {
+  const productUrlById = new Map<number, string | null>([
+    ...allProducts.map((p): [number, string | null] => {
       const path = buildStorefrontProductPath(p.translation_id, ukRowByGroupId, mainUkUriByGroupId, p.uri);
       return [p.id, path ? `${process.env.MAIN_DOMAIN}${path}` : null];
-    })
-  );
+    }),
+    ...orphanProducts.map((p): [number, string | null] => [
+      p.id,
+      p.uri ? `${SITE_URL[p.lang] ?? SITE_URL.ru}/product/${p.uri}` : null,
+    ]),
+  ]);
 
   // Get active category title if filtering
   let activeCategoryTitle: string | null = null;
@@ -198,7 +232,7 @@ export default async function ProductsPage({
         </div>
 
         <div className="flex items-center gap-3 text-sm" style={{ color: "var(--text-muted)" }}>
-          <span>Знайдено: {total} товарів</span>
+          <span>Знайдено: {total + orphanProducts.length} товарів</span>
           {catId !== undefined && (
             <Link href="/products" className="text-blue-500 hover:underline text-xs">
               × скинути фільтр
@@ -221,7 +255,7 @@ export default async function ProductsPage({
               </tr>
             </thead>
             <tbody>
-              {allProducts.map((product: any) => (
+              {allProductsWithOrphans.map((product: any) => (
                 <tr key={product.id}>
                   <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.id}</td>
                   <td>
@@ -250,6 +284,12 @@ export default async function ProductsPage({
                       <div className="font-medium">{product.title}</div>
                     )}
                     {product.label_action === 1 && <Badge variant="warning" className="mt-0.5">Акція</Badge>}
+                    {/* This row has no uk pair at all (see the orphanProducts
+                        comment above) — flagged so it's obvious this isn't
+                        the usual uk catalog row before someone edits it. */}
+                    {product.lang && product.lang !== "uk" && (
+                      <Badge variant="secondary" className="mt-0.5">Без UK, {product.lang.toUpperCase()}</Badge>
+                    )}
                   </td>
                   <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
@@ -288,7 +328,7 @@ export default async function ProductsPage({
                   </td>
                 </tr>
               ))}
-              {allProducts.length === 0 && (
+              {allProductsWithOrphans.length === 0 && (
                 <tr>
                   <td colSpan={8} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Товарів не знайдено
