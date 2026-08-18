@@ -14,13 +14,15 @@ const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSE
 
 type OrdersItemRow = { oid: number; product: number; quantity: number };
 type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean };
+type OrdersReturnRow = { id: number; status: string | null };
 
 type WebhookPayload =
   | { type: "INSERT"; table: "orders_item"; record: OrdersItemRow; old_record: null }
   | { type: "UPDATE"; table: "orders_item"; record: OrdersItemRow; old_record: OrdersItemRow }
   | { type: "DELETE"; table: "orders_item"; record: null; old_record: OrdersItemRow }
   | { type: "INSERT"; table: "orders"; record: OrdersRow; old_record: null }
-  | { type: "UPDATE"; table: "orders"; record: OrdersRow; old_record: OrdersRow };
+  | { type: "UPDATE"; table: "orders"; record: OrdersRow; old_record: OrdersRow }
+  | { type: "INSERT"; table: "orders_returns"; record: OrdersReturnRow; old_record: null };
 
 // Receives Supabase Database Webhooks (configured in the Supabase dashboard,
 // see docs/inventory-webhooks.md) that fire on INSERT/UPDATE/DELETE of
@@ -44,13 +46,23 @@ export async function POST(req: NextRequest) {
 
   const payload = (await req.json()) as WebhookPayload;
 
-  if (payload.table === "orders" && (payload.type === "INSERT" || payload.type === "UPDATE")) {
-    // Orders arrive and change status from the storefront, not from any
-    // route in this app — this webhook is the one place both events are
-    // guaranteed to pass through, so it's where the sidebar badge counts
-    // (see app/(admin)/layout.tsx's getSidebarCounts) actually need
-    // invalidating for a storefront-driven order.
+  if (
+    (payload.table === "orders" && (payload.type === "INSERT" || payload.type === "UPDATE")) ||
+    (payload.table === "orders_returns" && payload.type === "INSERT")
+  ) {
+    // Orders arrive/change status from the storefront, and return requests
+    // are inserted directly by the storefront's own return form too — this
+    // webhook (via the pg_net triggers in scripts/_add_orders_returns_insert_webhook.sql)
+    // is the one place both are guaranteed to pass through, so it's where
+    // the sidebar badge counts (see app/(admin)/layout.tsx's
+    // getSidebarCounts) need invalidating for anything that didn't
+    // originate from this app's own API routes (which already call
+    // revalidateTag themselves right after their own writes).
     revalidateTag("sidebar-counts", { expire: 0 });
+  }
+
+  if (payload.table === "orders_returns") {
+    return NextResponse.json({ success: true });
   }
 
   if (payload.table === "orders" && payload.type === "INSERT") {

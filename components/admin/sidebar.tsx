@@ -147,11 +147,26 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   // expose a "navigation in progress" signal, and without one nothing
   // stopped a manager from clicking elsewhere while a heavier page (e.g.
   // Товари, Замовлення) was still loading.
+  //
+  // router.refresh() alongside push is deliberate: shared layouts (this
+  // Sidebar lives in app/(admin)/layout.tsx) are NOT refetched by Next's
+  // client Router Cache on a plain soft navigation — only the page segment
+  // that actually changed is. Without this, the badge counts (see
+  // getSidebarCounts, tag "sidebar-counts") stayed frozen at whatever they
+  // were on the last full page load no matter how many times an order/
+  // return got processed elsewhere, since revalidateTag only invalidates
+  // the *server* cache — nothing tells the already-mounted client layout to
+  // ask for it again. This doesn't cost extra Supabase egress: refresh()
+  // re-runs the layout's React Server render, but getSidebarCounts/
+  // getSidebarCategories are still unstable_cache-backed underneath, so
+  // Supabase is only actually hit when their cache is genuinely stale or
+  // tag-invalidated — refresh() just makes sure that check happens.
   function navigate(href: string) {
     setMobileOpen(false);
     if (href === pathname) return;
     startNavigation(() => {
       router.push(href);
+      router.refresh();
     });
   }
 
