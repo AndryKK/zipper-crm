@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -447,6 +447,13 @@ function EditForm({
   const [addUriInput, setAddUriInput] = useState("");
   const [addingColor, setAddingColor] = useState(false);
   const [deletingColorTrId, setDeletingColorTrId] = useState<number | null>(null);
+  const [detachingColorTrId, setDetachingColorTrId] = useState<number | null>(null);
+  // Set only when the color being detached is the group's current active=1
+  // ("main"/searchable) one — the group left behind needs a replacement,
+  // and only a person can pick which, so this opens a small picker dialog
+  // instead of guessing. `remaining` is the group's other members (from
+  // client state, which mirrors the DB group this page already loaded).
+  const [pickActiveDialog, setPickActiveDialog] = useState<{ detached: AllColor; remaining: AllColor[] } | null>(null);
 
   // ── Styled confirm dialog (replaces browser confirm()) ────────────
   const [confirmState, setConfirmState] = useState<{
@@ -703,6 +710,53 @@ function EditForm({
     toast.success("Колір від'єднано");
   }
 
+  // ── Detach color into its own standalone group ─────────────────────
+  // Unlike "Від'єднати" above (which unlinks one OTHER color from THIS
+  // product's group), this detaches the color currently being viewed from
+  // its group entirely — it stays in the DB but becomes its own separate
+  // color group of one, which can then get new colors added under it
+  // independently of where it came from. See POST .../colors/detach's doc
+  // comment for the actual unlink mechanics.
+  function handleDetachColor(color: AllColor) {
+    if ((activeMap[color.trId] ?? 1) === 1) {
+      // Currently the group's active/searchable color — the group left
+      // behind needs someone to pick its replacement before we proceed.
+      const remaining = allColors.filter((c) => c.trId !== color.trId);
+      setPickActiveDialog({ detached: color, remaining });
+    } else {
+      doDetachColor(color, null);
+    }
+  }
+
+  async function doDetachColor(color: AllColor, keepActiveTrId: number | null) {
+    const ukV = color.langVariants.find((v: any) => v.lang === "uk") ?? color.langVariants[0];
+    if (!ukV?.id) return;
+    setDetachingColorTrId(color.trId);
+    try {
+      const res = await fetch(`/api/products/${ukV.id}/colors/detach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepActiveTranslationId: keepActiveTrId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      setPickActiveDialog(null);
+      toast.success("Товар відділено в окрему групу");
+      // Both this page's own group and (if applicable) the old group's
+      // active member changed server-side. colorGroups/activeMap here were
+      // seeded once from server props at mount (useState(initialProp)), so
+      // router.refresh() alone wouldn't reach them without a remount — a
+      // full reload is the simplest way to guarantee this page shows the
+      // real post-detach state, same tradeoff handleMakeMain above accepts
+      // via its own full navigation.
+      window.location.reload();
+    } catch {
+      toast.error("Помилка з'єднання");
+    } finally {
+      setDetachingColorTrId(null);
+    }
+  }
+
   // ── Hard delete color (both lang versions) ────────────────────────
   function handleDeleteColor(colorTranslationId: number) {
     showConfirm(
@@ -929,6 +983,23 @@ function EditForm({
             }}
           >
             <Star size={12} /> Зробити цей колір основним
+          </button>
+        )}
+
+        {activeColorEntry && !activeColorEntry.isMain && (
+          <button
+            type="button"
+            onClick={() => handleDetachColor(activeColorEntry)}
+            disabled={detachingColorTrId === activeColorEntry.trId}
+            title="Повністю відв'язує цей колір від групи — товар лишається в базі, стає окремою групою з одним кольором (сам собі основний), і в нього можна додавати нові кольори незалежно від старої групи"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              marginLeft: 8, padding: "6px 12px", borderRadius: 8,
+              border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)",
+              fontSize: 12.5, fontWeight: 600, cursor: detachingColorTrId === activeColorEntry.trId ? "wait" : "pointer",
+            }}
+          >
+            <Link2Off size={12} /> Відділити товар
           </button>
         )}
 
@@ -1723,6 +1794,54 @@ function EditForm({
         />
       )}
 
+      {/* ── Pick which color stays "main" after detaching the active one ── */}
+      {pickActiveDialog && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 10001,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setPickActiveDialog(null); }}
+        >
+          <div
+            style={{
+              background: "var(--bg)", border: "1px solid var(--border)",
+              borderRadius: 14, padding: "24px 28px", width: 420,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
+            }}
+          >
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: "0 0 4px" }}>
+              Цей колір зараз основний для групи
+            </p>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 14px", lineHeight: 1.5 }}>
+              Оберіть, який колір стане основним у групі, що залишається, після відділення «{pcodes[pickActiveDialog.detached.trId] || pickActiveDialog.detached.trId}».
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto", marginBottom: 16 }}>
+              {pickActiveDialog.remaining.map((c) => (
+                <button
+                  key={c.trId}
+                  type="button"
+                  disabled={detachingColorTrId === pickActiveDialog.detached.trId}
+                  onClick={() => doDetachColor(pickActiveDialog.detached, c.trId)}
+                  style={{
+                    textAlign: "left", padding: "8px 12px", borderRadius: 8,
+                    border: "1px solid var(--border)", background: "var(--bg-card)",
+                    color: "var(--text)", cursor: "pointer", fontSize: 13,
+                  }}
+                >
+                  {pcodes[c.trId] || `tid:${c.trId}`}
+                  {c.isMain && <span style={{ opacity: 0.5, fontSize: 11, marginLeft: 6 }}>(поточний товар сторінки)</span>}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button variant="outline" onClick={() => setPickActiveDialog(null)}>Скасувати</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Crop main photo before upload ─────────────────────────── */}
       {cropFile && (
         <ImageCropModal
@@ -1748,47 +1867,24 @@ function PhotosSection({
 }) {
   const [uploading, setUploading] = useState(false);
   const [confirmPhoto, setConfirmPhoto] = useState<{ allIds: number[] } | null>(null);
-  // Multi-file gallery upload is cropped one photo at a time: queue holds
-  // the originals still waiting for a crop, cropped collects {file, thumb}
-  // pairs as the admin confirms each one. Only once every queued file has
-  // a thumb do we actually POST the batch.
-  const [cropQueue, setCropQueue] = useState<File[]>([]);
-  const [cropIndex, setCropIndex] = useState(0);
-  const croppedRef = useRef<{ file: File; thumb: Blob }[]>([]);
 
+  // Gallery photos upload as-is, uncropped — unlike the single main photo
+  // (which genuinely needs a forced 300x300 card crop via ImageCropModal),
+  // additional gallery photos have no fixed aspect ratio to satisfy and
+  // were never meant to be squished. Sending no `thumbs` at all makes the
+  // API fall back to using each original as its own thumb (an existing,
+  // already-relied-upon path — see the POST handler's comment).
   function startUpload(files: FileList | null) {
     if (!files?.length) return;
-    croppedRef.current = [];
-    setCropQueue(Array.from(files));
-    setCropIndex(0);
+    void upload(Array.from(files));
   }
 
-  function cancelCropQueue() {
-    setCropQueue([]);
-    setCropIndex(0);
-    croppedRef.current = [];
-  }
-
-  function onCropConfirmed(thumbBlob: Blob) {
-    croppedRef.current.push({ file: cropQueue[cropIndex], thumb: thumbBlob });
-    if (cropIndex + 1 < cropQueue.length) {
-      setCropIndex(cropIndex + 1);
-    } else {
-      const pairs = croppedRef.current;
-      setCropQueue([]);
-      setCropIndex(0);
-      croppedRef.current = [];
-      void upload(pairs);
-    }
-  }
-
-  async function upload(pairs: { file: File; thumb: Blob }[]) {
-    if (!pairs.length) return;
+  async function upload(files: File[]) {
+    if (!files.length) return;
     setUploading(true);
     try {
       const fd = new FormData();
-      pairs.forEach(({ file }) => fd.append("files", file));
-      pairs.forEach(({ thumb }) => fd.append("thumbs", thumb, "thumb.webp"));
+      files.forEach((file) => fd.append("files", file));
       fd.append("gallery", "1");
       const res = await fetch(`/api/products/${productId}/photos`, { method: "POST", body: fd });
       const body = await res.json();
@@ -1845,15 +1941,6 @@ function PhotosSection({
         </label>
       </div>
     </div>
-
-    {cropQueue.length > 0 && (
-      <ImageCropModal
-        file={cropQueue[cropIndex]}
-        label={cropQueue.length > 1 ? `${cropIndex + 1} з ${cropQueue.length}` : undefined}
-        onCancel={cancelCropQueue}
-        onConfirm={onCropConfirmed}
-      />
-    )}
 
     {confirmPhoto && (
       <ConfirmDialog
