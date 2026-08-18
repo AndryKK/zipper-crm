@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { resolveLegacyReturns } from "@/lib/returns-resolve";
 import { revalidateTag } from "next/cache";
+import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -36,67 +37,22 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     : { data: [] };
   const prodMap = new Map((products ?? []).map((p) => [p.id, p]));
 
-  // MAIN_DOMAIN is the "uk" storefront (com.zipper-shop.online, see
-  // lib/price-lists.ts SITE_URL.uk) — the product URL must use the "uk" row
-  // of the ordered product's translation group, not necessarily the row
-  // orders_item.product points at (orders can be placed against either
-  // language's id). If that "uk" row is itself an inactive color variant
-  // (no live page of its own), the site instead shows it on the active
-  // variant's page with the ordered variant's translation_id appended
-  // (/product/<active-variant-uk-uri>/<translation_id>) — same lookup the
-  // old PHP admin (adm/orders.php) did via products_colors.pid -> pid_with,
-  // keyed by translation_id (== id of the "ru" master row).
-  const groupIds = [...new Set((products ?? []).map((p) => p.translation_id))];
-  const { data: ukRows } = groupIds.length
-    ? await supabaseServer.from("products").select("translation_id, uri, active").in("translation_id", groupIds).eq("lang", "uk")
-    : { data: [] };
-  const ukRowByGroupId = new Map((ukRows ?? []).map((p) => [p.translation_id, p]));
-
-  const needsColorLookup = groupIds.filter((gid) => ukRowByGroupId.get(gid)?.active !== 1);
-  const mainUkUriByGroupId = new Map<number, string>();
-  if (needsColorLookup.length) {
-    const { data: colorLinks } = await supabaseServer
-      .from("products_colors")
-      .select("pid, pid_with")
-      .in("pid", needsColorLookup);
-    const mainGroupIds = [...new Set((colorLinks ?? []).map((c) => c.pid_with))];
-    if (mainGroupIds.length) {
-      const { data: mainUkRows } = await supabaseServer
-        .from("products")
-        .select("translation_id, uri")
-        .in("translation_id", mainGroupIds)
-        .eq("lang", "uk");
-      const mainUkRowByGroupId = new Map((mainUkRows ?? []).map((p) => [p.translation_id, p]));
-      for (const { pid, pid_with } of colorLinks ?? []) {
-        const mainUkRow = mainUkRowByGroupId.get(pid_with);
-        if (mainUkRow) mainUkUriByGroupId.set(pid, mainUkRow.uri);
-      }
-    }
-  }
+  // The product URL must use the "uk" row of the ordered product's
+  // translation group, not necessarily the row orders_item.product points
+  // at (orders can be placed against either language's id) — see
+  // resolveStorefrontGroups in lib/products.ts for the actual lookup.
+  const groupIds = (products ?? []).map((p) => p.translation_id);
+  const { ukRowByGroupId, mainUkUriByGroupId } = await resolveStorefrontGroups(groupIds);
 
   const itemsWithProduct = (items ?? []).map((item) => {
     const prod = prodMap.get(item.product);
-    let productUrl: string | null = null;
-    if (prod) {
-      const groupId = prod.translation_id;
-      const ukRow = ukRowByGroupId.get(groupId);
-      const mainUkUri = mainUkUriByGroupId.get(groupId);
-      if (ukRow?.active === 1) {
-        productUrl = `${process.env.MAIN_DOMAIN}/product/${ukRow.uri}`;
-      } else if (mainUkUri) {
-        productUrl = `${process.env.MAIN_DOMAIN}/product/${mainUkUri}/${groupId}`;
-      } else if (ukRow) {
-        productUrl = `${process.env.MAIN_DOMAIN}/product/${ukRow.uri}`;
-      } else if (prod.uri) {
-        productUrl = `${process.env.MAIN_DOMAIN}/product/${prod.uri}`;
-      }
-    }
+    const path = prod ? buildStorefrontProductPath(prod.translation_id, ukRowByGroupId, mainUkUriByGroupId, prod.uri) : null;
     return {
       ...item,
       productTitle: prod?.title ?? null,
       productImg: prod?.img ?? null,
       productPcode: prod?.pcode ?? null,
-      productUrl,
+      productUrl: path ? `${process.env.MAIN_DOMAIN}${path}` : null,
     };
   });
 

@@ -10,6 +10,9 @@ import { DeleteProductButton } from "./delete-product-button";
 import { EditProductLink } from "./edit-product-link";
 import { DuplicateProductButton } from "./duplicate-product-button";
 import { UrlPagination } from "@/components/admin/url-pagination";
+import { CopyableText } from "@/components/admin/copyable-text";
+import { ImageZoom } from "@/components/admin/image-zoom";
+import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +71,7 @@ export default async function ProductsPage({
   let query = supabaseServer
     .from("products")
     .select(
-      "id, img, title, pcode, price, price_sale, package, translation_id, label_action, labelAction:label_action, translationId:translation_id",
+      "id, img, title, pcode, price, price_sale, package, translation_id, uri, label_action, labelAction:label_action, translationId:translation_id",
       { count: "exact" }
     )
     .eq("lang", "uk");
@@ -101,6 +104,20 @@ export default async function ProductsPage({
   const total = count ?? 0;
   const totalPages = Math.ceil(total / limit);
   const allProducts = (products || []) as any[];
+
+  // Storefront link per row — see lib/products.ts's resolveStorefrontGroups
+  // for why this needs a batch lookup and can't just be `${uri}`: an
+  // inactive color variant has no live page of its own, the site shows it
+  // on the active sibling's page instead.
+  const { ukRowByGroupId, mainUkUriByGroupId } = await resolveStorefrontGroups(
+    allProducts.map((p) => p.translation_id)
+  );
+  const productUrlById = new Map<number, string | null>(
+    allProducts.map((p) => {
+      const path = buildStorefrontProductPath(p.translation_id, ukRowByGroupId, mainUkUriByGroupId, p.uri);
+      return [p.id, path ? `${process.env.MAIN_DOMAIN}${path}` : null];
+    })
+  );
 
   // Get active category title if filtering
   let activeCategoryTitle: string | null = null;
@@ -209,8 +226,7 @@ export default async function ProductsPage({
                   <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.id}</td>
                   <td>
                     {product.img ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <ImageZoom
                         src={getImgUrl(product.img, "products")}
                         alt={product.title}
                         className="h-10 w-10 rounded object-cover"
@@ -220,10 +236,24 @@ export default async function ProductsPage({
                     )}
                   </td>
                   <td>
-                    <div className="font-medium">{product.title}</div>
+                    {productUrlById.get(product.id) ? (
+                      <a
+                        href={productUrlById.get(product.id)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium"
+                        style={{ color: "inherit", textDecoration: "none", cursor: "pointer" }}
+                      >
+                        {product.title}
+                      </a>
+                    ) : (
+                      <div className="font-medium">{product.title}</div>
+                    )}
                     {product.label_action === 1 && <Badge variant="warning" className="mt-0.5">Акція</Badge>}
                   </td>
-                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.pcode ?? "—"}</td>
+                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
+                  </td>
                   <td className="font-medium whitespace-nowrap">
                     {product.price_sale ? (
                       <span>

@@ -166,6 +166,77 @@ export async function findColorGroupTrIds(productId: number): Promise<number[]> 
 // router.push to the color's own page and call that "making it main," so
 // the CRM's ★ badge and the live site's actual search result silently
 // diverged (this is the fix for that).
+// MAIN_DOMAIN is the "uk" storefront (com.zipper-shop.online, see
+// lib/price-lists.ts SITE_URL.uk). A product's live page belongs to
+// whichever color in its group has active=1 — an inactive color has no
+// page of its own; the site shows it on the active variant's page instead,
+// with the inactive variant's own translation_id appended
+// (/product/<active-uri>/<translation_id>), same lookup the old PHP admin
+// did via products_colors.pid -> pid_with (see docs/product-colors.md).
+// Batch-resolves this for many groups at once — shared by
+// app/api/orders/[id]/route.ts (product links on an order) and
+// app/(admin)/products/page.tsx (product links on the products list) so
+// this exact algorithm, and any future fix to it, only lives in one place.
+export type StorefrontUkRow = { translation_id: number; uri: string | null; active: number | null };
+
+export async function resolveStorefrontGroups(groupIds: number[]): Promise<{
+  ukRowByGroupId: Map<number, StorefrontUkRow>;
+  mainUkUriByGroupId: Map<number, string>;
+}> {
+  const uniqueGroupIds = [...new Set(groupIds)].filter((id): id is number => !!id);
+  const { data: ukRows } = uniqueGroupIds.length
+    ? await supabaseServer.from("products").select("translation_id, uri, active").in("translation_id", uniqueGroupIds).eq("lang", "uk")
+    : { data: [] };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ukRowByGroupId = new Map((ukRows ?? []).map((p: any) => [p.translation_id, p as StorefrontUkRow]));
+
+  const needsColorLookup = uniqueGroupIds.filter((gid) => ukRowByGroupId.get(gid)?.active !== 1);
+  const mainUkUriByGroupId = new Map<number, string>();
+  if (needsColorLookup.length) {
+    const { data: colorLinks } = await supabaseServer
+      .from("products_colors")
+      .select("pid, pid_with")
+      .in("pid", needsColorLookup);
+    const mainGroupIds = [...new Set((colorLinks ?? []).map((c: any) => c.pid_with))]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (mainGroupIds.length) {
+      const { data: mainUkRows } = await supabaseServer
+        .from("products")
+        .select("translation_id, uri")
+        .in("translation_id", mainGroupIds)
+        .eq("lang", "uk");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mainUkRowByGroupId = new Map((mainUkRows ?? []).map((p: any) => [p.translation_id, p]));
+      for (const link of colorLinks ?? []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { pid, pid_with } = link as any;
+        const mainUkRow = mainUkRowByGroupId.get(pid_with);
+        if (mainUkRow) mainUkUriByGroupId.set(pid, mainUkRow.uri);
+      }
+    }
+  }
+
+  return { ukRowByGroupId, mainUkUriByGroupId };
+}
+
+// Builds the /product/... path (without MAIN_DOMAIN) for one color group,
+// given the maps from resolveStorefrontGroups above and — only as a last
+// resort, e.g. the group somehow has no UK row at all — the row's own uri.
+// Pure/sync, call once per row after resolving all groups in one batch.
+export function buildStorefrontProductPath(
+  groupId: number | null | undefined,
+  ukRowByGroupId: Map<number, StorefrontUkRow>,
+  mainUkUriByGroupId: Map<number, string>,
+  fallbackUri?: string | null
+): string | null {
+  const ukRow = groupId ? ukRowByGroupId.get(groupId) : undefined;
+  const mainUkUri = groupId ? mainUkUriByGroupId.get(groupId) : undefined;
+  if (ukRow?.active === 1 && ukRow.uri) return `/product/${ukRow.uri}`;
+  if (mainUkUri && groupId) return `/product/${mainUkUri}/${groupId}`;
+  if (ukRow?.uri) return `/product/${ukRow.uri}`;
+  if (fallbackUri) return `/product/${fallbackUri}`;
+  return null;
+}
+
 export async function setMainColor(productId: number): Promise<void> {
   const groupTrIds = await findColorGroupTrIds(productId);
   const { data: target } = await supabaseServer.from("products").select("translation_id").eq("id", productId).single();
