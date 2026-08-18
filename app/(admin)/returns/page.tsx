@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUSES, RETURN_STATUS_COLOR } from "@/lib/returns";
@@ -42,6 +43,11 @@ export default function ReturnsPage() {
   const [linkDraft, setLinkDraft] = useState<Record<number, { product: string; qty: string }>>({});
   const [ttnDraft, setTtnDraft] = useState<Record<number, string>>({});
   const [checkingNpId, setCheckingNpId] = useState<number | null>(null);
+  // `notes` doubles as the rejection reason here — it's otherwise unused
+  // on orders_returns (no other UI reads or writes it), and reusing it
+  // avoids a schema change for a single free-text field.
+  const [rejectTarget, setRejectTarget] = useState<ReturnRow | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +86,21 @@ export default function ReturnsPage() {
     setBusyId(null);
     if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
     toast.success(`Статус: «${status}»`);
+    load();
+  }
+
+  async function confirmReject() {
+    if (!rejectTarget || !rejectReason.trim()) return;
+    setBusyId(rejectTarget.id);
+    const res = await fetch(`/api/returns/${rejectTarget.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: RETURN_STATUS.REJECTED, notes: rejectReason.trim() }),
+    });
+    setBusyId(null);
+    if (!res.ok) { const e = await res.json(); toast.error(e.error ?? "Помилка"); return; }
+    toast.success("Повернення відхилено");
+    setRejectTarget(null);
     load();
   }
 
@@ -187,6 +208,11 @@ export default function ReturnsPage() {
                         )}
                       </div>
                       {r.reason && <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>Причина: {r.reason}</div>}
+                      {r.status === RETURN_STATUS.REJECTED && r.notes && (
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+                          Причина відхилення: {r.notes}
+                        </div>
+                      )}
                       {r.photo && (
                         <a href={r.photo} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#6366f1", marginTop: 4 }}>
                           <ImageIcon size={12} /> Фото
@@ -252,7 +278,7 @@ export default function ReturnsPage() {
                           </Button>
                         )}
                         {r.status !== RETURN_STATUS.REJECTED && r.status !== RETURN_STATUS.RECEIVED && (
-                          <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setStatus(r, RETURN_STATUS.REJECTED)}>Відхилити</Button>
+                          <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => { setRejectTarget(r); setRejectReason(""); }}>Відхилити</Button>
                         )}
                         {r.status !== RETURN_STATUS.CANCELLED && r.status !== RETURN_STATUS.RECEIVED && (
                           <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setStatus(r, RETURN_STATUS.CANCELLED)}>Скасувати</Button>
@@ -266,6 +292,50 @@ export default function ReturnsPage() {
           </div>
         )}
       </div>
+
+      {rejectTarget && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setRejectTarget(null); }}
+        >
+          <div
+            style={{
+              background: "var(--bg)", border: "1px solid var(--border)",
+              borderRadius: 14, padding: "24px 28px", width: 420,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
+            }}
+          >
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: "0 0 4px" }}>
+              Відхилити повернення #{rejectTarget.id}
+            </p>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+              Причина обовʼязкова — вона зберігається на картці повернення.
+            </p>
+            <Textarea
+              autoFocus
+              placeholder="Наприклад: товар зі слідами використання"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+            />
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <Button variant="outline" onClick={() => setRejectTarget(null)}>Скасувати</Button>
+              <Button
+                variant="destructive"
+                onClick={confirmReject}
+                disabled={busyId === rejectTarget.id || !rejectReason.trim()}
+              >
+                {busyId === rejectTarget.id && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                Відхилити
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
