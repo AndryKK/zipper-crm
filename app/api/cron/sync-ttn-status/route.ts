@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { npGetStatus } from "@/lib/nova-poshta";
 import { RETURN_STATUS } from "@/lib/returns";
+import { revalidateTag } from "next/cache";
 
 function getSetting(settings: { value: string; text: string }[], key: string) {
   return settings.find((s) => s.value === key)?.text?.trim() ?? "";
@@ -94,6 +95,11 @@ export async function GET(req: NextRequest) {
       }
     }
   }
+
+  // Cheap and runs at most once a day (this route is the daily NP-status
+  // poll) — simpler and just as correct to invalidate unconditionally here
+  // than to track exactly which branch above actually changed a status.
+  revalidateTag("sidebar-counts", { expire: 0 });
 
   return NextResponse.json({
     checked: log.length,

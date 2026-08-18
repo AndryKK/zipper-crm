@@ -58,7 +58,17 @@ const getSidebarCounts = unstable_cache(
     };
   },
   ["admin-sidebar-counts"],
-  { revalidate: 120 }
+  // `tags` lets every place that actually changes an order/return status
+  // (see app/api/orders/[id]/{process,confirm-payment,ttn/*}, the returns
+  // routes, the inventory-sync webhook, and the TTN-status cron) call
+  // revalidateTag("sidebar-counts", { expire: 0 }) right after the write,
+  // so the badge is correct on the very next navigation instead of up to
+  // `revalidate` seconds stale. `{ expire: 0 }` (immediate) is used
+  // instead of the "max" stale-while-revalidate profile precisely because
+  // "one visit behind" is the exact staleness this was added to fix. The
+  // 120s `revalidate` below stays as a fallback for any future write path
+  // that forgets to invalidate.
+  { revalidate: 120, tags: ["sidebar-counts"] }
 );
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, deductOrderItems } from "@/lib/inventory";
 import { supabaseServer } from "@/lib/supabase";
 import { sendWelcomeEmail } from "@/lib/order-emails";
+import { revalidateTag } from "next/cache";
 
 const CANCELLED_STATUS = "Скасовано";
 // Statuses reached before the order physically leaves the warehouse — an
@@ -42,6 +43,15 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = (await req.json()) as WebhookPayload;
+
+  if (payload.table === "orders" && (payload.type === "INSERT" || payload.type === "UPDATE")) {
+    // Orders arrive and change status from the storefront, not from any
+    // route in this app — this webhook is the one place both events are
+    // guaranteed to pass through, so it's where the sidebar badge counts
+    // (see app/(admin)/layout.tsx's getSidebarCounts) actually need
+    // invalidating for a storefront-driven order.
+    revalidateTag("sidebar-counts", { expire: 0 });
+  }
 
   if (payload.table === "orders" && payload.type === "INSERT") {
     // Guards against double-sends from scripts/sync-legacy-mysql.js, which

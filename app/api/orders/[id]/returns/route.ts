@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { RETURN_STATUS } from "@/lib/returns";
 import { resolveLegacyReturns } from "@/lib/returns-resolve";
+import { revalidateTag } from "next/cache";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -61,5 +62,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateTag("sidebar-counts", { expire: 0 });
   return NextResponse.json(ret);
 }

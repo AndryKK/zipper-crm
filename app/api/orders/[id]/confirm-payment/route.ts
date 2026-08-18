@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
+import { revalidateTag } from "next/cache";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -75,6 +76,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   /* ── Оновити статус → "Оплачено" ────────────────────────────────── */
   await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", orderId);
+  revalidateTag("sidebar-counts", { expire: 0 });
 
   return NextResponse.json({ log, orderId });
 }

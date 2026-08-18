@@ -969,6 +969,12 @@ export default function OrderDetailPage() {
                       >
                         Накладна
                       </button>
+                      <button
+                        onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
+                        style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.22)", cursor: "pointer" }}
+                      >
+                        Видаткова
+                      </button>
                     </div>
                   )}
                   {/* Postomat orders confirm payment here too — /api/orders/[id]/confirm-payment
