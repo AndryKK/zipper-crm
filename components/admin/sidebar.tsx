@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import {
   LayoutDashboard, Package, FolderTree, ShoppingCart, Users,
@@ -100,6 +100,7 @@ function NavBadge({ count, color, prefix }: { count: number; color: string; pref
 
 export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]; counts?: SidebarCounts }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session, status } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role;
@@ -163,7 +164,15 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   // tag-invalidated — refresh() just makes sure that check happens.
   function navigate(href: string) {
     setMobileOpen(false);
-    if (href === pathname) return;
+    // Compared against pathname+search, not just pathname — usePathname()
+    // excludes the query string, so "/products" and "/products?cat=0" both
+    // read as "/products" here. Comparing against pathname alone meant
+    // clicking "— всі товари" (href="/products") while already on
+    // "/products?cat=0" silently no-opped: href === pathname was true, so
+    // this returned before ever calling router.push, and the only way back
+    // to the bare URL was to navigate elsewhere first.
+    const currentUrl = searchParams.size ? `${pathname}?${searchParams.toString()}` : pathname;
+    if (href === currentUrl) return;
     startNavigation(() => {
       router.push(href);
       router.refresh();

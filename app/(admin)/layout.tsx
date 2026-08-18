@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Sidebar } from "@/components/admin/sidebar";
 import { supabaseServer } from "@/lib/supabase";
 import { unstable_cache } from "next/cache";
@@ -92,7 +93,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         background: "var(--bg)",
       }}
     >
-      <Sidebar catalogRoots={catalogRoots} counts={counts} />
+      {/* Sidebar now reads useSearchParams() (to fix the "?cat=" same-page
+          nav guard), which every statically-generated page under this
+          shared layout must bail out of prerendering for unless it's
+          wrapped in Suspense — see the "useSearchParams() should be
+          wrapped in a suspense boundary" build error this fixes, same
+          class of issue as /login and /users already document. Fallback
+          mirrors .crm-sidebar's own background/width/border so there's no
+          flash of blank space while the real Sidebar hydrates. */}
+      <Suspense fallback={<aside className="crm-sidebar" />}>
+        <Sidebar catalogRoots={catalogRoots} counts={counts} />
+      </Suspense>
       {/* marginLeft is a Tailwind class, not inline style, on purpose — the
           sidebar is an off-canvas drawer below `lg` (see Sidebar's own
           comment) and must not have layout space reserved for it there,
