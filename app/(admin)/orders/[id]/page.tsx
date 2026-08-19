@@ -806,18 +806,25 @@ export default function OrderDetailPage() {
     setItemSearch(q);
     if (!q.trim()) { setItemSearchResults([]); return; }
     setItemSearching(true);
-    const data = await apiFetch<{ items: { id: number; title: string; pcode: string | null; price: number }[] }>(
+    const data = await apiFetch<{ items: { id: number; title: string; pcode: string | null; price: number; minquantity: number | null }[] }>(
       `/api/products?q=${encodeURIComponent(q)}&lang=uk&limit=8`
     );
     setItemSearching(false);
     setItemSearchResults(data?.items ?? []);
   }
 
-  async function addItem(product: { id: number; title: string; price: number }) {
+  async function addItem(product: { id: number; title: string; price: number; minquantity: number | null }) {
+    // Quantity defaults to the product's own minimum order step
+    // (products.minquantity) — the site enforces the same minimum, e.g.
+    // 100pc for a product only sold in bags of 100. Price is not sent —
+    // the server recomputes it from products.price × the грн currency
+    // rate itself (see app/api/orders/[id]/items/route.ts) so this client
+    // value is never trusted for the actual insert.
+    const quantity = product.minquantity && product.minquantity > 0 ? product.minquantity : 1;
     const res = await fetch(`/api/orders/${params.id}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product: product.id, price: product.price, quantity: 1 }),
+      body: JSON.stringify({ product: product.id, quantity }),
     });
     if (!res.ok) { toast.error("Не вдалося додати товар"); return; }
     // POST /api/orders/[id]/items only returns the raw orders_item row —
