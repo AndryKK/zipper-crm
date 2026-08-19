@@ -34,15 +34,82 @@ export async function npSearchCities(apiKey: string, q: string, limit = 10): Pro
   return (r.data ?? []).map((c: { Ref: string; Description: string }) => ({ ref: c.Ref, description: c.Description }));
 }
 
-export interface NpWarehouseOption { ref: string; description: string; number: string; isPostomat: boolean; }
+export interface NpWarehouseOption {
+  ref: string;
+  description: string;
+  number: string;
+  isPostomat: boolean;
+  // Only populated by npSearchAddress below (a plain city-scoped search
+  // already knows its own city from the caller, so npSearchWarehouses
+  // itself doesn't need these) — carried per-result since a combined
+  // search spans several candidate cities at once.
+  cityRef?: string;
+  cityDescription?: string;
+}
 export async function npSearchWarehouses(apiKey: string, cityRef: string, q: string, limit = 20): Promise<NpWarehouseOption[]> {
   const r = await npCall(apiKey, "Address", "getWarehouses", { CityRef: cityRef, FindByString: q.trim() || undefined, Limit: limit });
   if (!r.success) return [];
-  return (r.data ?? []).map((w: { Ref: string; Description: string; Number: string; CategoryOfWarehouse: string }) => ({
+  return (r.data ?? []).map((w: { Ref: string; Description: string; Number: string; CategoryOfWarehouse: string; CityDescription?: string }) => ({
     ref: w.Ref,
     description: w.Description,
     number: w.Number,
     isPostomat: w.CategoryOfWarehouse === "Postomat",
+    cityRef,
+    cityDescription: w.CityDescription,
+  }));
+}
+
+// Combined "one field" city+warehouse search — see the client picker
+// (components/admin/np-address-picker.tsx) that uses this for the order
+// page's delivery-address field. Nova Poshta has no single call that
+// searches warehouses by "city name + warehouse text" together — confirmed
+// live against the real API: getCities itself already rejects a combined
+// query like "Рівне Відділення №5" (0 matches — it wants just the city
+// name), so feeding the whole query straight into getWarehouses never even
+// gets a city to scope by. This instead auto-splits the typed text into a
+// city part and a "rest" part by trying progressively shorter word-prefixes
+// of the query against getCities — from the whole string down to just the
+// first word — and taking the longest prefix that actually matches a real
+// city. Whatever's left over after that prefix is the warehouse search
+// text, scoped to that city via CityRef (this is exactly the two-field
+// flow the manual-TTN picker already uses, just auto-detecting the split
+// point instead of asking the admin to pick the city first).
+//
+// Each result's `formatted` field is the exact string
+// parseNpAddress()/lib/nova-poshta.ts's own regex expects:
+// "{City} — {Відділення|Поштомат} №{N}...: {address}" — built from NP's
+// own CityDescription + Description fields (Description never repeats the
+// city name itself, confirmed against the live API), so it's never
+// hand-assembled from fragments that could drift out of the format the
+// rest of this app's TTN/parsing code relies on.
+export interface NpAddressOption extends NpWarehouseOption {
+  formatted: string;
+}
+export async function npSearchAddress(apiKey: string, q: string, cityLimit = 3, warehousesPerCity = 6): Promise<NpAddressOption[]> {
+  const words = q.trim().split(/\s+/).filter(Boolean);
+  if (!words.length || q.trim().length < 2) return [];
+
+  let cities: NpCityOption[] = [];
+  let remainder = "";
+  for (let i = words.length; i >= 1; i--) {
+    const candidate = words.slice(0, i).join(" ");
+    if (candidate.length < 2) continue;
+    // eslint-disable-next-line no-await-in-loop
+    cities = await npSearchCities(apiKey, candidate, cityLimit);
+    if (cities.length) {
+      remainder = words.slice(i).join(" ");
+      break;
+    }
+  }
+  if (!cities.length) return [];
+
+  const perCity = await Promise.all(
+    cities.map((city) => npSearchWarehouses(apiKey, city.ref, remainder, warehousesPerCity))
+  );
+
+  return perCity.flat().map((w) => ({
+    ...w,
+    formatted: `${w.cityDescription ?? ""} — ${w.description}`.trim(),
   }));
 }
 

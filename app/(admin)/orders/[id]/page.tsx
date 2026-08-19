@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { NpAddressPicker } from "@/components/admin/np-address-picker";
 import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
@@ -2057,7 +2058,18 @@ export default function OrderDetailPage() {
                   </div>
                   <div className="space-y-1">
                     <Label style={{ fontSize: 12 }}>Адреса</Label>
-                    <Input value={clientDraft.addr_delivery} onChange={(e) => setClientDraft((d) => ({ ...d, addr_delivery: e.target.value }))} />
+                    {/* Search box for Nova Poshta's own city+warehouse list
+                        (one field, per the ask) — picking a suggestion
+                        writes the exact "{City} — {Тип} №{N}...: {адреса}"
+                        format parseNpAddress() (and TTN creation
+                        downstream of it) requires; typing without picking
+                        one still works as plain free text, for delivery
+                        addresses that aren't an NP warehouse at all. */}
+                    <NpAddressPicker
+                      value={clientDraft.addr_delivery}
+                      onChange={(v) => setClientDraft((d) => ({ ...d, addr_delivery: v }))}
+                      placeholder="напр. Рівне — Відділення №5…"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label style={{ fontSize: 12 }}>Спосіб оплати</Label>
