@@ -1,4 +1,5 @@
 "use client";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -20,7 +21,18 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  return (
+  // Rendered via a portal straight to <body>, not inline where the caller
+  // happens to sit in the tree — a plain `position: fixed` div still gets
+  // visually confined and un-clickable if any ancestor establishes its own
+  // stacking context (Radix's Dialog is exactly that: it portals its own
+  // content to body with z-50, so a ConfirmDialog opened from *within* an
+  // already-open Dialog — e.g. the "Прибрати з замовлення" confirm inside
+  // the stock-check popup — rendered behind it and couldn't be clicked,
+  // confirmed by the report). Portalling to body puts this dialog in the
+  // same top-level stacking context Radix's own portal uses, so the
+  // z-index below (10000 vs Radix's 50) is finally what actually decides
+  // who's on top, instead of losing to an ancestor's stacking context.
+  return createPortal(
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 10000,
@@ -74,6 +86,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
