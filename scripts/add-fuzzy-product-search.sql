@@ -56,6 +56,22 @@ create index if not exists idx_all_filters_filters_items_fid on all_filters_filt
 -- what forgiving costs. Not marked STABLE: SET LOCAL is rejected by
 -- Postgres inside a non-volatile function ("SET is not allowed in a
 -- non-volatile function" — also confirmed against the live DB).
+--
+-- statement_timeout is raised locally (still scoped to just this call, via
+-- SET LOCAL) — a long pasted-in title (10+ words) costs roughly linearly
+-- more per extra word (~150-200ms/word measured against the live DB) and
+-- can exceed whatever short default applies to this role otherwise,
+-- surfacing as a hard 500 the page had no way to distinguish from a
+-- genuine "nothing found" (confirmed: pasting a product's own full title
+-- back in as the search — a real report — timed out at 6+ words).
+--
+-- `words` is deduplicated (select DISTINCT, not just select) — a real,
+-- confirmed bug: without it, a query with any repeated word (e.g. this
+-- same title has "колір" twice) made total_words count the duplicate, but
+-- `count(distinct word)` in the HAVING clause below never can, so the
+-- match was mathematically impossible to satisfy — reproduced directly:
+-- "бігунок тест бігунок" (repeated "бігунок") returned 0 results while
+-- "бігунок тест" alone returned 456.
 create or replace function search_products(search_query text)
 returns table(translation_id integer)
 language plpgsql
@@ -65,9 +81,10 @@ declare
   total_words integer;
 begin
   set local pg_trgm.word_similarity_threshold = 0.45;
+  set local statement_timeout = '10s';
 
   words := array(
-    select w from unnest(
+    select distinct w from unnest(
       string_to_array(
         trim(both ' ' from regexp_replace(lower(search_query), '[,;/\_\-–—]+', ' ', 'g')),
         ' '

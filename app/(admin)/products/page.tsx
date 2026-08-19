@@ -102,14 +102,14 @@ export default async function ProductsPage({
     query = query.eq("pid", 0);
     if (matchedTranslationIds !== null) query = query.in("translation_id", matchedTranslationIds);
   } else if (effectiveTranslationIds !== null) {
-    if (effectiveTranslationIds.length === 0) {
-      return (
-        <>
-          <Header title="Товари" />
-          <div className="p-6"><p className="text-gray-400">Товарів не знайдено</p></div>
-        </>
-      );
-    }
+    // An empty array here (no matches) is passed straight to .in() rather
+    // than early-returning a bare "not found" message — that early return
+    // used to skip the whole page chrome, including <ProductsSearch>
+    // itself, so the search box vanished the moment a search came up
+    // empty. .in("translation_id", []) is a normal, well-supported
+    // PostgREST no-op filter (zero rows), and the existing empty-table
+    // row below already renders a "Товарів не знайдено" message inside
+    // the full page.
     query = query.in("translation_id", effectiveTranslationIds);
   }
 
