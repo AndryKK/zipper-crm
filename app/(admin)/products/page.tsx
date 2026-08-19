@@ -65,6 +65,27 @@ export default async function ProductsPage({
     }
   }
 
+  // Typo-tolerant, punctuation-insensitive, word-order-independent search
+  // (title, pcode, and any filter value assigned to the product) — see
+  // scripts/add-fuzzy-product-search.sql's search_products() for the actual
+  // matching logic.
+  let matchedTranslationIds: number[] | null = null;
+  if (q) {
+    const { data: matches } = await supabaseServer.rpc("search_products", { search_query: q });
+    matchedTranslationIds = [...new Set(((matches ?? []) as { translation_id: number }[]).map((m) => m.translation_id))];
+  }
+
+  // Category and search combine with AND — searching within a category
+  // only shows that category's matches, same as before this change.
+  let effectiveTranslationIds: number[] | null = null;
+  if (translationIdFilter !== null && matchedTranslationIds !== null) {
+    effectiveTranslationIds = translationIdFilter.filter((id) => matchedTranslationIds!.includes(id));
+  } else if (translationIdFilter !== null) {
+    effectiveTranslationIds = translationIdFilter;
+  } else if (matchedTranslationIds !== null) {
+    effectiveTranslationIds = matchedTranslationIds;
+  }
+
   // Only the columns this list renders — products carries several large
   // text fields (descr, text, seo_*) that this table never shows, and this
   // page is force-dynamic (re-fetched on every visit), so select("*") here
@@ -79,8 +100,9 @@ export default async function ProductsPage({
 
   if (catId === 0) {
     query = query.eq("pid", 0);
-  } else if (translationIdFilter !== null) {
-    if (translationIdFilter.length === 0) {
+    if (matchedTranslationIds !== null) query = query.in("translation_id", matchedTranslationIds);
+  } else if (effectiveTranslationIds !== null) {
+    if (effectiveTranslationIds.length === 0) {
       return (
         <>
           <Header title="Товари" />
@@ -88,11 +110,7 @@ export default async function ProductsPage({
         </>
       );
     }
-    query = query.in("translation_id", translationIdFilter);
-  }
-
-  if (q) {
-    query = query.or(`title.ilike.%${q}%,pcode.ilike.%${q}%`);
+    query = query.in("translation_id", effectiveTranslationIds);
   }
 
   // Newest-added first — order of addition, not the storefront's manual
@@ -106,29 +124,42 @@ export default async function ProductsPage({
   const totalPages = Math.ceil(total / limit);
   const allProducts = (products || []) as any[];
 
-  // Артикул (pcode) is normally identical across a group's uk/ru rows
-  // (verified against real data), so the uk-only query above already finds
-  // a match either way in the common case. A handful of groups are
-  // entirely missing their uk row though (e.g. translation_id 10318,
-  // pcode "bs10318" — reported as "CRM не шукає bs10318") — invisible to
-  // this uk-scoped list no matter what, browsing or search. Only matters
-  // when searching: look for a pcode match among non-uk rows whose group
-  // isn't already covered above, and fold them in (badged by language,
-  // linked straight to the ru storefront since there's no uk page for
-  // them — see SITE_URL below).
+  // A handful of product groups are entirely missing their uk row (e.g.
+  // translation_id 10318, pcode "bs10318" — reported as "CRM не шукає
+  // bs10318") — invisible to this uk-scoped list no matter what, browsing
+  // or search. search_products already searches across every language, so
+  // any such group it matched but that isn't among allProducts (the uk
+  // rows) above must be one of these orphans — fetch a representative row
+  // (any lang) for display, badged by language, linked straight to that
+  // language's own storefront domain since there's no uk page for them —
+  // see SITE_URL below.
   let orphanProducts: any[] = [];
-  if (q) {
-    const coveredGroupIds = new Set(allProducts.map((p) => p.translation_id));
-    const { data: nonUkMatches } = await supabaseServer
+  if (q && matchedTranslationIds && matchedTranslationIds.length) {
+    // Whether a matched group has a uk row at all is a catalog-wide
+    // question, not a "is it on this page" one — allProducts here is only
+    // the current 30-row page (see the .range() above), so checking
+    // against it alone mislabeled almost every match beyond page 1 as an
+    // "orphan" once fuzzy search started returning hundreds of matches
+    // instead of the old ILIKE's usual handful.
+    const { data: ukCoverageRows } = await supabaseServer
       .from("products")
-      .select("id, img, title, pcode, price, price_sale, package, translation_id, uri, label_action, lang")
-      .neq("lang", "uk")
-      .ilike("pcode", `%${q}%`);
-    const seenGroupIds = new Set<number>();
-    for (const p of (nonUkMatches ?? []) as any[]) {
-      if (coveredGroupIds.has(p.translation_id) || seenGroupIds.has(p.translation_id)) continue;
-      seenGroupIds.add(p.translation_id);
-      orphanProducts.push(p);
+      .select("translation_id")
+      .eq("lang", "uk")
+      .in("translation_id", matchedTranslationIds);
+    const coveredGroupIds = new Set((ukCoverageRows ?? []).map((r: any) => r.translation_id));
+    const orphanTrIds = matchedTranslationIds.filter((id) => !coveredGroupIds.has(id));
+    if (orphanTrIds.length) {
+      const { data: orphanRows } = await supabaseServer
+        .from("products")
+        .select("id, img, title, pcode, price, price_sale, package, translation_id, uri, label_action, lang")
+        .in("translation_id", orphanTrIds)
+        .neq("lang", "uk");
+      const seenGroupIds = new Set<number>();
+      for (const p of (orphanRows ?? []) as any[]) {
+        if (seenGroupIds.has(p.translation_id)) continue;
+        seenGroupIds.add(p.translation_id);
+        orphanProducts.push(p);
+      }
     }
   }
   const allProductsWithOrphans = [...allProducts, ...orphanProducts];
