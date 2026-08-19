@@ -1,6 +1,7 @@
 ﻿import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import { ProductForm } from "../product-form";
+import { getFiltersWithChildren } from "@/lib/filters";
 
 export const dynamic = "force-dynamic";
 
@@ -19,31 +20,7 @@ export default async function NewProductPage() {
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority", { ascending: true }),
   ]);
 
-  const { data: allFilters } = await supabaseServer
-    .from("all_filters")
-    .select("id, translation_id, title, translationId:translation_id")
-    .eq("lang", "uk")
-    .order("priority", { ascending: true });
-
-  const filterList = allFilters || [];
-  // all_filters_filters.pid references all_filters.translation_id (NOT the
-  // serial id) — confirmed against the live site's catalog.php query.
-  const filterTranslationIds = filterList.map((f: any) => f.translation_id);
-  let filtersWithChildren: any[] = filterList;
-  if (filterTranslationIds.length) {
-    const { data: filterItems } = await supabaseServer
-      .from("all_filters_filters")
-      .select("id, pid, title, translationId:translation_id")
-      .in("pid", filterTranslationIds)
-      .eq("lang", "uk")
-      .order("priority", { ascending: true });
-    const filtersMap: Record<number, any[]> = {};
-    for (const fi of filterItems || []) {
-      if (!filtersMap[fi.pid]) filtersMap[fi.pid] = [];
-      filtersMap[fi.pid].push(fi);
-    }
-    filtersWithChildren = filterList.map((f: any) => ({ ...f, filters: filtersMap[f.translation_id] || [] }));
-  }
+  const filtersWithChildren = await getFiltersWithChildren();
 
   return (
     <>

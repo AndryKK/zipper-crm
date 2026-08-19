@@ -1414,29 +1414,47 @@ function EditForm({
       )}
 
       {/* ── Фільтри ──────────────────────────────────────────────── */}
-      {activeTab === "filters" && (
-        <div className="max-w-4xl space-y-4">
-          <p className="text-xs text-gray-400">
-            Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар.
-          </p>
-          {filters.length === 0 && (
-            <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filters.map((filter: any) => (
-              <FilterGroupPicker
-                key={filter.id}
-                title={filter.title}
-                options={filter.filters.map((ff: any) => ({ id: ff.translationId, title: ff.title }))}
-                selected={selectedFilters}
-                onToggle={(id) =>
-                  setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
-                }
-              />
-            ))}
+      {activeTab === "filters" && (() => {
+        // Only show a filter group when it's actually assigned (see
+        // all_filters_items, resolved server-side in lib/filters.ts) to at
+        // least one of this product's own selected categories — a filter
+        // group meant for a totally unrelated category has no business
+        // showing up here just because it exists somewhere in the catalog.
+        // No categories selected at all → no filters shown, not "all of
+        // them", per the same reasoning.
+        const visibleFilters = selectedCategories.length
+          ? filters.filter((f: any) => (f.categoryIds ?? []).some((cid: number) => selectedCategories.includes(cid)))
+          : [];
+        return (
+          <div className="max-w-4xl space-y-4">
+            <p className="text-xs text-gray-400">
+              Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар. Показані лише фільтри, привʼязані до вибраних категорій товару.
+            </p>
+            {filters.length === 0 && (
+              <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
+            )}
+            {filters.length > 0 && selectedCategories.length === 0 && (
+              <p className="text-sm text-gray-400">Спершу оберіть категорії товару — фільтри показуються лише для них.</p>
+            )}
+            {filters.length > 0 && selectedCategories.length > 0 && visibleFilters.length === 0 && (
+              <p className="text-sm text-gray-400">Для вибраних категорій немає прив'язаних фільтрів.</p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {visibleFilters.map((filter: any) => (
+                <FilterGroupPicker
+                  key={filter.id}
+                  title={filter.title}
+                  options={filter.filters.map((ff: any) => ({ id: ff.translationId, title: ff.title }))}
+                  selected={selectedFilters}
+                  onToggle={(id) =>
+                    setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+                  }
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Характеристики ───────────────────────────────────────── */}
       {activeTab === "chars" && (
@@ -2280,29 +2298,43 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
         </div>
       )}
 
-      {activeTab === "filters" && (
-        <div className="max-w-4xl space-y-4">
-          <p className="text-xs text-gray-400">
-            Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар.
-          </p>
-          {filters.length === 0 && (
-            <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filters.map((filter: any) => (
-              <FilterGroupPicker
-                key={filter.id}
-                title={filter.title}
-                options={filter.filters.map((ff: any) => ({ id: ff.id, title: ff.title }))}
-                selected={selectedFilters}
-                onToggle={(id) =>
-                  setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
-                }
-              />
-            ))}
+      {activeTab === "filters" && (() => {
+        // Same reasoning as EditForm's filters tab — see its comment for
+        // why this uses categoryIds (from lib/filters.ts) and shows
+        // nothing when no category is selected yet.
+        const visibleFilters = selectedCategories.length
+          ? filters.filter((f: any) => (f.categoryIds ?? []).some((cid: number) => selectedCategories.includes(cid)))
+          : [];
+        return (
+          <div className="max-w-4xl space-y-4">
+            <p className="text-xs text-gray-400">
+              Обрані значення визначають, у яких фільтрах на сайті зʼявиться цей товар. Показані лише фільтри, привʼязані до вибраних категорій товару.
+            </p>
+            {filters.length === 0 && (
+              <p className="text-sm text-gray-400">Фільтри ще не створені (розділ «Фільтри каталогу»).</p>
+            )}
+            {filters.length > 0 && selectedCategories.length === 0 && (
+              <p className="text-sm text-gray-400">Спершу оберіть категорії товару — фільтри показуються лише для них.</p>
+            )}
+            {filters.length > 0 && selectedCategories.length > 0 && visibleFilters.length === 0 && (
+              <p className="text-sm text-gray-400">Для вибраних категорій немає прив'язаних фільтрів.</p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {visibleFilters.map((filter: any) => (
+                <FilterGroupPicker
+                  key={filter.id}
+                  title={filter.title}
+                  options={filter.filters.map((ff: any) => ({ id: ff.id, title: ff.title }))}
+                  selected={selectedFilters}
+                  onToggle={(id) =>
+                    setSelectedFilters((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+                  }
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {activeTab === "chars" && (
         <div className="max-w-xl space-y-3">
