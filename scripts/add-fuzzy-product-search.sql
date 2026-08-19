@@ -3,6 +3,19 @@
 -- how it's used. Replaces a plain `title.ilike/pcode.ilike` substring match
 -- (which failed on typos, reordered words, and never looked at filter
 -- values at all — see the "виправи пошук" report).
+--
+-- Tuned twice against real reports, in order:
+--   1. Too strict initially (missed genuine typos/word-order/filter
+--      matches) — loosened to word_similarity at 0.35, then 0.45.
+--   2. Too loose after that — a search for "тракторна блискавка тип 8"
+--      returned "Тип 5" products (because the lone digit "8" matched
+--      almost the whole catalog via degenerate short-string trigram
+--      similarity) and, once that was fixed via substring digit matching,
+--      STILL returned "Тип 7" products (because "8" is a literal substring
+--      of "80см" in that title). Final explicit rule from the user: ignore
+--      ONLY punctuation and word order; every word must genuinely be
+--      contained (~90% similarity, not "vaguely related"); digits must
+--      match exactly, not as a substring of a different number.
 create extension if not exists pg_trgm;
 
 -- GIN trigram indexes — required for the `<%` (word-similarity) operator
@@ -15,63 +28,82 @@ create index if not exists idx_all_filters_filters_title_trgm on all_filters_fil
 create index if not exists idx_all_filters_filters_items_fid on all_filters_filters_items (fid);
 
 -- search_products(search_query) — returns the translation_id of every
--- product group where EVERY word of the (normalized) search query has at
--- least a loose match somewhere: the product's title, its pcode
+-- product group where EVERY word of the (normalized) search query is
+-- genuinely contained somewhere: the product's title, its pcode
 -- (артикул), or the title of any filter value assigned to it
 -- (all_filters_filters_items/all_filters_filters — see
 -- app/api/products/[id]/filters/route.ts's doc comment for that keying).
 --
 -- Requiring every word to match SOMEWHERE (not the whole phrase as one
 -- substring, and not positionally) is what gives word-order independence —
--- "тип 3 нікель" and "нікель тип 3" match identically.
+-- "тип 3 нікель" and "нікель тип 3" match identically. Punctuation is
+-- stripped before splitting into words for the same reason.
 --
--- TITLE/FILTER matching uses word_similarity()/`<%` (typo-tolerant, not
--- exact substring) — NOT similarity()/`%`, which compares entire strings:
--- a short search word against a long multi-word title gets diluted to a
--- low score regardless of how well it matches one word of it (confirmed
--- against the live DB: similarity('Бігунок тест Тип 3 ...', 'бігунок') =
--- 0.2, always below any sane threshold even for an exact word match).
--- word_similarity() instead finds the best-matching span within the
--- longer text.
+-- Three matching modes per word, chosen by what kind of token it is:
 --
--- PCODE matching is a plain substring check (ILIKE-equivalent), NOT
--- fuzzy — confirmed against the live DB that fuzzy matching here is
--- actively wrong: pcode "bs10280" scored word_similarity 0.625 against
--- unrelated neighboring codes like "bs10278"/"bs1021"/"bs1022" (they share
--- the "bs10" prefix and similar digit runs), the exact same score range as
--- a genuine one-letter typo of a real word — so no fuzzy threshold can
--- tell "typo of this code" apart from "a different, nearby code" for a
--- short structured identifier. An artikul is normally copy-pasted or read
--- off a label, not typed from memory, so exact/substring matching (still
--- forgiving of a truncated/partial code) is the right default here, unlike
--- free-text title words.
+-- 1. PURE NUMBER (e.g. "8", "363") — must equal, EXACTLY, one of the
+--    number-tokens extracted from the title (regexp_matches ... '\d+').
+--    Substring containment is explicitly wrong here: "8" is a literal
+--    substring of "80см", "18", "8203" — confirmed against the live DB
+--    this let "Тракторна блискавка Тип 7 80см." match a "тип 8" search.
+--    A type/size number has to match exactly, per the user's explicit
+--    "цифри має бути збіг 100%".
 --
--- 0.45 for word_similarity_threshold was picked empirically against the
--- live DB: below it, short words like "тест" scored ~0.4 against titles
--- that don't contain anything like it at all (pure trigram noise); at
--- 0.45+ that noise is gone while real one-letter typos of real words still
--- land at 0.5-0.65. Some residual over-matching against genuinely similar
--- words (e.g. "тест" vs "тесьма") is expected and accepted — the ask was
--- for search to be "дуже м'яко" (very forgiving), and that tradeoff is
--- what forgiving costs. Not marked STABLE: SET LOCAL is rejected by
--- Postgres inside a non-volatile function ("SET is not allowed in a
--- non-volatile function" — also confirmed against the live DB).
+-- 2. 1-2 CHARACTER WORD (e.g. "на", "ку") — plain substring match. A
+--    trigram needs ~3 characters to mean anything, so word_similarity is
+--    numerically degenerate for such short probes (confirmed: "8" alone —
+--    before being reclassified as a pure-number token — matched the
+--    entire catalog regardless of threshold).
 --
--- statement_timeout is raised locally (still scoped to just this call, via
--- SET LOCAL) — a long pasted-in title (10+ words) costs roughly linearly
--- more per extra word (~150-200ms/word measured against the live DB) and
--- can exceed whatever short default applies to this role otherwise,
--- surfacing as a hard 500 the page had no way to distinguish from a
--- genuine "nothing found" (confirmed: pasting a product's own full title
--- back in as the search — a real report — timed out at 6+ words).
+-- 3. EVERYTHING ELSE — word_similarity()/`<%`, NOT similarity()/`%`
+--    (which compares whole strings and dilutes a short word's score
+--    against a long title regardless of match quality — confirmed:
+--    similarity('Бігунок тест Тип 3 ...', 'бігунок') = 0.2, always below
+--    any sane threshold even for an exact word match; word_similarity()
+--    instead finds the best-matching span). Threshold is 0.9 — per the
+--    user's explicit "може бути збіг 90% кожного слова, але має
+--    містити" (~90% match per word, but must genuinely be contained) —
+--    tight enough to reject "тест" vs "тесьма"-style unrelated overlap,
+--    loose enough to still tolerate a single-character typo/OCR slip in a
+--    longer word and Ukrainian case-ending variation on most words (e.g.
+--    "тракторна" vs the title's own "тракторної" scores 0.8 and will NOT
+--    match at 0.9 — a known, accepted tightening, not a bug).
 --
--- `words` is deduplicated (select DISTINCT, not just select) — a real,
--- confirmed bug: without it, a query with any repeated word (e.g. this
--- same title has "колір" twice) made total_words count the duplicate, but
--- `count(distinct word)` in the HAVING clause below never can, so the
--- match was mathematically impossible to satisfy — reproduced directly:
--- "бігунок тест бігунок" (repeated "бігунок") returned 0 results while
--- "бігунок тест" alone returned 456.
+-- PCODE matching mirrors the same split: substring for non-numeric words
+-- (an artikul is normally copy-pasted or partially typed — "1028" finding
+-- "bs10280" needs substring), but numeric words require exact equality
+-- against the pcode's own extracted digit run, same as title. Plain
+-- substring for numeric words here was a second, separate leak of the same
+-- bug: "T8246"/"T9618" (real pcodes of unrelated "Тип 5" products) contain
+-- "8" as a substring even after the title itself was fixed — confirmed
+-- against the live DB these two products kept matching a "тип 8" search
+-- purely through their pcode until this was applied here too.
+--
+-- statement_timeout is raised locally (via SET LOCAL, scoped to just this
+-- call) — a long pasted-in title (10+ words) costs roughly linearly more
+-- per extra word and can exceed whatever short default applies to this
+-- role otherwise, surfacing as a hard 500 the page had no way to
+-- distinguish from a genuine "nothing found".
+--
+-- `words` is deduplicated (SELECT DISTINCT) — without it, a query with any
+-- repeated word (e.g. a title containing "колір" twice) makes total_words
+-- count the duplicate, but `count(distinct word)` in the HAVING clause
+-- below never can, so the match becomes mathematically impossible —
+-- confirmed: "бігунок тест бігунок" (repeated) returned 0 results while
+-- "бігунок тест" alone returned real matches.
+--
+-- via_title tracks whether a word matched the actual title (as opposed to
+-- only via pcode or a filter value) — ranks results so the 500-row cap
+-- trims the weakest matches first instead of an arbitrary DB-order slice;
+-- confirmed this mattered for broad queries like "тракторна блискавка тип
+-- 8", where genuine "Тип 8" products were missing from an unordered
+-- result set even though hundreds of other rows matched too.
+--
+-- Not marked STABLE: SET LOCAL is rejected by Postgres inside a
+-- non-volatile function ("SET is not allowed in a non-volatile function").
+-- word_hits.translation_id is qualified everywhere (not bare
+-- `translation_id`) because RETURNS TABLE(translation_id integer) makes
+-- that name ambiguous with this function's own OUT parameter otherwise.
 create or replace function search_products(search_query text)
 returns table(translation_id integer)
 language plpgsql
@@ -80,7 +112,7 @@ declare
   words text[];
   total_words integer;
 begin
-  set local pg_trgm.word_similarity_threshold = 0.45;
+  set local pg_trgm.word_similarity_threshold = 0.9;
   set local statement_timeout = '10s';
 
   words := array(
@@ -99,26 +131,58 @@ begin
 
   total_words := array_length(words, 1);
 
-  -- word_hits.translation_id is qualified everywhere below (not bare
-  -- `translation_id`) because RETURNS TABLE(translation_id integer) makes
-  -- that name ambiguous with this function's own OUT parameter otherwise
-  -- ("column reference is ambiguous" — confirmed against the live DB).
   return query
   with word_hits as (
-    select w.word, p.translation_id
+    select w.word, p.translation_id,
+      (case
+        when w.word ~ '^[0-9]+$' then exists (
+          select 1 from regexp_matches(p.title, '\d+', 'g') as m(digits)
+          where m.digits[1] = w.word
+        )
+        when length(w.word) <= 2 then lower(p.title) like '%' || w.word || '%'
+        else w.word <% lower(p.title)
+      end) as via_title
     from unnest(words) as w(word)
     join products p
-      on w.word <% lower(p.title) or lower(coalesce(p.pcode, '')) like '%' || w.word || '%'
+      on (
+        case
+          when w.word ~ '^[0-9]+$' then exists (
+            select 1 from regexp_matches(p.title, '\d+', 'g') as m(digits)
+            where m.digits[1] = w.word
+          )
+          when length(w.word) <= 2 then lower(p.title) like '%' || w.word || '%'
+          else w.word <% lower(p.title)
+        end
+      )
+      or (
+        case
+          when w.word ~ '^[0-9]+$' then exists (
+            select 1 from regexp_matches(coalesce(p.pcode, ''), '\d+', 'g') as m(digits)
+            where m.digits[1] = w.word
+          )
+          else lower(coalesce(p.pcode, '')) like '%' || w.word || '%'
+        end
+      )
     union
-    select w.word, affi.pid as translation_id
+    select w.word, affi.pid as translation_id, false as via_title
     from unnest(words) as w(word)
-    join all_filters_filters aff on w.word <% lower(aff.title)
+    join all_filters_filters aff on (
+      case
+        when w.word ~ '^[0-9]+$' then exists (
+          select 1 from regexp_matches(aff.title, '\d+', 'g') as m(digits)
+          where m.digits[1] = w.word
+        )
+        when length(w.word) <= 2 then lower(aff.title) like '%' || w.word || '%'
+        else w.word <% lower(aff.title)
+      end
+    )
     join all_filters_filters_items affi on affi.fid = aff.translation_id
   )
   select word_hits.translation_id
   from word_hits
   group by word_hits.translation_id
   having count(distinct word) = total_words
+  order by count(*) filter (where via_title) desc, word_hits.translation_id desc
   limit 500;
 end;
 $$;
