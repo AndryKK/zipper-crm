@@ -755,6 +755,30 @@ export default function OrderDetailPage() {
     toast.success("Товар оновлено");
   }
 
+  // Self-saving quantity field for the stock-check popup — that list has
+  // no per-row "Save" button (unlike the main table's editingItems mode),
+  // so a quantity edit there persists straight on blur instead. Report:
+  // the popup showed quantity as plain "{n} шт" text with no way to
+  // change it at all, both for existing lines and ones just added there.
+  async function saveItemQuantity(itemId: number, rawQuantity: string) {
+    const quantity = parseInt(rawQuantity);
+    if (!Number.isFinite(quantity) || quantity < 1) return;
+    setSavingItemId(itemId);
+    const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    });
+    setSavingItemId(null);
+    if (!res.ok) { toast.error("Не вдалося оновити кількість"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({
+      ...prev,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, quantity } : i)),
+    }));
+  }
+
   // Soft-remove/restore a line item — see
   // scripts/add-orders-item-active-column.sql. Removing releases the stock
   // this line had reserved and drops it from the invoice/TTN weight (the
@@ -1334,11 +1358,28 @@ export default function OrderDetailPage() {
                           {item.productTitle ?? `Товар #${item.product}`}
                         </div>
                       )}
-                      <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        {item.productPcode ? `${item.productPcode} · ` : ""}{item.quantity} шт
-                      </div>
+                      {item.productPcode && (
+                        <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {item.productPcode}
+                        </div>
+                      )}
                     </div>
                   </label>
+                  {/* Self-saving on blur (see saveItemQuantity) — this
+                      popup has no per-row "Save" button the way the main
+                      table's editingItems mode does. Outside the <label>
+                      on purpose, alongside the remove button, so a click
+                      here never risks also toggling the checkbox. */}
+                  <Input
+                    type="number" min={1} step="1"
+                    defaultValue={item.quantity}
+                    key={`${item.id}-${item.quantity}`}
+                    onBlur={(e) => { if (e.target.value !== String(item.quantity)) saveItemQuantity(item.id, e.target.value); }}
+                    disabled={savingItemId === item.id}
+                    style={{ width: 60, flexShrink: 0, textAlign: "right", height: 32 }}
+                    title="Кількість"
+                  />
+                  <span style={{ flexShrink: 0, fontSize: 11.5, color: "var(--text-muted)" }}>шт</span>
                   <button
                     onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
                     disabled={savingItemId === item.id}
