@@ -12,10 +12,11 @@ import {
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { useState, Fragment as F } from "react";
+import { useState, useEffect, Fragment as F } from "react";
 import { CatalogNav, type CatalogRoot } from "./catalog-nav";
 import { BusyOverlay } from "./busy-overlay";
 import { isPathAllowed } from "@/lib/roles";
+import { maybeCheckTtnStatus } from "@/lib/ttn-heartbeat-client";
 
 const navGroups = [
   {
@@ -134,6 +135,13 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
   // to the classic always-visible sidebar that pushes content over.
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Covers a direct/deep-link page open (e.g. an order URL pasted or
+  // bookmarked) that never goes through navigate() below — see
+  // lib/ttn-heartbeat-client.ts for the actual once-per-hour gating.
+  useEffect(() => {
+    maybeCheckTtnStatus();
+  }, []);
+
   const toggleGroup = (label: string) => {
     setCollapsed((prev) =>
       prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]
@@ -172,6 +180,7 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
     // this returned before ever calling router.push, and the only way back
     // to the bare URL was to navigate elsewhere first.
     const currentUrl = searchParams.size ? `${pathname}?${searchParams.toString()}` : pathname;
+    maybeCheckTtnStatus();
     if (href === currentUrl) return;
     startNavigation(() => {
       router.push(href);

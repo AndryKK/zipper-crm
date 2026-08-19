@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { npGetStatus } from "@/lib/nova-poshta";
-import { RETURN_STATUS } from "@/lib/returns";
-import { revalidateTag } from "next/cache";
-
-function getSetting(settings: { value: string; text: string }[], key: string) {
-  return settings.find((s) => s.value === key)?.text?.trim() ?? "";
-}
+import { runTtnStatusSync } from "@/lib/ttn-status-sync";
 
 // Nova Poshta has no webhook for third-party API keys, so this is a polling
 // check: called once a day by Vercel Cron (see vercel.json — Authorization:
-// Bearer $CRON_SECRET, added automatically by Vercel) for every order stuck
-// at "Відправлено", and also callable on-demand for a single order via the
+// Bearer $CRON_SECRET, added automatically by Vercel — Vercel's Hobby plan
+// caps a true cron at once/day, which is why
+// app/api/orders/ttn-heartbeat/route.ts also exists as a click-triggered,
+// DB-rate-limited "simulated hourly cron" calling the same
+// runTtnStatusSync), and also callable on-demand for a single order via the
 // "Перевірити статус НП" button on the order page (admin session instead).
 //
 // The same poll also covers return-shipment TTNs (customer shipping an item
@@ -30,83 +26,10 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const onlyOrderId = searchParams.get("orderId");
-  const onlyReturnId = searchParams.get("returnId");
+  const onlyOrderId = searchParams.get("orderId") ?? undefined;
+  const onlyReturnId = searchParams.get("returnId") ?? undefined;
 
-  const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
-  const settings = allSettings ?? [];
-  const apiKey = getSetting(settings, "np_api_key") || process.env.NOVA_POSHTA_API_KEY || "";
-  if (!apiKey) return NextResponse.json({ error: "np_api_key не налаштовано" }, { status: 400 });
-
-  const log: { orderId: number; ttn: string; status?: string; delivered?: boolean; reverted?: boolean; error?: string }[] = [];
-  const returnLog: { returnId: number; ttn: string; status?: string; delivered?: boolean; error?: string }[] = [];
-
-  if (!onlyReturnId) {
-    let query = supabaseServer.from("orders").select("id, ttn, phone").eq("status", "Відправлено").not("ttn", "is", null);
-    if (onlyOrderId) query = query.eq("id", parseInt(onlyOrderId));
-    const { data: orders } = await query;
-
-    for (const order of orders ?? []) {
-      try {
-        const result = await npGetStatus(apiKey, order.ttn, order.phone ?? undefined);
-        if (!result) { log.push({ orderId: order.id, ttn: order.ttn, error: "Немає відповіді від НП" }); continue; }
-        let reverted = false;
-        if (result.isDelivered) {
-          // "Отримано" used to be a separate step with a further manual/14-day
-          // wait before "Завершено" — merged into one: once NP confirms
-          // delivery, the order is done, no extra step needed.
-          await supabaseServer.from("orders").update({ status: "Завершено" }).eq("id", order.id);
-        } else if (result.notHandedOver) {
-          // The TTN exists but NP itself says nothing has actually shipped
-          // (no branch/courier scan yet) — "Відправлено" here was premature
-          // (created but never physically dropped off), so it belongs back
-          // at "Оплачено" (paid, awaiting shipment) rather than staying
-          // marked as shipped. The TTN itself is left alone — it's still a
-          // real, valid waybill, just not handed over yet.
-          await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", order.id);
-          reverted = true;
-        }
-        log.push({ orderId: order.id, ttn: order.ttn, status: result.status, delivered: result.isDelivered, reverted });
-      } catch (e) {
-        log.push({ orderId: order.id, ttn: order.ttn, error: (e as Error).message });
-      }
-    }
-  }
-
-  if (!onlyOrderId) {
-    let rquery = supabaseServer
-      .from("orders_returns")
-      .select("id, ttn, phone")
-      .eq("status", RETURN_STATUS.CONFIRMED)
-      .not("ttn", "is", null);
-    if (onlyReturnId) rquery = rquery.eq("id", parseInt(onlyReturnId));
-    const { data: returns } = await rquery;
-
-    for (const ret of returns ?? []) {
-      try {
-        const result = await npGetStatus(apiKey, ret.ttn, ret.phone ?? undefined);
-        if (!result) { returnLog.push({ returnId: ret.id, ttn: ret.ttn, error: "Немає відповіді від НП" }); continue; }
-        if (result.isDelivered) {
-          await supabaseServer.from("orders_returns").update({ status: RETURN_STATUS.ARRIVED }).eq("id", ret.id);
-        }
-        returnLog.push({ returnId: ret.id, ttn: ret.ttn, status: result.status, delivered: result.isDelivered });
-      } catch (e) {
-        returnLog.push({ returnId: ret.id, ttn: ret.ttn, error: (e as Error).message });
-      }
-    }
-  }
-
-  // Cheap and runs at most once a day (this route is the daily NP-status
-  // poll) — simpler and just as correct to invalidate unconditionally here
-  // than to track exactly which branch above actually changed a status.
-  revalidateTag("sidebar-counts", { expire: 0 });
-
-  return NextResponse.json({
-    checked: log.length,
-    updated: log.filter((l) => l.delivered).length,
-    log,
-    returnsChecked: returnLog.length,
-    returnsUpdated: returnLog.filter((l) => l.delivered).length,
-    returnLog,
-  });
+  const result = await runTtnStatusSync({ onlyOrderId, onlyReturnId });
+  if ("error" in result) return NextResponse.json(result, { status: 400 });
+  return NextResponse.json(result);
 }
