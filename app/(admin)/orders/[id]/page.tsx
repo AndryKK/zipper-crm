@@ -795,9 +795,13 @@ export default function OrderDetailPage() {
       body: JSON.stringify({ product: product.id, price: product.price, quantity: 1 }),
     });
     if (!res.ok) { toast.error("Не вдалося додати товар"); return; }
-    const item = await res.json();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setOrder((prev: any) => ({ ...prev, items: [...(prev.items ?? []), item] }));
+    // POST /api/orders/[id]/items only returns the raw orders_item row —
+    // no productTitle/productImg/productPcode/productUrl, those are joined
+    // in by GET /api/orders/[id] only. Appending that raw row straight into
+    // state (the old behavior) made a freshly-added item show with no
+    // photo/title until the next full page reload — refetching here gets
+    // the same enrichment every other item already has, immediately.
+    await refreshOrder();
     setItemSearch("");
     setItemSearchResults([]);
     toast.success(`Додано: ${product.title}`);
@@ -1348,7 +1352,7 @@ export default function OrderDetailPage() {
 
             {!showAddItem ? (
               <button
-                onClick={() => setShowAddItem(true)}
+                onClick={() => { setShowAddItem(true); setEditingItems(true); }}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   width: "100%", padding: "10px", borderRadius: 8,
@@ -2332,9 +2336,13 @@ export default function OrderDetailPage() {
               </tfoot>
             </table>
 
+            {/* Also flips editingItems on — a new line always starts at
+                quantity 1, and without edit mode already active there was
+                no way to correct that right after adding without a second,
+                unrelated click on "Редагувати" first. */}
             {!showAddItem ? (
               <button
-                onClick={() => setShowAddItem(true)}
+                onClick={() => { setShowAddItem(true); setEditingItems(true); }}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   width: "100%", marginTop: 14, padding: "14px", borderRadius: 10,
