@@ -10,7 +10,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const orderId = parseInt(id);
   const body = await req.json();
 
-  const update: { price?: number; quantity?: number } = {};
+  const update: { price?: number; quantity?: number; active?: boolean } = {};
   if (body.price !== undefined) {
     const price = parseFloat(body.price);
     if (!Number.isFinite(price) || price < 0) return NextResponse.json({ error: "Некоректна ціна" }, { status: 400 });
@@ -20,6 +20,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const quantity = parseInt(body.quantity);
     if (!Number.isFinite(quantity) || quantity < 1) return NextResponse.json({ error: "Некоректна кількість" }, { status: 400 });
     update.quantity = quantity;
+  }
+  // Soft-remove/restore — see scripts/add-orders-item-active-column.sql.
+  // The webhook (app/api/webhooks/inventory-sync/route.ts) reacts to this
+  // exact UPDATE to restock/deduct, so this is the only place that flag
+  // should ever be written from.
+  if (body.active !== undefined) {
+    update.active = !!body.active;
   }
 
   const { data: item, error } = await supabaseServer

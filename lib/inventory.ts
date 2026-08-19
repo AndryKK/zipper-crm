@@ -20,6 +20,8 @@ export type InventorySource =
   | "order_created"
   | "order_item_updated"
   | "order_item_deleted"
+  | "order_item_deactivated" // soft-removed from an order — see scripts/add-orders-item-active-column.sql
+  | "order_item_reactivated" // restored after being soft-removed
   | "order_cancelled"
   | "order_uncancelled"
   | "return_received";
@@ -106,14 +108,17 @@ export async function restockStock(productId: number, quantity: number, warehous
 }
 
 export async function restockOrderItems(oid: number, warehouseId: number, opts: AdjustOpts): Promise<void> {
-  const { data: items } = await supabaseServer.from("orders_item").select("product, quantity").eq("oid", oid);
+  // active=false items (see scripts/add-orders-item-active-column.sql)
+  // already had their stock returned individually when they were removed
+  // — restocking them again here on a whole-order cancel would double-count.
+  const { data: items } = await supabaseServer.from("orders_item").select("product, quantity").eq("oid", oid).eq("active", true);
   for (const item of items ?? []) {
     await restockStock(item.product, item.quantity, warehouseId, opts);
   }
 }
 
 export async function deductOrderItems(oid: number, warehouseId: number, opts: AdjustOpts): Promise<void> {
-  const { data: items } = await supabaseServer.from("orders_item").select("product, quantity").eq("oid", oid);
+  const { data: items } = await supabaseServer.from("orders_item").select("product, quantity").eq("oid", oid).eq("active", true);
   for (const item of items ?? []) {
     await deductStock(item.product, item.quantity, warehouseId, opts);
   }

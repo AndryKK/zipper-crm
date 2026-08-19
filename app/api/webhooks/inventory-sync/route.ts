@@ -12,7 +12,7 @@ const CANCELLED_STATUS = "Скасовано";
 const PRE_SHIPMENT_STATUSES = new Set(["Новий", "В роботі", "Оплачено"]);
 const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSES.has(status);
 
-type OrdersItemRow = { oid: number; product: number; quantity: number };
+type OrdersItemRow = { oid: number; product: number; quantity: number; active: boolean };
 type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean };
 type OrdersReturnRow = { id: number; status: string | null };
 
@@ -91,10 +91,32 @@ export async function POST(req: NextRequest) {
     if (payload.type === "INSERT") {
       await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_created" });
     } else if (payload.type === "UPDATE") {
-      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
-      await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+      // active can be undefined on rows written before the column existed
+      // (shouldn't happen post-migration since it defaults true, but the
+      // payload is whatever Postgres sends) — treat missing as active so
+      // old behavior (always restock-old + deduct-new) is preserved unless
+      // a real active transition is present.
+      const wasActive = payload.old_record.active !== false;
+      const isActive = payload.record.active !== false;
+      if (wasActive && !isActive) {
+        // Soft-removed from the order (see app/api/orders/[id]/items/[itemId]/route.ts) —
+        // give back exactly what this line had reserved, nothing else.
+        await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_deactivated" });
+      } else if (!wasActive && isActive) {
+        // Restored — re-reserve it, same as a fresh add.
+        await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_reactivated" });
+      } else if (wasActive && isActive) {
+        await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
+        await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+      }
+      // wasActive === false && isActive === false: still removed, e.g. a
+      // price edit while inactive — no stock effect either way.
     } else if (payload.type === "DELETE") {
-      await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_deleted" });
+      // A genuinely hard-deleted row (the old delete path, still reachable
+      // via the API) only ever had stock reserved if it was active.
+      if (payload.old_record.active !== false) {
+        await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_deleted" });
+      }
     }
   } else if (payload.table === "orders" && payload.type === "UPDATE") {
     const wasCancelled = payload.old_record.status === CANCELLED_STATUS;

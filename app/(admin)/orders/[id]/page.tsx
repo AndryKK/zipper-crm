@@ -15,11 +15,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import {
   ArrowLeft, Loader2, Zap, Check, CheckCircle2, XCircle,
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
-  Truck, MapPin, Star, Pencil, Trash2, Plus, X, Search, ClipboardList,
-  Mail, Banknote, PackageSearch, SlidersHorizontal,
+  Truck, MapPin, Star, Pencil, Plus, X, Search, ClipboardList,
+  Mail, Banknote, PackageSearch, SlidersHorizontal, RotateCcw,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -246,6 +247,14 @@ export default function OrderDetailPage() {
   const [itemSearching, setItemSearching] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [itemSearchResults, setItemSearchResults] = useState<any[]>([]);
+  // Dashed "+" add-item panel — shared between the main items table and the
+  // stock-check popup below, since only one is ever actually visible/
+  // interactive at a time (the popup overlays the page).
+  const [showAddItem, setShowAddItem] = useState(false);
+  // Soft-remove confirm — see toggleItemActive. Removing (unlike restoring)
+  // asks first since it releases reserved stock and drops the line from
+  // the invoice/TTN weight.
+  const [removeItemConfirm, setRemoveItemConfirm] = useState<{ id: number; title: string } | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -745,14 +754,27 @@ export default function OrderDetailPage() {
     toast.success("Товар оновлено");
   }
 
-  async function deleteItem(itemId: number) {
+  // Soft-remove/restore a line item — see
+  // scripts/add-orders-item-active-column.sql. Removing releases the stock
+  // this line had reserved and drops it from the invoice/TTN weight (the
+  // webhook reacts to this exact PUT — see
+  // app/api/webhooks/inventory-sync/route.ts); restoring re-reserves it.
+  // The row itself is never deleted — it stays visible, struck through.
+  async function toggleItemActive(itemId: number, active: boolean) {
     setSavingItemId(itemId);
-    const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, { method: "DELETE" });
+    const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    });
     setSavingItemId(null);
-    if (!res.ok) { toast.error("Не вдалося видалити товар"); return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setOrder((prev: any) => ({ ...prev, items: prev.items.filter((i: any) => i.id !== itemId) }));
-    toast.success("Товар видалено");
+    if (!res.ok) { toast.error(active ? "Не вдалося відновити товар" : "Не вдалося прибрати товар"); return; }
+    setOrder((prev: any) => ({
+      ...prev,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, active } : i)),
+    }));
+    toast.success(active ? "Товар відновлено" : "Товар прибрано із замовлення");
   }
 
   async function searchProducts(q: string) {
@@ -828,9 +850,13 @@ export default function OrderDetailPage() {
 
   const step        = PIPELINE.findIndex((p) => p.status === status);
   const isCancelled = status === "Скасовано";
-  const orderTotal  = order.items?.reduce(
+  // active === false items are soft-removed (see
+  // scripts/add-orders-item-active-column.sql) — shown struck-through with
+  // a 0 sum in the table below, excluded from the real total here.
+  const activeItems = (order.items ?? []).filter((i: { active?: boolean }) => i.active !== false);
+  const orderTotal  = activeItems.reduce(
     (s: number, i: { price: number; quantity: number }) => s + i.price * i.quantity, 0
-  ) ?? 0;
+  );
   const currentPipe = PIPELINE[Math.max(0, step)];
   const npParsed    = order.addr_delivery ? parseNpAddress(order.addr_delivery) : null;
   const isPostomat  = npParsed?.isPostomat ?? false;
@@ -1235,7 +1261,10 @@ export default function OrderDetailPage() {
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "-4px 0 4px" }}>
               Позначте кожен товар, переконавшись, що він фізично є на складі, перед формуванням рахунку та відправкою листа клієнту.
             </p>
-            {!!order.items?.length && (
+            {/* Removed lines (see scripts/add-orders-item-active-column.sql)
+                have nothing to physically check — they're excluded from
+                this whole checklist, not just hidden. */}
+            {!!activeItems.length && (
               <label
                 style={{
                   display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
@@ -1244,13 +1273,13 @@ export default function OrderDetailPage() {
               >
                 <input
                   type="checkbox"
-                  checked={order.items.every((i: { id: number }) => stockChecks[i.id])}
+                  checked={activeItems.every((i: { id: number }) => stockChecks[i.id])}
                   ref={(el) => {
-                    if (el) el.indeterminate = order.items!.some((i: { id: number }) => stockChecks[i.id]) && !order.items!.every((i: { id: number }) => stockChecks[i.id]);
+                    if (el) el.indeterminate = activeItems.some((i: { id: number }) => stockChecks[i.id]) && !activeItems.every((i: { id: number }) => stockChecks[i.id]);
                   }}
                   onChange={(e) => {
                     const checked = e.target.checked;
-                    setStockChecks(Object.fromEntries(order.items!.map((i: { id: number }) => [i.id, checked])));
+                    setStockChecks(Object.fromEntries(activeItems.map((i: { id: number }) => [i.id, checked])));
                   }}
                   style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
                 />
@@ -1259,53 +1288,116 @@ export default function OrderDetailPage() {
             )}
             <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {order.items?.map((item: any) => (
-                <label
+              {activeItems.map((item: any) => (
+                <div
                   key={item.id}
                   style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-                    borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
+                    borderRadius: 8, border: "1px solid var(--border)",
                     background: stockChecks[item.id] ? "rgba(16,185,129,0.08)" : "transparent",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={!!stockChecks[item.id]}
-                    onChange={(e) => setStockChecks((prev) => ({ ...prev, [item.id]: e.target.checked }))}
-                    style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
-                  />
-                  {item.productImg ? (
-                    <img src={item.productImg} alt="" style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)" }} />
-                  ) : (
-                    <div style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Package size={14} color="var(--text-muted)" />
-                    </div>
-                  )}
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    {item.productUrl ? (
-                      <a
-                        href={item.productUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ fontSize: 13, fontWeight: 500, color: "inherit", textDecoration: "none" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
-                      >
-                        {item.productTitle ?? `Товар #${item.product}`}
-                      </a>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!stockChecks[item.id]}
+                      onChange={(e) => setStockChecks((prev) => ({ ...prev, [item.id]: e.target.checked }))}
+                      style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
+                    />
+                    {item.productImg ? (
+                      <img src={item.productImg} alt="" style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)" }} />
                     ) : (
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {item.productTitle ?? `Товар #${item.product}`}
+                      <div style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Package size={14} color="var(--text-muted)" />
                       </div>
                     )}
-                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {item.productPcode ? `${item.productPcode} · ` : ""}{item.quantity} шт
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {item.productUrl ? (
+                        <a
+                          href={item.productUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontSize: 13, fontWeight: 500, color: "inherit", textDecoration: "none" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                        >
+                          {item.productTitle ?? `Товар #${item.product}`}
+                        </a>
+                      ) : (
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {item.productTitle ?? `Товар #${item.product}`}
+                        </div>
+                      )}
+                      <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {item.productPcode ? `${item.productPcode} · ` : ""}{item.quantity} шт
+                      </div>
                     </div>
-                  </div>
-                </label>
+                  </label>
+                  <button
+                    onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
+                    disabled={savingItemId === item.id}
+                    style={{ flexShrink: 0, padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
+                    title="Прибрати з замовлення"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))}
             </div>
+
+            {!showAddItem ? (
+              <button
+                onClick={() => setShowAddItem(true)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  width: "100%", padding: "10px", borderRadius: 8,
+                  border: "2px dashed var(--border)", background: "transparent",
+                  color: "var(--text-muted)", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                }}
+              >
+                <Plus size={15} /> Додати товар
+              </button>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Search size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                  <Input
+                    autoFocus
+                    value={itemSearch}
+                    onChange={(e) => searchProducts(e.target.value)}
+                    placeholder="Пошук товару за назвою або артикулом…"
+                  />
+                  {itemSearching && <Loader2 className="h-4 w-4 animate-spin" style={{ flexShrink: 0 }} />}
+                  <button
+                    onClick={() => { setShowAddItem(false); setItemSearch(""); setItemSearchResults([]); }}
+                    style={{ flexShrink: 0, background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: 4 }}
+                    title="Закрити"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {itemSearchResults.length > 0 && (
+                  <div style={{ marginTop: 6, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                    {itemSearchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => addItem(p)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "8px 12px", background: "var(--bg)", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", textAlign: "left", fontSize: 13 }}
+                      >
+                        <span>
+                          {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
+                          {p.title}
+                        </span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#6366f1", fontWeight: 600, flexShrink: 0, marginLeft: 10 }}>
+                          <Plus size={13} /> {p.price?.toFixed?.(2) ?? p.price} грн
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <label
               style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
@@ -1344,7 +1436,7 @@ export default function OrderDetailPage() {
               <Button variant="outline" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
               <Button
                 onClick={confirmStockAndProcess}
-                disabled={!order.items?.length || !order.items.every((i: { id: number }) => stockChecks[i.id])}
+                disabled={!activeItems.length || !activeItems.every((i: { id: number }) => stockChecks[i.id])}
                 style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)", border: "none", color: "#fff", gap: 8 }}
               >
                 <Zap size={15} /> Підтвердити і опрацювати
@@ -2121,20 +2213,26 @@ export default function OrderDetailPage() {
                   <th style={{ textAlign: "right" }}>Ціна</th>
                   <th style={{ textAlign: "right" }}>К-сть</th>
                   <th style={{ textAlign: "right" }}>Сума</th>
-                  {editingItems && <th style={{ textAlign: "right" }}></th>}
+                  <th style={{ textAlign: "right" }}></th>
                 </tr>
               </thead>
               <tbody>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {order.items?.map((item: any) => (
-                  <tr key={item.id}>
+                {order.items?.map((item: any) => {
+                  // Soft-removed (see scripts/add-orders-item-active-column.sql) —
+                  // still shown, just struck through with a 0 sum, per the
+                  // explicit ask that removed lines stay visible in history
+                  // rather than disappearing.
+                  const isRemoved = item.active === false;
+                  return (
+                  <tr key={item.id} style={isRemoved ? { opacity: 0.55 } : undefined}>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {item.productImg ? (
                           <img
                             src={item.productImg}
                             alt=""
-                            style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)" }}
+                            style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)", filter: isRemoved ? "grayscale(1)" : undefined }}
                           />
                         ) : (
                           <div style={{ width: 36, height: 36, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2147,24 +2245,25 @@ export default function OrderDetailPage() {
                               href={item.productUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              style={{ fontWeight: 500, color: "inherit", textDecoration: "none" }}
+                              style={{ fontWeight: 500, color: "inherit", textDecoration: isRemoved ? "line-through" : "none" }}
                               onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = isRemoved ? "line-through" : "none")}
                             >
                               {item.productTitle ?? `Товар #${item.product}`}
                             </a>
                           ) : (
-                            <div style={{ fontWeight: 500 }}>
+                            <div style={{ fontWeight: 500, textDecoration: isRemoved ? "line-through" : "none" }}>
                               {item.productTitle ?? `Товар #${item.product}`}
                             </div>
                           )}
                           <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {item.productPcode ? `${item.productPcode} · ` : ""}#{item.product}{item.type ? ` · ${item.type}` : ""}
+                            {isRemoved && <span style={{ marginLeft: 6, color: "#dc2626", fontWeight: 600 }}>прибрано</span>}
                           </div>
                         </div>
                       </div>
                     </td>
-                    {editingItems ? (
+                    {editingItems && !isRemoved ? (
                       <>
                         <td style={{ textAlign: "right" }}>
                           <Input
@@ -2183,14 +2282,16 @@ export default function OrderDetailPage() {
                       </>
                     ) : (
                       <>
-                        <td style={{ textAlign: "right" }}>{item.price.toFixed(2)} грн</td>
-                        <td style={{ textAlign: "right" }}>{item.quantity}</td>
+                        <td style={{ textAlign: "right", textDecoration: isRemoved ? "line-through" : "none" }}>{item.price.toFixed(2)} грн</td>
+                        <td style={{ textAlign: "right", textDecoration: isRemoved ? "line-through" : "none" }}>{item.quantity}</td>
                       </>
                     )}
-                    <td className="font-medium" style={{ textAlign: "right" }}>{(Number(item.price) * Number(item.quantity)).toFixed(2)} грн</td>
-                    {editingItems && (
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                    <td className="font-medium" style={{ textAlign: "right" }}>
+                      {isRemoved ? "0.00 грн" : `${(Number(item.price) * Number(item.quantity)).toFixed(2)} грн`}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                        {editingItems && !isRemoved && (
                           <button
                             onClick={() => saveItem(item.id)} disabled={savingItemId === item.id}
                             style={{ padding: 5, borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#059669", border: "none", cursor: "pointer", display: "flex" }}
@@ -2198,37 +2299,69 @@ export default function OrderDetailPage() {
                           >
                             {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check size={14} />}
                           </button>
+                        )}
+                        {isRemoved ? (
                           <button
-                            onClick={() => deleteItem(item.id)} disabled={savingItemId === item.id}
-                            style={{ padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
-                            title="Видалити"
+                            onClick={() => toggleItemActive(item.id, true)} disabled={savingItemId === item.id}
+                            style={{ padding: 5, borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#059669", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Відновити товар"
                           >
-                            <Trash2 size={14} />
+                            {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw size={14} />}
                           </button>
-                        </div>
-                      </td>
-                    )}
+                        ) : (
+                          <button
+                            onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
+                            disabled={savingItemId === item.id}
+                            style={{ padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Прибрати з замовлення"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={editingItems ? 4 : 3} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
+                  <td colSpan={4} className="font-semibold" style={{ textAlign: "right", borderBottom: "none" }}>Разом:</td>
                   <td className="font-bold text-lg" style={{ textAlign: "right", borderBottom: "none" }}>{orderTotal.toFixed(2)} грн</td>
                 </tr>
               </tfoot>
             </table>
 
-            {editingItems && (
+            {!showAddItem ? (
+              <button
+                onClick={() => setShowAddItem(true)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  width: "100%", marginTop: 14, padding: "14px", borderRadius: 10,
+                  border: "2px dashed var(--border)", background: "transparent",
+                  color: "var(--text-muted)", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                }}
+              >
+                <Plus size={16} /> Додати товар до замовлення
+              </button>
+            ) : (
               <div style={{ marginTop: 14, position: "relative" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Search size={14} color="var(--text-muted)" />
+                  <Search size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                   <Input
+                    autoFocus
                     value={itemSearch}
                     onChange={(e) => searchProducts(e.target.value)}
                     placeholder="Пошук товару за назвою або артикулом, щоб додати рядок…"
                   />
                   {itemSearching && <Loader2 className="h-4 w-4 animate-spin" style={{ flexShrink: 0 }} />}
+                  <button
+                    onClick={() => { setShowAddItem(false); setItemSearch(""); setItemSearchResults([]); }}
+                    style={{ flexShrink: 0, background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: 4 }}
+                    title="Закрити"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
                 {itemSearchResults.length > 0 && (
                   <div style={{ marginTop: 6, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
@@ -2300,8 +2433,10 @@ export default function OrderDetailPage() {
                   style={{ height: 36, borderRadius: 8, border: "1px solid var(--border)", padding: "0 8px", background: "var(--bg)" }}
                 >
                   <option value="">Оберіть товар…</option>
+                  {/* Removed lines are excluded — a return only makes sense
+                      for something that was actually shipped. */}
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {order.items?.map((item: any) => (
+                  {activeItems.map((item: any) => (
                     <option key={item.id} value={item.product}>{item.productTitle ?? `Товар #${item.product}`} (замовлено {item.quantity})</option>
                   ))}
                 </select>
@@ -2322,6 +2457,17 @@ export default function OrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {removeItemConfirm && (
+        <ConfirmDialog
+          message={`Прибрати «${removeItemConfirm.title}» із замовлення?`}
+          subMessage="Товар лишиться в історії замовлення (закреслений, сума 0) і звільнить зарезервовану кількість на складі. Це можна скасувати кнопкою відновлення."
+          destructive
+          confirmLabel="Прибрати"
+          onConfirm={() => toggleItemActive(removeItemConfirm.id, false)}
+          onCancel={() => setRemoveItemConfirm(null)}
+        />
+      )}
     </>
   );
 }

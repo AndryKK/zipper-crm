@@ -7,7 +7,10 @@ export type StockCheckResult = { status: "ok" | "warn"; msg: string };
 // automatic process pipeline and the manual "Ручне керування" panel so
 // both run the exact same check.
 export async function checkOrderStock(orderId: number): Promise<StockCheckResult> {
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false rows are removed from the order (see
+  // scripts/add-orders-item-active-column.sql) — nothing to stock-check
+  // for something that's no longer actually being shipped.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return { status: "warn", msg: "Замовлення без товарів" };
 
   const { data: warehouses } = await supabaseServer

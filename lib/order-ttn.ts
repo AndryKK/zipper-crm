@@ -169,7 +169,10 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
 
   if (order.ttn) return { ok: false, kind: "skipped", error: `ТТН вже існує: ${order.ttn}` };
 
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false items are removed from the order — see
+  // scripts/add-orders-item-active-column.sql — TTN weight/cost/description
+  // must only ever reflect what's actually still being shipped.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return { ok: false, kind: "error", error: "Замовлення без товарів" };
 
   const orderTotal = (items as { price: number; quantity: number }[]).reduce(
@@ -234,7 +237,10 @@ export async function createOrderTtnManual(
   if (!order) return { ok: false, kind: "error", error: "Замовлення не знайдено" };
   if (order.ttn) return { ok: false, kind: "skipped", error: `ТТН вже існує: ${order.ttn}` };
 
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false items are removed from the order — see
+  // scripts/add-orders-item-active-column.sql — TTN weight/cost/description
+  // must only ever reflect what's actually still being shipped.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return { ok: false, kind: "error", error: "Замовлення без товарів" };
   const orderTotal = (items as { price: number; quantity: number }[]).reduce(
     (s, i) => s + i.price * i.quantity, 0
@@ -284,7 +290,10 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
   if (!order) return { ok: false, error: "Замовлення не знайдено" };
   if (order.ttn) return { ok: false, error: `ТТН вже існує: ${order.ttn}` };
 
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false items are removed from the order — see
+  // scripts/add-orders-item-active-column.sql — TTN weight/cost/description
+  // must only ever reflect what's actually still being shipped.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return { ok: false, error: "Замовлення без товарів" };
   const orderTotal = (items as { price: number; quantity: number }[]).reduce(
     (s, i) => s + i.price * i.quantity, 0

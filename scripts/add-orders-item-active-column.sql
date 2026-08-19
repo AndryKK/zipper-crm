@@ -1,0 +1,13 @@
+-- Soft-remove for order line items: instead of hard-deleting a row when a
+-- manager removes an item from an order (previously the only option — see
+-- app/api/orders/[id]/items/[itemId]/route.ts's old DELETE handler), the
+-- row now just gets active=false. It stays in the order's history (shown
+-- struck-through, sum 0 — see the "Товари замовлення" table in
+-- app/(admin)/orders/[id]/page.tsx) and is excluded from stock checks,
+-- invoicing, TTN weight/cost, and the order total — see every
+-- `.eq("active", true)` added alongside this column for the exact list of
+-- places that now filter on it.
+--
+-- Defaults true so every existing row (and every future plain INSERT) is
+-- active without needing a backfill.
+ALTER TABLE orders_item ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;

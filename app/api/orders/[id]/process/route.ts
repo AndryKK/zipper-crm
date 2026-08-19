@@ -39,7 +39,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await supabaseServer.from("orders").update({ supplier_override: body.supplierOverride }).eq("id", orderId);
   }
 
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false items are removed from the order (see
+  // scripts/add-orders-item-active-column.sql) — invoice/total/email must
+  // only ever reflect what's actually still being shipped.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
 
   const orderTotal = (items as { price: number; quantity: number }[]).reduce(

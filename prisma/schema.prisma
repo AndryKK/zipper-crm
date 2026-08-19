@@ -582,6 +582,10 @@ model OrderItem {
   price      Float   @default(0)
   quantity   Int     @default(1)
   price_base Float   @default(0)
+  // Soft-remove flag — see scripts/add-orders-item-active-column.sql for
+  // the full story. false means "removed from the order" without deleting
+  // the row (kept in history, excluded from totals/stock/invoicing).
+  active     Boolean @default(true)
 
   order      Order   @relation(fields: [oid], references: [id], onDelete: Cascade)
 

@@ -108,7 +108,10 @@ const DEFAULT_THRESHOLD = 3000;
 export async function getOrderDocumentData(orderId: number): Promise<OrderDocumentData | null> {
   const [{ data: order }, { data: items }, { data: allSettings }] = await Promise.all([
     supabaseServer.from("orders").select("*").eq("id", orderId).single(),
-    supabaseServer.from("orders_item").select("*").eq("oid", orderId),
+    // active=false items are removed from the order — see
+    // scripts/add-orders-item-active-column.sql — an invoice/waybill must
+    // never list something that's no longer actually being shipped.
+    supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true),
     supabaseServer.from("settings").select("value, text"),
   ]);
 

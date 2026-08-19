@@ -20,7 +20,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
   if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
 
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  // active=false items are removed from the order — see
+  // scripts/add-orders-item-active-column.sql.
+  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
   if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
 
   /* ════════════════════════════════════════════════════════════════════
