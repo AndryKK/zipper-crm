@@ -60,29 +60,81 @@ export default function UserCategoriesPage() {
   return (
     <>
       <Header title="Категорії клієнтів" />
-      <div className="p-6 space-y-6 max-w-2xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-2xl">
         <div className="rounded-md border bg-white p-4 space-y-3">
           <h3 className="font-medium text-sm">Додати категорію</h3>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="space-y-1 flex-1">
               <Label>Назва *</Label>
               <Input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} />
             </div>
-            <div className="space-y-1 w-28">
+            <div className="space-y-1 sm:w-28">
               <Label>Знижка %</Label>
               <Input type="number" value={form.discount} onChange={(e) => setForm((p) => ({ ...p, discount: parseFloat(e.target.value) }))} />
             </div>
-            <div className="space-y-1 w-40">
+            <div className="space-y-1 sm:w-40">
               <Label>Мін. сума, грн</Label>
               <Input type="number" value={form.discount_total} onChange={(e) => setForm((p) => ({ ...p, discount_total: parseFloat(e.target.value) }))} />
             </div>
           </div>
-          <Button onClick={add} disabled={saving}>
+          <Button onClick={add} disabled={saving} className="w-full sm:w-auto">
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
             Додати
           </Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) — the 4-column table (two w-28/w-40 fixed
+            columns) has no room on a phone; the plain <table> here doesn't
+            even scroll, it just overflows. ──────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {cats.map((c) => (
+            <div key={c.id} className="crm-card" style={{ padding: 14 }}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <input
+                  key={`m-title-${c.id}-${c.title}`}
+                  defaultValue={c.title}
+                  onBlur={(e) => update(c.id, "title", e.target.value)}
+                  placeholder="Назва"
+                  className="crm-input flex-1 min-w-0"
+                  style={{ fontWeight: 600 }}
+                />
+                <button onClick={() => remove(c.id)} className="text-red-400 hover:text-red-600 shrink-0" style={{ padding: 6 }}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Знижка %</label>
+                  <input
+                    key={`m-discount-${c.id}-${c.discount}`}
+                    type="number"
+                    defaultValue={c.discount}
+                    onBlur={(e) => update(c.id, "discount", parseFloat(e.target.value))}
+                    className="crm-input w-full"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Мін. сума, грн</label>
+                  <input
+                    key={`m-discount_total-${c.id}-${c.discount_total}`}
+                    type="number"
+                    defaultValue={c.discount_total}
+                    onBlur={(e) => update(c.id, "discount_total", parseFloat(e.target.value))}
+                    className="crm-input w-full"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          {cats.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Категорій ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>

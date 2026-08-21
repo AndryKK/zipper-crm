@@ -82,9 +82,11 @@ export default async function UsersPage() {
         subtitle={`${(totalUsers ?? 0).toLocaleString("uk-UA")} зареєстровано`}
       />
 
-      <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
-        {/* Summary */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
+      <div className="page-content p-4 md:p-[24px_28px]" style={{ flex: 1 }}>
+        {/* Summary — fixed column counts (1/3), not auto-fill/minmax: for
+            exactly 3 cards, auto-fill can pack 2 on one row and strand the
+            3rd alone at some widths. 1 or 3 always divides evenly. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-5">
           <div className="crm-card" style={{ padding: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center" }}>

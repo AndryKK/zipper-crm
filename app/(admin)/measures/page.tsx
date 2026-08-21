@@ -49,17 +49,65 @@ export default function MeasuresPage() {
   return (
     <>
       <Header title="Статус товару" />
-      <div className="p-6 max-w-2xl space-y-4">
+      <div className="p-4 md:p-6 max-w-2xl space-y-4">
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           Ці статуси показуються на сайті замість товару та визначають, чи можна його купити —
           «Можна купити» вимикає кнопку замовлення і показує «Нема в наявності» (чи інший напис нижче).
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Назва (наприклад: Очікується)" />
-          <Input value={newShort} onChange={(e) => setNewShort(e.target.value)} placeholder="CSS-клас (text-success)" className="w-44" />
-          <Button onClick={add}><Plus className="h-4 w-4" /></Button>
+          <Input value={newShort} onChange={(e) => setNewShort(e.target.value)} placeholder="CSS-клас (text-success)" className="sm:w-44" />
+          <Button onClick={add} className="sm:w-auto"><Plus className="h-4 w-4" /></Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) — the 4-column table (two free-text
+            columns, one w-36 fixed) has no room on a phone; the plain
+            <table> here doesn't even scroll, it just overflows. ────────── */}
+        <div className="md:hidden space-y-3">
+          {statuses.map((m) => (
+            <div key={m.id} className="crm-card" style={{ padding: 14 }}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <input
+                  defaultValue={m.title}
+                  onBlur={(e) => update(m.id, "title", e.target.value)}
+                  placeholder="Назва"
+                  className="crm-input flex-1 min-w-0"
+                  style={{ fontWeight: 600 }}
+                />
+                <button onClick={() => remove(m.id)} className="text-red-400 hover:text-red-600 shrink-0" style={{ padding: 6 }}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mb-2.5">
+                <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>CSS-клас</label>
+                <input
+                  defaultValue={m.short_title}
+                  onBlur={(e) => update(m.id, "short_title", e.target.value)}
+                  placeholder="text-success"
+                  className="crm-input w-full font-mono"
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={m.can_be_added_to_cart === 1}
+                  onChange={(e) => update(m.id, "can_be_added_to_cart", e.target.checked ? 1 : 0)}
+                  className="h-4 w-4 cursor-pointer"
+                />
+                Можна купити
+              </label>
+            </div>
+          ))}
+          {statuses.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Статусів ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>

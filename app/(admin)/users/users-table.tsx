@@ -112,15 +112,14 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
 
   return (
     <div className="crm-card">
-      {/* Tabs */}
+      {/* Tabs — each button was a fixed padding/font size sized for its
+          full "Zipper Classic"/"Zipper Premium" label, which didn't leave
+          room for both side by side on a phone. Below `sm` each takes an
+          equal half of the row (flex-1) at a smaller size instead of
+          overflowing; `sm:` restores the exact original sizing. */}
       <div
-        style={{
-          display: "flex",
-          gap: 4,
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--border)",
-          alignItems: "center",
-        }}
+        className="flex gap-1 sm:gap-1 items-center"
+        style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}
       >
         {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, tab]) => {
           const count = key === "classic" ? classicUsers.length : premiumUsers.length;
@@ -129,23 +128,18 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
             <button
               key={key}
               onClick={() => switchTab(key)}
+              className="flex-1 sm:flex-initial min-w-0 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-1.5 rounded-lg px-2 sm:px-3.5 py-1.5 sm:py-[7px] text-[12px] sm:text-[13px]"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 14px",
-                borderRadius: 8,
                 border: isActive ? "none" : "1px solid var(--border)",
                 background: isActive ? tab.gradient : "transparent",
                 color: isActive ? "#fff" : "var(--text-muted)",
                 fontWeight: isActive ? 700 : 500,
-                fontSize: 13,
                 cursor: "pointer",
                 transition: "all 0.15s",
               }}
             >
               {tab.icon}
-              {tab.label}
+              <span className="truncate min-w-0">{tab.label}</span>
               <span
                 style={{
                   fontSize: 11,
@@ -156,6 +150,7 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
                   color: isActive ? "#fff" : "var(--text-muted)",
                   minWidth: 28,
                   textAlign: "center",
+                  flexShrink: 0,
                 }}
               >
                 {count.toLocaleString("uk-UA")}
@@ -212,29 +207,90 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
           {q ? "Нічого не знайдено" : "Немає клієнтів"}
         </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table className="crm-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Логін</th>
-                <th>Ім&apos;я</th>
-                <th>Телефон</th>
-                <th>Адреса</th>
-                <th style={{ textAlign: "right", width: 100 }}>Замовлень</th>
-                <th style={{ width: 160 }}>Ранг</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageSlice.map((u) => (
-                <UserRow key={u.id} u={u} cnt={orderCountMap[u.login] ?? 0} />
-              ))}
-            </tbody>
-          </table>
-          <div style={{ padding: "4px 16px 16px" }}>
+        <>
+          {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+          {/* display:flex lives on the inner div, not here — an inline
+              style="display:..." on the same element as md:hidden always
+              wins over that class's @media rule, which silently showed
+              these cards on desktop too, stacked above the real table. */}
+          <div className="md:hidden">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+            {pageSlice.map((u) => {
+              const cnt = orderCountMap[u.login] ?? 0;
+              return (
+                <div key={u.id} className="crm-card" style={{ padding: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {/* Logins are often full emails with no spaces to
+                          wrap at — without overflowWrap this text just
+                          bled straight through the "N замовл." badge next
+                          to it instead of respecting its own flex box. */}
+                      <div style={{ fontWeight: 600, fontSize: 14, overflowWrap: "break-word" }}>{u.login}</div>
+                      <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>#{u.id}</div>
+                    </div>
+                    <span className={cnt > 0 ? "badge badge-blue" : "badge badge-gray"} style={{ flexShrink: 0 }}>
+                      {cnt} замовл.
+                    </span>
+                  </div>
+                  {u.person && (
+                    <div style={{ fontSize: 13, marginTop: 6 }}>{u.person}</div>
+                  )}
+                  {u.phone && (
+                    <a
+                      href={`tel:${u.phone}`}
+                      style={{ display: "block", fontSize: 13, color: "var(--accent)", textDecoration: "none", fontFamily: "monospace", marginTop: 4 }}
+                    >
+                      {u.phone}
+                    </a>
+                  )}
+                  {u.addr_delivery && (
+                    <div
+                      style={{
+                        fontSize: 12, color: "var(--text-muted)", marginTop: 4,
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      {u.addr_delivery}
+                    </div>
+                  )}
+                  {u.rank && (
+                    <span className="badge badge-purple" style={{ marginTop: 8, display: "inline-block" }}>
+                      Ранг {u.rank}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           </div>
-        </div>
+          </div>
+
+          {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+          <div className="hidden md:block" style={{ overflowX: "auto" }}>
+            <table className="crm-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Логін</th>
+                  <th>Ім&apos;я</th>
+                  <th>Телефон</th>
+                  <th>Адреса</th>
+                  <th style={{ textAlign: "right", width: 100 }}>Замовлень</th>
+                  <th style={{ width: 160 }}>Ранг</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageSlice.map((u) => (
+                  <UserRow key={u.id} u={u} cnt={orderCountMap[u.login] ?? 0} />
+                ))}
+              </tbody>
+            </table>
+            <div style={{ padding: "4px 16px 16px" }}>
+              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

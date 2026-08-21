@@ -417,26 +417,22 @@ function InventoryContent() {
           </div>
         </div>
 
-        {/* Filters row */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            marginBottom: 16,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        {/* Filters row — stacked full-width below `sm` instead of wrapping
+            each control to whatever space is left (the selector's
+            min-width plus the search's own max-width left the toggle
+            label wrapping awkwardly in the leftover space on a phone);
+            `sm:` restores the original single-line row exactly. */}
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-3 sm:items-center sm:flex-wrap mb-4">
           {/* Warehouse selector */}
-          <div style={{ position: "relative" }}>
+          <div className="relative w-full sm:w-auto">
             <select
               value={selectedWarehouse}
               onChange={(e) => {
                 setSelectedWarehouse(e.target.value);
                 router.push(`/inventory?warehouse_id=${e.target.value}`);
               }}
-              className="crm-input"
-              style={{ paddingRight: 32, appearance: "none", cursor: "pointer", minWidth: 160 }}
+              className="crm-input w-full sm:w-auto sm:min-w-[160px]"
+              style={{ paddingRight: 32, appearance: "none", cursor: "pointer" }}
             >
               <option value="">Всі склади</option>
               {warehouses.map((w) => (
@@ -457,7 +453,7 @@ function InventoryContent() {
           </div>
 
           {/* Search */}
-          <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+          <div className="relative w-full sm:flex-1 sm:max-w-[360px]">
             <Search
               size={14}
               style={{

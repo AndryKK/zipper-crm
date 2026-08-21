@@ -148,7 +148,7 @@ export default function FiltersPage() {
   return (
     <>
       <Header title="Фільтри каталогу" />
-      <div className="p-6 max-w-3xl space-y-4">
+      <div className="p-4 md:p-6 max-w-3xl space-y-4">
         <Card>
           <CardHeader><CardTitle className="text-sm">Новий фільтр</CardTitle></CardHeader>
           <CardContent>
@@ -161,30 +161,40 @@ export default function FiltersPage() {
 
         {filters.map((filter) => (
           <Card key={filter.id}>
-            <div className="flex items-center gap-2 p-4">
+            {/* Chevron+title stay on their own line (title truncates via
+                min-w-0 instead of forcing the row wider than the card —
+                it had no min-width before, so a long title just pushed
+                the trailing count/"Категорії"/delete cluster straight off
+                the card's right edge on a phone). That cluster now wraps
+                onto its own second line below `sm` (basis-full) instead;
+                at `sm`+ it's basis-auto/flex-nowrap, the exact original
+                single-line row. */}
+            <div className="flex items-center gap-2 flex-wrap p-4">
               <button onClick={() => toggleExpand(filter.id)} className="cursor-pointer">
                 {expanded.includes(filter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </button>
-              <span className="font-medium flex-1">{filter.title}</span>
-              <span className="text-xs text-gray-400">{filter.filters?.length ?? 0} значень</span>
-              <Button
-                variant="outline" size="sm"
-                onClick={() => openCategoriesDialog(filter)}
-                className="cursor-pointer h-7 text-xs gap-1.5"
-              >
-                <FolderTree className="h-3.5 w-3.5" /> Категорії
-              </Button>
-              <button onClick={() => deleteFilter(filter.id)} className="text-red-400 hover:text-red-600 cursor-pointer">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <span className="font-medium flex-1 min-w-0 truncate">{filter.title}</span>
+              <div className="flex items-center gap-2 flex-wrap basis-full sm:basis-auto sm:flex-nowrap sm:w-auto">
+                <span className="text-xs text-gray-400">{filter.filters?.length ?? 0} значень</span>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => openCategoriesDialog(filter)}
+                  className="cursor-pointer h-7 text-xs gap-1.5"
+                >
+                  <FolderTree className="h-3.5 w-3.5" /> Категорії
+                </Button>
+                <button onClick={() => deleteFilter(filter.id)} className="text-red-400 hover:text-red-600 cursor-pointer">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             {expanded.includes(filter.id) && (
               <CardContent className="pt-0">
                 <div className="pl-6 space-y-1 mb-3">
                   {filter.filters?.map((val: { id: number; title: string }) => (
                     <div key={val.id} className="flex items-center gap-2 py-1">
-                      <span className="text-sm flex-1">{val.title}</span>
-                      <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <span className="text-sm flex-1 min-w-0 truncate">{val.title}</span>
+                      <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -193,10 +203,10 @@ export default function FiltersPage() {
                     value={newValues[filter.id] ?? ""}
                     onChange={(e) => setNewValues((p) => ({ ...p, [filter.id]: e.target.value }))}
                     placeholder="Нове значення..."
-                    className="text-sm"
+                    className="text-sm min-w-0"
                     onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
                   />
-                  <Button size="sm" onClick={() => addValue(filter.id)} className="cursor-pointer"><Plus className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" onClick={() => addValue(filter.id)} className="cursor-pointer shrink-0"><Plus className="h-3.5 w-3.5" /></Button>
                 </div>
               </CardContent>
             )}
