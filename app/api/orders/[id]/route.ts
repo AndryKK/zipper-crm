@@ -43,6 +43,19 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     : { data: [] };
   const prodMap = new Map((products ?? []).map((p) => [p.id, p]));
 
+  // The CRM always shows product names in Ukrainian, regardless of which
+  // storefront the order was actually placed on — orders_item.product can
+  // point at a "ru" row (an order placed on the ru site), and showing that
+  // row's own title verbatim leaked Russian text into the CRM's order item
+  // list. Same fix order-documents.ts already applies to invoices/emails:
+  // look up each product's "uk" sibling by translation_id and prefer its
+  // title/pcode, falling back to the order's own row if no uk row exists.
+  const translationIds = [...new Set((products ?? []).map((p) => p.translation_id))];
+  const { data: ukProducts } = translationIds.length
+    ? await supabaseServer.from("products").select("translation_id, title, pcode").eq("lang", "uk").in("translation_id", translationIds)
+    : { data: [] };
+  const ukByTranslation = new Map((ukProducts ?? []).map((p) => [p.translation_id, p]));
+
   // The product URL must use the "uk" row of the ordered product's
   // translation group, not necessarily the row orders_item.product points
   // at (orders can be placed against either language's id) — see
@@ -52,12 +65,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 
   const itemsWithProduct = (items ?? []).map((item) => {
     const prod = prodMap.get(item.product);
+    const uk = prod ? ukByTranslation.get(prod.translation_id) : undefined;
     const path = prod ? buildStorefrontProductPath(prod.translation_id, ukRowByGroupId, mainUkUriByGroupId, prod.uri) : null;
     return {
       ...item,
-      productTitle: prod?.title ?? null,
+      productTitle: uk?.title ?? prod?.title ?? null,
       productImg: prod?.img ?? null,
-      productPcode: prod?.pcode ?? null,
+      productPcode: uk?.pcode ?? prod?.pcode ?? null,
       productUrl: path ? `${process.env.MAIN_DOMAIN}${path}` : null,
     };
   });
