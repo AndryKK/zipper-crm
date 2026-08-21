@@ -107,6 +107,13 @@ export default function OrderDetailPage() {
   // automatic amount-vs-threshold pick — "auto" leaves that pick alone.
   const [supplierOverride, setSupplierOverride] = useState<"auto" | "1" | "2">("auto");
   const [supplierNames, setSupplierNames] = useState<{ 1: string; 2: string }>({ 1: "", 2: "" });
+  // Client discount %% — prefilled from the order's own override
+  // (order.discount_percent) or the client's rank-based default
+  // (order.clientDiscountPercent, see lib/pricing.ts), editable here and
+  // via the separate "змінити знижку і надіслати повторно" control once
+  // the order is already in progress (see resendWithDiscount below).
+  const [discountInput, setDiscountInput] = useState("5");
+  const [resendingDiscount, setResendingDiscount] = useState(false);
 
   // Resend email — lets a manager fix a typo'd address before either the
   // payment-request or payment-confirmed letter is (re)sent via the
@@ -267,6 +274,7 @@ export default function OrderDetailPage() {
       setTtn(data.ttn ?? "");
       setResendEmail(data.login ?? "");
       setPrepaymentInput(String(data.prepayment ?? 0));
+      setDiscountInput(String(data.discount_percent ?? data.clientDiscountPercent ?? 5));
     });
   }, [params.id]);
 
@@ -348,15 +356,17 @@ export default function OrderDetailPage() {
     setStockChecks({});
     setIsOversized(false);
     setSupplierOverride("auto");
+    setDiscountInput(String(order.discount_percent ?? order.clientDiscountPercent ?? 5));
     setShowStockConfirm(true);
   }
 
   async function confirmStockAndProcess() {
     setShowStockConfirm(false);
-    await autoProcess(isOversized, supplierOverride);
+    const discountPercent = parseFloat(discountInput);
+    await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined);
   }
 
-  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2") {
+  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2", discountPercent?: number) {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
@@ -367,6 +377,7 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           isOversized: oversized,
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
+          ...(discountPercent !== undefined ? { discountPercent } : {}),
         }),
       });
       const data = await res.json();
@@ -378,6 +389,33 @@ export default function OrderDetailPage() {
       else          toast.success("Замовлення опрацьовано!");
     } catch { toast.error("Помилка з'єднання"); }
     finally  { setProcessing(false); }
+  }
+
+  // "Змінити знижку і надіслати повторно" — used once the order already
+  // has an invoice (order.doc_field_1 set): recomputes every active item's
+  // price from its price_base at the new %%, regenerates the invoice, and
+  // resends it with the "Ми перерахували вартість товару..." copy (see
+  // lib/email-templates.ts's "discountChanged" reason) instead of the
+  // normal "Наявність підтверджено" text — then leaves the order at "В
+  // роботі" (awaiting payment), same as first-time processing.
+  async function resendWithDiscount() {
+    const discountPercent = parseFloat(discountInput);
+    if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
+    setResendingDiscount(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discountPercent }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      await refreshOrder();
+      const hasError = data.log.some((l: StepLog) => l.status === "error");
+      if (hasError) toast.warning("Надіслано з помилками");
+      else          toast.success("Знижку застосовано, рахунок надіслано повторно!");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setResendingDiscount(false); }
   }
 
   async function confirmPayment() {
@@ -1039,6 +1077,27 @@ export default function OrderDetailPage() {
                       </button>
                     </div>
                   )}
+                  {order.doc_field_1 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Знижка клієнта:</span>
+                      <Input
+                        type="number" min={0} max={100} step="0.1"
+                        value={discountInput}
+                        onChange={(e) => setDiscountInput(e.target.value)}
+                        style={{ width: 70, height: 28, fontSize: 12.5 }}
+                      />
+                      <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>%</span>
+                      <button
+                        onClick={resendWithDiscount}
+                        disabled={resendingDiscount}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
+                        title="Перерахувати ціни за новою знижкою і надіслати рахунок та накладну зі знижкою повторно"
+                      >
+                        {resendingDiscount ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail size={12} />}
+                        Змінити і надіслати повторно
+                      </button>
+                    </div>
+                  )}
                   {/* Postomat orders confirm payment here too — /api/orders/[id]/confirm-payment
                       already skips TTN creation for a postomat address (via skipPostomat)
                       but still sends the thank-you email and advances status to "Оплачено"
@@ -1471,6 +1530,18 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             </label>
+            <div className="space-y-1.5">
+              <Label style={{ fontSize: 13, fontWeight: 500 }}>Знижка клієнта, %</Label>
+              <Input
+                type="number" min={0} max={100} step="0.1"
+                value={discountInput}
+                onChange={(e) => setDiscountInput(e.target.value)}
+                style={{ width: 100 }}
+              />
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                За замовчуванням — знижка групи клієнта ({order.clientDiscountPercent ?? 5}%, за рангом клієнта). Тут можна вказати іншу для цього замовлення — застосується до ціни кожного товару.
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label style={{ fontSize: 13, fontWeight: 500 }}>Постачальник для рахунку</Label>
               <Select value={supplierOverride} onValueChange={(v) => setSupplierOverride(v as "auto" | "1" | "2")}>

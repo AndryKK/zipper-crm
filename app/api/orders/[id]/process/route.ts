@@ -5,6 +5,7 @@ import { checkOrderStock } from "@/lib/order-stock";
 import { sendPaymentRequestEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
 import { revalidateTag } from "next/cache";
+import type { EmailRenderOptions } from "@/lib/email-templates";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -39,15 +40,56 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await supabaseServer.from("orders").update({ supplier_override: body.supplierOverride }).eq("id", orderId);
   }
 
-  // active=false items are removed from the order (see
-  // scripts/add-orders-item-active-column.sql) — invoice/total/email must
-  // only ever reflect what's actually still being shipped.
-  const { data: items } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true);
-  if (!items?.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
+  // Fetched unfiltered (not just active=true) so we can tell whether any
+  // line was actually removed since the customer's own checkout — see the
+  // itemsChanged/reason logic below. active=false rows still never count
+  // toward the total or get emailed to the client.
+  const { data: allItems } = await supabaseServer.from("orders_item").select("*").eq("oid", orderId);
+  const items = (allItems ?? []).filter((i) => i.active !== false);
+  if (!items.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
+
+  /* ── Client discount — recompute active items' price from price_base
+     whenever a manager explicitly passes a new %% (the "змінити знижку і
+     надіслати повторно" action). Without an explicit value, existing
+     prices are left exactly as they were (this route runs on every normal
+     "Підтвердити і опрацювати" too, and must not silently re-price an
+     order nobody asked to re-price). ─────────────────────────────────── */
+  let discountPercent: number | null = null;
+  if (typeof body.discountPercent === "number" && Number.isFinite(body.discountPercent)) {
+    const newDiscountPercent = body.discountPercent;
+    discountPercent = newDiscountPercent;
+    await supabaseServer.from("orders").update({ discount_percent: newDiscountPercent }).eq("id", orderId);
+
+    for (const item of items as { id: number; price: number; price_base: number }[]) {
+      const basis = item.price_base > 0 ? item.price_base : item.price;
+      const newPrice = Math.round(basis * (1 - newDiscountPercent / 100) * 100) / 100;
+      if (Math.abs(newPrice - item.price) > 0.001 || item.price_base !== basis) {
+        await supabaseServer.from("orders_item").update({ price: newPrice, price_base: basis }).eq("id", item.id);
+        item.price = newPrice;
+        item.price_base = basis;
+      }
+    }
+  }
 
   const orderTotal = (items as { price: number; quantity: number }[]).reduce(
     (s, i) => s + i.price * i.quantity, 0
   );
+
+  // Was this order's item list actually touched by a manager since the
+  // customer's own checkout (an out-of-stock swap, a manual add, a
+  // removed line)? If so the "availability confirmed" framing is
+  // misleading — see lib/email-templates.ts's "itemsChanged" copy.
+  const itemsChanged = (allItems ?? []).some((i) => i.active === false) || items.some((i: { added_by_admin?: boolean }) => i.added_by_admin);
+  // "discountChanged" copy ("Ми перерахували вартість...") only makes
+  // sense as a resend — an order being processed for the very first time
+  // (no prior invoice) hasn't had anything "recalculated" from the
+  // customer's point of view yet, even though the stock-check popup
+  // always sends a concrete discountPercent (see openStockConfirm in the
+  // order page).
+  const hadPriorInvoice = !!order.doc_field_1;
+  const emailReason: EmailRenderOptions["reason"] = discountPercent != null && hadPriorInvoice
+    ? "discountChanged"
+    : itemsChanged ? "itemsChanged" : "confirmed";
 
   /* ════════════════════════════════════════════════════════════════════
      STEP 1 — перевірка наявності (інформаційно)
@@ -80,7 +122,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
   } else {
     try {
-      const result = await sendPaymentRequestEmail(orderId);
+      const result = await sendPaymentRequestEmail(orderId, undefined, {
+        reason: emailReason,
+        discountPercent: emailReason === "discountChanged" ? discountPercent! : undefined,
+      });
       log.push(
         result.ok
           ? { step: "Email клієнту", status: "ok", msg: `Рахунок і накладна надіслані на ${order.login}` }

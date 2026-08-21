@@ -64,17 +64,53 @@ function noteBlock(note?: string): string {
     </table>`;
 }
 
-export type EmailRenderOptions = { note?: string; subject?: string };
+export type EmailRenderOptions = {
+  note?: string;
+  subject?: string;
+  // "confirmed" (default) — first-time processing, nothing about the
+  // order changed since the customer placed it.
+  // "itemsChanged" — a manager removed/added items (out-of-stock swap
+  // etc.) since the customer's original checkout; the "availability
+  // confirmed" framing would be misleading, so this copy instead says the
+  // order's contents were updated and asks the client to review them.
+  // "discountChanged" — the "змінити %% і надіслати повторно" resend
+  // action; requires discountPercent.
+  reason?: "confirmed" | "itemsChanged" | "discountChanged";
+  discountPercent?: number;
+};
+
+function paymentRequestIntro(name: string, order: OrderDocumentData["order"], docNumber: string, opts: EmailRenderOptions): { title: string; text: string } {
+  if (opts.reason === "discountChanged") {
+    const pct = (opts.discountPercent ?? 0).toString().replace(".", ",");
+    return {
+      title: `Ми перерахували вартість товару застосувавши вашу особисту знижку ${pct}%, ${name}!`,
+      text: `Оновлений рахунок №${docNumber} та видаткова накладна з урахуванням знижки додані до цього листа файлами. Будь ласка, перевірте суму та оплатіть — одразу після оплати ви отримаєте номер ТТН для відстеження посилки.`,
+    };
+  }
+  if (opts.reason === "itemsChanged") {
+    return {
+      title: `Склад замовлення оновлено, ${name}!`,
+      text: `Ми надіслали вам список актуальних товарів за замовленням №${order.id} та сформували на них рахунок №${docNumber} — будь ласка, перевірте склад замовлення та оплатіть. Якщо потрібні зміни, зв'яжіться з нами, і ми все скоригуємо.`,
+    };
+  }
+  return {
+    title: `Наявність підтверджено, ${name}!`,
+    text: `Ми підтвердили наявність товару за замовленням №${order.id} на наших складах. Чекаємо оплату та готуємо ваше замовлення до відправки — рахунок №${docNumber} та видаткова накладна додані до цього листа файлами. Одразу після оплати ви отримаєте номер ТТН для відстеження посилки.`,
+  };
+}
 
 export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRenderOptions = {}): { subject: string; html: string } {
   const { order, orderTotal, docNumber, supplierLines } = doc;
-  const name = order.person || order.login || "Шановний(а) клієнте";
+  // Greeting-only name — see renderOrderConfirmationHtml's comment in
+  // lib/order-documents.ts. Never used for NP/shipping data.
+  const name = order.original_client_name || order.person || order.login || "Шановний(а) клієнте";
   const branch = order.addr_delivery || "—";
+  const intro = paymentRequestIntro(name, order, docNumber, opts);
 
   const body = `
-    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Наявність підтверджено, ${name}!</h1>
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">${intro.title}</h1>
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
-      Ми підтвердили наявність товару за замовленням №${order.id} на наших складах. Чекаємо оплату та готуємо ваше замовлення до відправки — рахунок №${docNumber} та видаткова накладна додані до цього листа файлами. Одразу після оплати ви отримаєте номер ТТН для відстеження посилки.
+      ${intro.text}
     </p>
     ${noteBlock(opts.note)}
 
@@ -115,7 +151,9 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRen
 
 export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string | null, opts: EmailRenderOptions = {}): { subject: string; html: string } {
   const { order } = doc;
-  const name = order.person || order.login || "Шановний(а) клієнте";
+  // See renderPaymentRequestEmail's comment — original_client_name is a
+  // greeting-only name, never used for NP/shipping data.
+  const name = order.original_client_name || order.person || order.login || "Шановний(а) клієнте";
 
   const trackBlock = ttn ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5; border-radius:10px; margin:20px 0;">

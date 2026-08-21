@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { getUahRate, resolveOrderDiscountPercent, computeItemPricing } from "@/lib/pricing";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -17,32 +18,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Некоректні дані товару" }, { status: 400 });
   }
 
-  // Price is always recomputed server-side from products.price (stored in
-  // raw USD-equivalent, same as the legacy storefront) × the грн currency
-  // rate — never trusted from the client. A client-sent price is exactly
-  // how the CRM used to insert the unconverted USD figure straight into
-  // orders_item.price (e.g. 0.095 instead of 5.70 грн for a product whose
-  // real site price is products.price * rate).
-  const { data: productRow } = await supabaseServer
-    .from("products")
-    .select("price")
-    .eq("id", product)
-    .single();
+  // Price is always recomputed server-side — never trusted from the
+  // client. products.price is raw USD-equivalent (same as the legacy
+  // storefront); convert via the грн currency rate, then apply this
+  // client's own discount (rank-based, or the order's manager override —
+  // see lib/pricing.ts) the same way the storefront's own checkout does.
+  const [{ data: productRow }, { data: order }] = await Promise.all([
+    supabaseServer.from("products").select("price").eq("id", product).single(),
+    supabaseServer.from("orders").select("login, discount_percent").eq("id", orderId).single(),
+  ]);
   if (!productRow) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
+  if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
 
-  const { data: currencyRow } = await supabaseServer
-    .from("currency")
-    .select("rate")
-    .eq("title", "грн")
-    .eq("enabled", 1)
-    .limit(1)
-    .maybeSingle();
-  const rate = currencyRow?.rate ?? 1;
-  const price = Math.round(productRow.price * rate * 100) / 100;
+  const rate = await getUahRate();
+  const discountPercent = await resolveOrderDiscountPercent(order);
+  const { priceBase, price } = computeItemPricing(productRow.price, rate, discountPercent);
 
+  // Manager-added item (as opposed to the customer's own checkout
+  // submission) — flagged so the process route can tell items actually
+  // changed and pick the right "please review the updated order" email
+  // copy instead of the default "availability confirmed" one.
   const { data: item, error } = await supabaseServer
     .from("orders_item")
-    .insert({ oid: orderId, product, price, quantity })
+    .insert({ oid: orderId, product, price, price_base: priceBase, quantity, added_by_admin: true })
     .select("*")
     .single();
 

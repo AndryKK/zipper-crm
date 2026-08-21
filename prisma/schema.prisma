@@ -564,6 +564,10 @@ model Order {
   // getOrderDocumentData); 1/2 = forced to that supplier for this order.
   // Set from the stock-confirmation popup.
   supplierOverride   Int?      @map("supplier_override") @db.SmallInt
+  // Manager override of the client's own rank-based discount (see
+  // users_categories.discount, resolved via lib/pricing.ts). NULL = use
+  // the client's own discount automatically.
+  discountPercent    Float?    @map("discount_percent")
 
   items        OrderItem[]
   returns      OrderReturn[]
@@ -586,6 +590,11 @@ model OrderItem {
   // the full story. false means "removed from the order" without deleting
   // the row (kept in history, excluded from totals/stock/invoicing).
   active     Boolean @default(true)
+  // Set when this row was added/re-priced by a manager via the CRM (add-
+  // item flow / discount resend) rather than by the customer's own
+  // checkout — see lib/pricing.ts and the process route's "itemsChanged"
+  // email copy.
+  addedByAdmin Boolean @default(false) @map("added_by_admin")
 
   order      Order   @relation(fields: [oid], references: [id], onDelete: Cascade)
 

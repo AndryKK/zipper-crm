@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { resolveLegacyReturns } from "@/lib/returns-resolve";
 import { revalidateTag } from "next/cache";
 import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
+import { getClientDiscountPercent } from "@/lib/pricing";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -27,6 +28,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .order("date", { ascending: false }),
   ]);
   const resolvedReturns = await resolveLegacyReturns(returns ?? []);
+  // The client's own rank-based discount (see lib/pricing.ts) — surfaced
+  // separately from order.discount_percent (a manager override, may be
+  // null) so the stock-check popup can show/prefill "this client's default
+  // is N%" even before any override has ever been set on this order.
+  const clientDiscountPercent = await getClientDiscountPercent(order.login);
 
   // Products are stored per-language with each language row having its own
   // id, and orders_item.product is that exact row id — match by id alone
@@ -56,7 +62,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     };
   });
 
-  return NextResponse.json({ ...order, items: itemsWithProduct, returns: resolvedReturns });
+  return NextResponse.json({ ...order, items: itemsWithProduct, returns: resolvedReturns, clientDiscountPercent });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

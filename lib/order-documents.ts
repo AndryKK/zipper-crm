@@ -428,7 +428,13 @@ function confirmationItemRowsHtml(items: OrderDocumentItem[]): string {
 
 export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { greeting?: boolean } = {}): string {
   const { order, items, orderTotal } = doc;
-  const name = order.person || order.login || "клієнте";
+  // original_client_name is purely a greeting/address name for letters —
+  // e.g. the person placing the order on someone else's behalf, or a name
+  // the client prefers to be addressed by that differs from who the
+  // parcel ships to. It never affects Nova Poshta data or the
+  // recipient/"Одержувач" line above (recipientLines, both still built
+  // from order.person only) — only which name appears in "Дякуємо, {name}".
+  const name = order.original_client_name || order.person || order.login || "клієнте";
   const dateStr = new Date(order.date).toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" });
   const baseTotal = items.reduce((s, i) => s + i.sumBase, 0);
   const discountedTotal = baseTotal > orderTotal + 0.001;
