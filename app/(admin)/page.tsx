@@ -203,9 +203,13 @@ export default async function DashboardPage() {
       <Header title="Дашборд" subtitle="Загальна статистика та аналітика" actions={<TranslateButton />} />
       <div className="page-content p-4 md:p-6" style={{ flex: 1 }}>
 
-        {/* KPI Cards — one column on phone (compact, stacked), same
-            auto-fill grid from `sm` up. */}
-        <div className="grid grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(220px,1fr))] gap-3 md:gap-4 mb-5 md:mb-6">
+        {/* KPI Cards — fixed column counts (1/2/3), not an auto-fill/
+            minmax grid: auto-fill packs as many fixed-width columns as fit
+            the container, which for exactly 6 cards produced an uneven
+            "5 then 1 orphaned card" row at some widths. 1/2/3 always
+            divides 6 evenly (6 stacked, 3 rows of 2, or 2 rows of 3), so
+            every row is balanced at every breakpoint. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 mb-5 md:mb-6">
           {stats.map((s, i) => (
             <StatCard key={i} {...s} />
           ))}
