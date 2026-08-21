@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check } from "lucide-react";
+import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw } from "lucide-react";
 
 type ViberMessage = { key: string; title: string; hint: string; text: string };
 type ViberData = {
@@ -45,7 +45,25 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function MessageCard({ msg }: { msg: ViberMessage }) {
+// Viber has no public deep link that both opens a specific contact's chat
+// AND pre-fills text in one step — viber://forward?text= pre-fills text but
+// always makes the user pick a recipient themselves, viber://chat?number=
+// opens the right chat but ignores any text param. Best available
+// compromise: copy the message to the clipboard first, then navigate to
+// viber://chat?number=... — Viber opens on the correct client, and the
+// text is already sitting on the clipboard ready to paste. May not work on
+// every phone — iOS requires the scheme navigation to happen synchronously
+// off the actual tap, so callers use a plain <a href> rather than a
+// delayed script redirect.
+async function sendViaViber(text: string, phoneViber: string) {
+  await copyText(text);
+  toast.message("Текст скопійовано — відкриваю Viber…", {
+    description: "Якщо чат відкрився порожнім, вставте текст (затиснути поле вводу → Вставити).",
+  });
+  window.location.href = `viber://chat?number=${phoneViber}`;
+}
+
+function MessageCard({ msg, clientPhoneViber }: { msg: ViberMessage; clientPhoneViber: string | null }) {
   const [copied, setCopied] = useState(false);
 
   async function onCopy() {
@@ -88,11 +106,28 @@ function MessageCard({ msg }: { msg: ViberMessage }) {
         <Button
           onClick={onCopy}
           size="sm"
-          style={{ flex: "1 1 140px", gap: 6, background: copied ? "#10b981" : undefined }}
+          variant="outline"
+          style={{ flex: "1 1 140px", gap: 6 }}
         >
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           {copied ? "Скопійовано" : "Копіювати текст"}
         </Button>
+        {clientPhoneViber && (
+          <a
+            href={`viber://chat?number=${clientPhoneViber}`}
+            onClick={(e) => { e.preventDefault(); sendViaViber(msg.text, clientPhoneViber); }}
+            style={{
+              flex: "1 1 140px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "0 12px", height: 32, borderRadius: 8,
+              background: "linear-gradient(135deg,#7360f2,#8f5db7)",
+              color: "#fff", fontSize: 12.5, fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            <Send size={13} />
+            Надіслати
+          </a>
+        )}
       </div>
     </div>
   );
@@ -103,14 +138,32 @@ export default function ViberMessagesPage() {
   const router = useRouter();
   const [data, setData] = useState<ViberData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
 
-  useEffect(() => {
-    apiFetch<ViberData>(`/api/orders/${params.id}/viber-messages`).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+  const load = useCallback(async () => {
+    const d = await apiFetch<ViberData>(`/api/orders/${params.id}/viber-messages`);
+    setData(d);
   }, [params.id]);
+
+  useEffect(() => {
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  // Order state (discount, items, invoice number, totals...) can change
+  // after this page was first opened — the messages below are generated
+  // once at load time, so this re-fetches and regenerates all four from
+  // scratch rather than only reflecting whatever was true at page-open.
+  async function onRefresh() {
+    setRefreshing(true);
+    try {
+      await load();
+      toast.success("Повідомлення оновлено за поточними даними замовлення!");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function onCopyPhone() {
     if (!data?.clientPhone) return;
@@ -124,28 +177,24 @@ export default function ViberMessagesPage() {
     }
   }
 
-  // Experimental: Viber has no public deep link that both opens a specific
-  // contact's chat AND pre-fills text in one step — viber://forward?text=
-  // pre-fills text but always makes the user pick a recipient themselves,
-  // viber://chat?number= opens the right chat but ignores any text param.
-  // Best available compromise: copy the message to the clipboard first,
-  // then navigate to viber://chat?number=... — Viber opens on the correct
-  // client, and the text is already sitting on the clipboard ready to
-  // paste. May not work on every phone (hence "experimental") — iOS
-  // requires the scheme navigation to happen synchronously off the actual
-  // tap, so this is a plain <a href> rather than a delayed script redirect.
-  async function onSendViaViber(msg: ViberMessage) {
-    if (!data?.clientPhoneViber) return;
-    await copyText(msg.text);
-    toast.message("Текст скопійовано — відкриваю Viber…", {
-      description: "Якщо чат відкрився порожнім, вставте текст (затиснути поле вводу → Вставити).",
-    });
-    window.location.href = `viber://chat?number=${data.clientPhoneViber}`;
-  }
-
   return (
     <>
-      <Header title="Viber" subtitle={data ? `Замовлення #${data.orderId}` : undefined} />
+      <Header
+        title="Viber"
+        subtitle={data ? `Замовлення #${data.orderId}` : undefined}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading || refreshing}
+            style={{ gap: 6 }}
+          >
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw size={14} />}
+            <span className="hidden sm:inline">Оновити</span>
+          </Button>
+        }
+      />
       <div className="p-4 md:p-6 space-y-4" style={{ maxWidth: 640, margin: "0 auto" }}>
         <button
           onClick={() => router.push(`/orders/${params.id}`)}
@@ -202,7 +251,7 @@ export default function ViberMessagesPage() {
               {data.clientPhoneViber && (
                 <a
                   href={`viber://chat?number=${data.clientPhoneViber}`}
-                  onClick={(e) => { e.preventDefault(); onSendViaViber(data.messages[0]); }}
+                  onClick={(e) => { e.preventDefault(); sendViaViber(data.messages[0].text, data.clientPhoneViber!); }}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                     marginTop: 12, padding: "10px 16px", borderRadius: 10,
@@ -212,20 +261,20 @@ export default function ViberMessagesPage() {
                   }}
                 >
                   <Send size={15} />
-                  Надіслати через Viber (експериментально)
+                  Надіслати через Viber
                 </a>
               )}
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Копіює перше повідомлення в буфер обміну і відкриває чат з клієнтом у Viber — може не спрацювати на всіх телефонах. Якщо чат відкрився порожнім, вставте текст вручну.
+                Копіює перше повідомлення в буфер обміну і відкриває чат з клієнтом у Viber — може не спрацювати на всіх телефонах. Якщо чат відкрився порожнім, вставте текст вручну. Те саме є під кожним повідомленням нижче.
               </div>
             </div>
 
             <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px" }}>
-              Готові повідомлення в хронологічному порядку — скопіюйте потрібне й надішліть у Viber. Документи за посиланнями відкриваються без входу в CRM.
+              Готові повідомлення в хронологічному порядку — скопіюйте потрібне й надішліть у Viber. Документи за посиланнями відкриваються без входу в CRM. Якщо в замовленні щось змінилось — натисніть «Оновити» вгорі, щоб перегенерувати всі повідомлення.
             </div>
 
             {data.messages.map((m) => (
-              <MessageCard key={m.key} msg={m} />
+              <MessageCard key={m.key} msg={m} clientPhoneViber={data.clientPhoneViber} />
             ))}
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
