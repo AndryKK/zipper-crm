@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail } from "lucide-react";
 import { Pagination } from "@/components/admin/data-table-controls";
+import { isNewStatus, orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
 
 const PAGE_SIZE = 15;
 
@@ -90,45 +91,9 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
   );
 }
 
-// Brand-new/unprocessed orders carry the literal English status "new"
-// (lowercase — a legacy leftover, confirmed against the live orders table:
-// order #1 and presumably every never-touched order have status="new",
-// not a Ukrainian/Russian word and not null/empty), so every "is this a
-// new order" check below needs to match that exact literal on top of the
-// null/empty/"нов*" cases already handled.
-// "Отримано"/"Получен" looks like it should mean "customer received the
-// parcel", but verified directly against the live table: every single one
-// of the 89 orders carrying this status (across the whole history, not
-// just recent ones) has ttn=null and pay_method=null — none were ever
-// paid or shipped. The storefront actually writes this status to mean
-// "[we] received the order" (order intake), not "[customer] received the
-// package" — a literal-translation trap, not a distinct pipeline stage.
-function isNewStatus(status: string | null): boolean {
-  const s = (status ?? "").toLowerCase();
-  return !s || s === "new" || s.includes("нов") || s.includes("отримано") || s.includes("получен");
-}
-
-function orderStatusLabel(status: string | null): string {
-  if (isNewStatus(status)) return "Новий";
-  return status ?? "Новий";
-}
-
-function orderStatusClass(status: string | null): string {
-  const s = (status ?? "").toLowerCase();
-  if (s.includes("завершен") || s.includes("завершено")) return "badge badge-green";
-  if (s.includes("відправлен") || s.includes("отправлен")) return "badge badge-purple";
-  if (s.includes("в работ") || s.includes("в робот")) return "badge badge-amber";
-  if (s.includes("скасован") || s.includes("отмен")) return "badge badge-red";
-  return "badge badge-gray";
-}
-
-function orderRowClass(status: string | null): string {
-  const s = (status ?? "").toLowerCase();
-  if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
-  if (s.includes("оплач")) return "order-row--paid";
-  if (isNewStatus(status)) return "order-row--new";
-  return "";
-}
+// isNewStatus/orderStatusLabel/orderStatusClass/orderRowClass now live in
+// lib/order-status.ts, shared with the dashboard's "Останні замовлення" —
+// see that file's own comment for why.
 
 // Quick status-bucket filters, mirrored server-side in
 // app/api/orders/route.ts against the canonical pipeline (see PIPELINE in
@@ -268,7 +233,7 @@ export default function OrdersPage() {
                 <div
                   key={order.id}
                   onClick={() => router.push(`/orders/${order.id}`)}
-                  className="crm-card block"
+                  className={`crm-card block ${orderRowClass(order.status)}`}
                   style={{ padding: 14, cursor: "pointer" }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>

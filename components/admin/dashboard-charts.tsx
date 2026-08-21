@@ -62,7 +62,7 @@ const customTooltip = (props: any) => {
 
 function PeriodToggle({ period, onChange }: { period: string; onChange: (p: string) => void }) {
   return (
-    <div style={{ display: "flex", gap: 4, background: "var(--bg)", borderRadius: 8, padding: 3 }}>
+    <div style={{ display: "flex", gap: 4, background: "var(--bg)", borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
       {PERIODS.map((p) => (
         <button
           key={p.key}
@@ -93,7 +93,7 @@ const METRICS: { key: "revenue" | "orders"; label: string }[] = [
 
 function MetricToggle({ metric, onChange }: { metric: "revenue" | "orders"; onChange: (m: "revenue" | "orders") => void }) {
   return (
-    <div style={{ display: "flex", gap: 4, background: "var(--bg)", borderRadius: 8, padding: 3 }}>
+    <div style={{ display: "flex", gap: 4, background: "var(--bg)", borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
       {METRICS.map((m) => (
         <button
           key={m.key}
@@ -137,18 +137,13 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
   useEffect(() => { load(period); }, [period, load]);
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr 320px",
-        gap: 16,
-      }}
-    >
+    // Single column and stacked on phone, back to the 2/3 + 1/3 layout
+    // from `lg` up — the fixed "1fr 1fr 320px" this used to be never
+    // shrank below ~660px combined, forcing horizontal scroll well before
+    // tablet width.
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
       {/* Area/line chart — revenue & orders per site */}
-      <div
-        className="crm-card animate-fade-in"
-        style={{ padding: "20px", gridColumn: "1 / 3" }}
-      >
+      <div className="crm-card animate-fade-in p-4 md:p-5 lg:col-span-2">
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <div>
             <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
@@ -233,7 +228,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
       </div>
 
       {/* Pie chart — order statuses */}
-      <div className="crm-card animate-fade-in" style={{ padding: "20px" }}>
+      <div className="crm-card animate-fade-in p-4 md:p-5">
         <div style={{ marginBottom: 16 }}>
           <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
             Статуси замовлень
@@ -299,7 +294,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
       </div>
 
       {/* Bar chart — orders per bucket (all sites combined) */}
-      <div className="crm-card animate-fade-in" style={{ padding: "20px", gridColumn: "1 / -1" }}>
+      <div className="crm-card animate-fade-in p-4 md:p-5 lg:col-span-3">
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
           <div>
             <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>

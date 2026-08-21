@@ -6,6 +6,7 @@ import { DashboardCharts } from "@/components/admin/dashboard-charts";
 import { StatCard } from "@/components/admin/stat-card";
 import { TranslateButton } from "@/components/admin/translate-button";
 import { unstable_cache } from "next/cache";
+import { orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
 
 // This is the CRM's most-visited page — force-dynamic meant every single
 // visit re-ran all 11 queries below from scratch, including a full fetch of
@@ -14,6 +15,25 @@ import { unstable_cache } from "next/cache";
 // the same result instead of re-querying — dashboard stats don't need to be
 // second-by-second fresh.
 const getStats = unstable_cache(_getStats, ["dashboard-stats"], { revalidate: 120 });
+
+// Legacy data has old/Russian status text mixed in with the current
+// Ukrainian pipeline (e.g. imported orders from before the CHAR-padding
+// fix): "Завершен"/"Завершено" are the same state, just spelled
+// differently depending on where the row came from. Normalize before
+// counting so the pie chart doesn't split one real status into two
+// differently-colored slices. The recent-orders list below does NOT use
+// this — it renders each order's raw status through the exact same
+// orderStatusLabel/orderStatusClass/orderRowClass (lib/order-status.ts)
+// the real /orders list uses, so a card/row here is colored identically
+// to the matching row there, including that page's own (different, older)
+// take on "Отримано"/"Получен" — not a second, competing interpretation.
+const STATUS_DISPLAY: Record<string, string> = {
+  "Завершен": "Завершено",
+  "Отримано": "Завершено",
+  "Получен": "Завершено",
+  "В работе": "В роботі",
+  "new": "Новий",
+};
 
 async function _getStats() {
   const now = new Date();
@@ -83,24 +103,8 @@ async function _getStats() {
     0
   );
 
-  /* ── Status breakdown (last 7 days) ──
-   * Legacy data has old/Russian status text mixed in with the current
-   * Ukrainian pipeline (e.g. imported orders from before the CHAR-padding
-   * fix): "Завершен"/"Завершено" are the same state, just spelled
-   * differently depending on where the row came from. Normalize for
-   * display so the pie chart doesn't split one real status into two
-   * differently-colored slices. "Отримано"/"Получен" was its own pipeline
-   * step once (see PIPELINE's comment in app/(admin)/orders/[id]/page.tsx)
-   * but is now folded into "Завершено" — the CRM's status set is only the
-   * six from ALL_STATUSES there: Новий, В роботі, Оплачено, Відправлено,
-   * Завершено, Скасовано. */
-  const STATUS_DISPLAY: Record<string, string> = {
-    "Завершен": "Завершено",
-    "Отримано": "Завершено",
-    "Получен": "Завершено",
-    "В работе": "В роботі",
-    "new": "Новий",
-  };
+  /* ── Status breakdown (last 7 days) ── (STATUS_DISPLAY defined at
+     module scope above — shared with recentOrders' normalization). */
   // Reuses monthOrderRows (last 30 days, already fetched for the revenue
   // card) filtered down to 7 — no need for a second query since 7 days is
   // a subset of what's already in memory.
@@ -128,15 +132,6 @@ async function _getStats() {
     warehousesCount: (warehousesRaw || []).length,
   };
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  "Новий":       "badge-blue",
-  "Получен":     "badge-blue",
-  "В обробці":   "badge-amber",
-  "Відправлений":"badge-purple",
-  "Виконаний":   "badge-green",
-  "Скасований":  "badge-red",
-};
 
 export default async function DashboardPage() {
   const {
@@ -204,17 +199,11 @@ export default async function DashboardPage() {
   return (
     <>
       <Header title="Дашборд" subtitle="Загальна статистика та аналітика" actions={<TranslateButton />} />
-      <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
+      <div className="page-content p-4 md:p-6" style={{ flex: 1 }}>
 
-        {/* KPI Cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
+        {/* KPI Cards — one column on phone (compact, stacked), same
+            auto-fill grid from `sm` up. */}
+        <div className="grid grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(220px,1fr))] gap-3 md:gap-4 mb-5 md:mb-6">
           {stats.map((s, i) => (
             <StatCard key={i} {...s} />
           ))}
@@ -247,7 +236,63 @@ export default async function DashboardPage() {
             </a>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          {/* ── Mobile cards (< md) — left color stripe matches the
+              status, same colors as the desktop badge below.
+              display:flex lives on the inner div, not here — an inline
+              style="display:..." on the same element as md:hidden always
+              wins over that class's @media rule (learned this the first
+              time on the orders-detail items table). ──────── */}
+          <div className="md:hidden">
+          <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            {recentOrders.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "36px 0", color: "var(--text-muted)", fontSize: 13 }}>
+                Замовлень ще немає
+              </div>
+            ) : (
+              recentOrders.map((order: any) => {
+                const total = (order.items || []).reduce(
+                  (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
+                  0
+                );
+                return (
+                  <a
+                    key={order.id}
+                    href={`/orders/${order.id}`}
+                    // crm-card sets the default background (same class
+                    // the real /orders list's own mobile cards use); the
+                    // order-row--* class (same one that page's table rows
+                    // use) overrides it when this status is one of the
+                    // three that get a tint there — no separate color
+                    // scheme invented just for cards.
+                    className={`crm-card ${orderRowClass(order.status)}`}
+                    style={{
+                      display: "block", padding: "12px 14px", borderRadius: 10,
+                      border: "1px solid var(--border)", textDecoration: "none", color: "inherit",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                      <span className="font-mono" style={{ color: "var(--accent)", fontWeight: 600, fontSize: 12.5 }}>
+                        #{order.id}
+                      </span>
+                      <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
+                    </div>
+                    <div style={{ fontWeight: 500, fontSize: 13.5 }}>{order.person ?? order.login ?? "—"}</div>
+                    {order.phone && (
+                      <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>{order.phone}</div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(order.date)}</span>
+                      <span style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</span>
+                    </div>
+                  </a>
+                );
+              })
+            )}
+          </div>
+          </div>
+
+          {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+          <div className="hidden md:block" style={{ overflowX: "auto" }}>
             <table className="crm-table">
               <thead>
                 <tr>
@@ -265,9 +310,12 @@ export default async function DashboardPage() {
                     (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
                     0
                   );
-                  const statusClass = STATUS_COLORS[order.status] ?? "badge-gray";
                   return (
-                    <tr key={order.id}>
+                    // Same order-row--* class the real /orders table uses
+                    // (per this page's own .crm-table CSS, it targets
+                    // `tr.order-row--*`) — so a row here is tinted exactly
+                    // like the matching row there, not just similarly.
+                    <tr key={order.id} className={orderRowClass(order.status)}>
                       <td>
                         <a
                           href={`/orders/${order.id}`}
@@ -281,7 +329,7 @@ export default async function DashboardPage() {
                       <td style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</td>
                       <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>{formatDate(order.date)}</td>
                       <td>
-                        <span className={`badge ${statusClass}`}>{order.status ?? "Новий"}</span>
+                        <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
                       </td>
                     </tr>
                   );

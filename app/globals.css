@@ -512,6 +512,15 @@ a > .crm-stat-card:hover .stat-card-value {
 .crm-table tbody tr.order-row--paid td       { background: rgba(37,99,235,0.20); }
 .crm-table tbody tr.order-row--paid:hover td { background: rgba(37,99,235,0.34); }
 
+/* Same three tints as a plain background — for the mobile order cards
+   (orders list + dashboard "Останні замовлення") that stand in for a
+   table row on narrow screens, so a card is colored exactly the same as
+   the table row it replaces, not a different treatment (e.g. a border
+   stripe) that happens to use a similar hue. */
+.order-row--new      { background: rgba(16,185,129,0.20); }
+.order-row--progress { background: rgba(245,158,11,0.20); }
+.order-row--paid     { background: rgba(37,99,235,0.20); }
+
 /* ─── Badge ─── */
 .badge {
   display: inline-flex;
@@ -688,6 +697,10 @@ a > .crm-stat-card:hover .stat-card-value {
 [data-theme="light"] .crm-table tbody tr.order-row--progress:hover td { background: #fcd34d; }
 [data-theme="light"] .crm-table tbody tr.order-row--paid td       { background: #bfdbfe; }
 [data-theme="light"] .crm-table tbody tr.order-row--paid:hover td { background: #93c5fd; }
+
+[data-theme="light"] .order-row--new      { background: #bbf7d0; }
+[data-theme="light"] .order-row--progress { background: #fde68a; }
+[data-theme="light"] .order-row--paid     { background: #bfdbfe; }
 
 /* ── Badges: saturated for white background ── */
 [data-theme="light"] .badge-blue   { background: #eef2ff; color: #4338ca; }

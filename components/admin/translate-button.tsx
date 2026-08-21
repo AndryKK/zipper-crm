@@ -116,13 +116,22 @@ export function TranslateButton() {
         ) : (
           <Languages size={15} />
         )}
-        {status === "running"
-          ? `Переклад... ${progress.translated}/${progress.total}`
-          : status === "done"
-          ? `Перекладено ${progress.translated} товарів`
-          : status === "error"
-          ? "Помилка перекладу"
-          : "Перекласти описи (RU→UA)"}
+        {/* Text hides below `sm` — this sits in the dashboard Header's
+            actions slot next to the title, and its longest label
+            ("Перекласти описи (RU→UA)") alone needed close to 220px,
+            overflowing a phone-width header regardless of the title's own
+            truncation (confirmed live: 96px page overflow from this one
+            button). The icon (translate / spinner / done / error) still
+            conveys status on its own. */}
+        <span className="hidden sm:inline">
+          {status === "running"
+            ? `Переклад... ${progress.translated}/${progress.total}`
+            : status === "done"
+            ? `Перекладено ${progress.translated} товарів`
+            : status === "error"
+            ? "Помилка перекладу"
+            : "Перекласти описи (RU→UA)"}
+        </span>
       </button>
 
       {/* Modal progress overlay */}
