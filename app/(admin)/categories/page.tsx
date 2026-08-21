@@ -40,13 +40,13 @@ export default async function CategoriesPage() {
   return (
     <>
       <Header title="Категорії" />
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-sm text-gray-500">
             {cats.filter((c) => c.pid === 0).length} кореневих категорій
           </p>
-          <Link href="/categories/new">
-            <Button>
+          <Link href="/categories/new" className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-1.5" />
               Додати категорію
             </Button>

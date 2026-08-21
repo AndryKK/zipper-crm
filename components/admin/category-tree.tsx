@@ -228,41 +228,48 @@ function SubItem({
           <span className="cat-subtitle">{cat.title}</span>
         )}
 
-        {/* Badges */}
-        <Link
-          href={`/products?cat=${cat.translation_id}`}
-          className="cat-badge cat-badge--products"
-          title="Товари категорії"
-        >
-          <Package size={10} />
-          {count}
-        </Link>
-
-        <DiscountBadge cat={cat} />
-
-        {cat.visibility === 0 && (
-          <span className="cat-badge cat-badge--hidden" title="Прихована">
-            <EyeOff size={10} />
-          </span>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+        {/* Badges + actions — wrapped together so on mobile this whole
+            cluster drops to its own second line instead of overflowing
+            past the card's edge (same reasoning as RootCard's header
+            above). `md:` reasserts the exact original single-line layout,
+            with the same 8px gap `.cat-sub-row` used between these items
+            before. */}
+        <div className="flex items-center flex-wrap gap-2 basis-full md:basis-auto md:flex-nowrap md:w-auto">
           <Link
-            href={`/categories/${cat.id}`}
-            className="cat-action cat-action--edit"
-            title="Редагувати"
+            href={`/products?cat=${cat.translation_id}`}
+            className="cat-badge cat-badge--products"
+            title="Товари категорії"
           >
-            <Pencil size={12} />
+            <Package size={10} />
+            {count}
           </Link>
-          <Link
-            href={`/categories/new?pid=${cat.translation_id}`}
-            className="cat-action cat-action--add"
-            title="Додати підкатегорію"
-          >
-            <Plus size={12} />
-          </Link>
-          <DelBtn cat={cat} childCount={children.length} size="sm" />
+
+          <DiscountBadge cat={cat} />
+
+          {cat.visibility === 0 && (
+            <span className="cat-badge cat-badge--hidden" title="Прихована">
+              <EyeOff size={10} />
+            </span>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            <Link
+              href={`/categories/${cat.id}`}
+              className="cat-action cat-action--edit"
+              title="Редагувати"
+            >
+              <Pencil size={12} />
+            </Link>
+            <Link
+              href={`/categories/new?pid=${cat.translation_id}`}
+              className="cat-action cat-action--add"
+              title="Додати підкатегорію"
+            >
+              <Plus size={12} />
+            </Link>
+            <DelBtn cat={cat} childCount={children.length} size="sm" />
+          </div>
         </div>
       </div>
 
@@ -330,46 +337,55 @@ function RootCard({
           )}
         </button>
 
-        {/* Badges (non-toggle) */}
-        <Link
-          href={`/products?cat=${cat.translation_id}`}
-          className="cat-badge cat-badge--products"
-          title="Переглянути товари"
-        >
-          <Package size={11} />
-          {pluralUa(count)}
-        </Link>
-
-        <DiscountBadge cat={cat} />
-
-        {cat.visibility === 1 && (
-          <span className="cat-badge cat-badge--visible" title="Видима">
-            <Eye size={11} />
-          </span>
-        )}
-        {cat.visibility === 0 && (
-          <span className="cat-badge cat-badge--hidden" title="Прихована">
-            <EyeOff size={11} />
-          </span>
-        )}
-
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: 2, flexShrink: 0, marginLeft: 4 }}>
+        {/* Badges + actions — wrapped together so on mobile, where this
+            root row (chevron + icon + title + up to 3 badges + 3 actions)
+            has no room to fit on one line, the whole cluster drops to its
+            own second line instead of each flex-shrink:0 item just
+            overflowing the card's edge. `basis-full` (only below `md`)
+            forces that wrap; at `md`+ it's `basis-auto`/`flex-nowrap` with
+            the same 10px gap `.cat-header` used between these items
+            before, the exact original single-line layout. */}
+        <div className="flex items-center flex-wrap gap-2.5 basis-full md:basis-auto md:flex-nowrap md:w-auto">
           <Link
-            href={`/categories/${cat.id}`}
-            className="cat-action cat-action--edit"
-            title="Редагувати"
+            href={`/products?cat=${cat.translation_id}`}
+            className="cat-badge cat-badge--products"
+            title="Переглянути товари"
           >
-            <Pencil size={13} />
+            <Package size={11} />
+            {pluralUa(count)}
           </Link>
-          <Link
-            href={`/categories/new?pid=${cat.translation_id}`}
-            className="cat-action cat-action--add"
-            title="Додати підкатегорію"
-          >
-            <Plus size={13} />
-          </Link>
-          <DelBtn cat={cat} childCount={children.length} />
+
+          <DiscountBadge cat={cat} />
+
+          {cat.visibility === 1 && (
+            <span className="cat-badge cat-badge--visible" title="Видима">
+              <Eye size={11} />
+            </span>
+          )}
+          {cat.visibility === 0 && (
+            <span className="cat-badge cat-badge--hidden" title="Прихована">
+              <EyeOff size={11} />
+            </span>
+          )}
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: 2, flexShrink: 0, marginLeft: 4 }}>
+            <Link
+              href={`/categories/${cat.id}`}
+              className="cat-action cat-action--edit"
+              title="Редагувати"
+            >
+              <Pencil size={13} />
+            </Link>
+            <Link
+              href={`/categories/new?pid=${cat.translation_id}`}
+              className="cat-action cat-action--add"
+              title="Додати підкатегорію"
+            >
+              <Plus size={13} />
+            </Link>
+            <DelBtn cat={cat} childCount={children.length} />
+          </div>
         </div>
       </div>
 
