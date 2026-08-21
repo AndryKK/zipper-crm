@@ -5,7 +5,10 @@ import { User, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 interface HeaderProps {
-  title: string;
+  // ReactNode (not just string) so a caller can show different content per
+  // breakpoint — e.g. the order page shows just "#20820" on a phone and
+  // "Замовлення #20820" from `sm` up, via its own responsive spans.
+  title: React.ReactNode;
   subtitle?: string;
   actions?: React.ReactNode;
   breadcrumbs?: { label: string; href?: string }[];
@@ -72,8 +75,8 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
             keeps the header a predictable single-line height everywhere;
             the full title is still on the page below in every case here. */}
         <h1
+          className="text-[15px] sm:text-[18px]"
           style={{
-            fontSize: 18,
             fontWeight: 700,
             color: "var(--text)",
             lineHeight: 1.2,

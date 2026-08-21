@@ -950,7 +950,12 @@ export default function OrderDetailPage() {
   return (
     <>
       <Header
-        title={`Замовлення #${order.id}`}
+        title={
+          <>
+            <span className="sm:hidden">#{order.id}</span>
+            <span className="hidden sm:inline">Замовлення #{order.id}</span>
+          </>
+        }
         actions={
           <Button
             variant="outline"
@@ -983,13 +988,11 @@ export default function OrderDetailPage() {
           </Card>
         ) : (
           <Card>
-            <CardContent style={{ padding: "24px 20px 20px" }}>
-              {/* overflow-x:auto — on the narrowest phones, 4 steps at a
-                  legible size genuinely need more than the ~295px a
-                  375px-wide screen leaves after card padding; better to
-                  swipe than to have step labels compress into each other
-                  (min-width already trims per-step below `sm`, see below —
-                  this scroll is the safety net for anything still short). */}
+            <CardContent className="px-2 pt-4 pb-4 sm:px-5 sm:pt-6 sm:pb-5">
+              {/* Sized to genuinely fit all 4 steps on a 375px phone
+                  (iPhone SE) without scrolling — smaller circle, column
+                  width and font below `sm`, verified live. overflow-x:auto
+                  stays only as a safety net for anything even narrower. */}
               <div style={{ display: "flex", alignItems: "flex-start", overflowX: "auto" }}>
                 {PIPELINE.flatMap((p, i) => {
                   const isDone   = step > i;
@@ -997,56 +1000,59 @@ export default function OrderDetailPage() {
                   const isFuture = step < i;
 
                   const circle = (
-                    // Fixed width (not just a min), same at every
-                    // breakpoint — labels like "Опрацювання" need their
-                    // full ~80px to read cleanly on one line; shrinking the
-                    // column on phones just pushed that text into
-                    // mid-word wrapping or bleeding into the next step
-                    // (both tried and rejected — see the parent's
-                    // overflow-x:auto comment: a short swipe to see every
-                    // step reads far better than mangled labels).
-                    <div key={p.status} className="w-[84px]" style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                      <div style={{
-                        width: 44, height: 44, borderRadius: "50%",
-                        background: isDone || isActive ? p.color : "transparent",
-                        border: isFuture ? "2px dashed #cbd5e1" : `2px solid ${p.color}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: isDone || isActive ? "#fff" : "#94a3b8",
-                        fontWeight: 700, fontSize: 17,
-                        boxShadow: isActive ? `0 0 0 5px ${p.color}28, 0 0 0 10px ${p.color}0f` : "none",
-                        transition: "all 0.3s ease",
-                        flexShrink: 0,
-                      }}>
-                        {isDone ? <Check size={21} strokeWidth={3} /> : <span>{i + 1}</span>}
+                    <div key={p.status} className="w-[68px] sm:w-[84px]" style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                      <div
+                        className="w-9 h-9 sm:w-11 sm:h-11"
+                        style={{
+                          borderRadius: "50%",
+                          background: isDone || isActive ? p.color : "transparent",
+                          border: isFuture ? "2px dashed #cbd5e1" : `2px solid ${p.color}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: isDone || isActive ? "#fff" : "#94a3b8",
+                          fontWeight: 700, fontSize: 15,
+                          boxShadow: isActive ? `0 0 0 5px ${p.color}28, 0 0 0 10px ${p.color}0f` : "none",
+                          transition: "all 0.3s ease",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isDone ? <Check size={18} strokeWidth={3} /> : <span>{i + 1}</span>}
                       </div>
-                      {/* overflowWrap:break-word — "Опрацювання" etc. are
-                          single unbreakable words with no space to wrap at,
-                          so without this they render past their own 64px
-                          column and visually bleed into the next step's
-                          label on narrow phones (measured live: labels ran
-                          together as "ОпрацюванняОплата" with zero gap). */}
-                      <div style={{
-                        marginTop: 9, textAlign: "center", lineHeight: 1.25, width: "100%",
-                        fontSize: 11.5, fontWeight: isActive ? 700 : isDone ? 600 : 400,
-                        color: isFuture ? "var(--text-muted)" : "var(--text)",
-                        overflowWrap: "break-word",
-                      }}>{p.label}</div>
-                      <div style={{
-                        fontSize: 10, color: "var(--text-muted)", textAlign: "center",
-                        width: "100%", lineHeight: 1.3, marginTop: 2,
-                        overflowWrap: "break-word",
-                      }}>{p.sublabel}</div>
+                      {/* overflowWrap:break-word as a safety net only —
+                          columns are sized so labels fit on one line at
+                          both breakpoints, but this stops any bleed into
+                          the next step if a label ever runs long. */}
+                      <div
+                        className="text-[9.5px] sm:text-[11.5px]"
+                        style={{
+                          marginTop: 7, textAlign: "center", lineHeight: 1.2, width: "100%",
+                          fontWeight: isActive ? 700 : isDone ? 600 : 400,
+                          color: isFuture ? "var(--text-muted)" : "var(--text)",
+                          overflowWrap: "break-word",
+                        }}
+                      >{p.label}</div>
+                      <div
+                        className="text-[8.5px] sm:text-[10px]"
+                        style={{
+                          color: "var(--text-muted)", textAlign: "center",
+                          width: "100%", lineHeight: 1.25, marginTop: 2,
+                          overflowWrap: "break-word",
+                        }}
+                      >{p.sublabel}</div>
                     </div>
                   );
 
                   const connector = i < PIPELINE.length - 1 ? (
-                    <div key={`line-${i}`} style={{
-                      flex: 1, height: 3, marginTop: 19, borderRadius: 2,
-                      background: isDone
-                        ? `linear-gradient(to right, ${p.color}, ${PIPELINE[i + 1].color})`
-                        : "var(--border)",
-                      transition: "background 0.5s ease",
-                    }} />
+                    <div
+                      key={`line-${i}`}
+                      className="mt-[15px] sm:mt-[19px]"
+                      style={{
+                        flex: 1, height: 3, borderRadius: 2,
+                        background: isDone
+                          ? `linear-gradient(to right, ${p.color}, ${PIPELINE[i + 1].color})`
+                          : "var(--border)",
+                        transition: "background 0.5s ease",
+                      }}
+                    />
                   ) : null;
 
                   return connector ? [circle, connector] : [circle];
@@ -1091,43 +1097,61 @@ export default function OrderDetailPage() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#d97706" }}>Замовлення в роботі — очікуємо оплату від клієнта</span>
                   </div>
                   {order.doc_field_1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <FileText size={14} color="var(--text-muted)" />
-                      <span style={{ fontSize: 13 }}>Рахунок: <strong>{order.doc_field_1}</strong></span>
-                      <button
-                        onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
-                        style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
-                      >
-                        Рахунок
-                      </button>
-                      <button
-                        onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
-                        style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.22)", cursor: "pointer" }}
-                      >
-                        Видаткова
-                      </button>
-                      <button
-                        onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
-                        style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.22)", cursor: "pointer" }}
-                      >
-                        Накладна
-                      </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <FileText size={14} color="var(--text-muted)" />
+                        <span style={{ fontSize: 13 }}>Рахунок: <strong>{order.doc_field_1}</strong></span>
+                      </div>
+                      {/* grid-cols-3 on phone — three equal-width buttons on
+                          their own row, instead of squeezing into the label
+                          row above (or wrapping unevenly). Back to a plain
+                          inline row from `sm` up. */}
+                      <div className="grid grid-cols-3 sm:flex" style={{ gap: 8 }}>
+                        <button
+                          onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
+                          className="w-full sm:w-auto"
+                          style={{ padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, textAlign: "center", background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
+                        >
+                          Рахунок
+                        </button>
+                        <button
+                          onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
+                          className="w-full sm:w-auto"
+                          style={{ padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, textAlign: "center", background: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.22)", cursor: "pointer" }}
+                        >
+                          Видаткова
+                        </button>
+                        <button
+                          onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
+                          className="w-full sm:w-auto"
+                          style={{ padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, textAlign: "center", background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.22)", cursor: "pointer" }}
+                        >
+                          Накладна
+                        </button>
+                      </div>
                     </div>
                   )}
                   {order.doc_field_1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Знижка клієнта:</span>
-                      <Input
-                        type="number" min={0} max={100} step="0.1"
-                        value={discountInput}
-                        onChange={(e) => setDiscountInput(e.target.value)}
-                        style={{ width: 70, height: 28, fontSize: 12.5 }}
-                      />
-                      <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>%</span>
+                    // Blocked off like the prepayment card below, instead
+                    // of one cramped row — label/input/%/button now have
+                    // room to breathe, and the button goes full-width on
+                    // phone.
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12.5, color: "var(--text-muted)", flexShrink: 0 }}>Знижка клієнта:</span>
+                        <Input
+                          type="number" min={0} max={100} step="0.1"
+                          value={discountInput}
+                          onChange={(e) => setDiscountInput(e.target.value)}
+                          style={{ width: 70, height: 28, fontSize: 12.5, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>%</span>
+                      </div>
                       <button
                         onClick={resendWithDiscount}
                         disabled={resendingDiscount}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
+                        className="w-full sm:w-auto"
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
                         title="Перерахувати ціни за новою знижкою і надіслати рахунок та накладну зі знижкою повторно"
                       >
                         {resendingDiscount ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail size={12} />}
@@ -1144,9 +1168,10 @@ export default function OrderDetailPage() {
                       delivery isn't offered for postomat destinations (NP doesn't support it
                       there — release is prepayment-only). */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div className="flex-col sm:flex-row" style={{ display: "flex", alignItems: "stretch", gap: 10 }}>
                       <Button
                         onClick={confirmPayment} disabled={confirming}
+                        className="w-full sm:w-auto"
                         style={{ background: "linear-gradient(135deg,#3b82f6,#2563eb)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                       >
                         {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard size={16} />}
@@ -1155,13 +1180,14 @@ export default function OrderDetailPage() {
                       {!isPostomat && (
                         <Button
                           onClick={openCodDialog}
+                          className="w-full sm:w-auto"
                           style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                         >
                           <Banknote size={16} />
                           Відправити накладеним платежем
                         </Button>
                       )}
-                      <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                      <Button variant="outline" onClick={openManualPanel} className="w-full sm:w-auto" style={{ gap: 8, height: 42, fontSize: 14 }}>
                         <SlidersHorizontal size={14} /> Ручне керування
                       </Button>
                     </div>
@@ -1171,19 +1197,27 @@ export default function OrderDetailPage() {
                         : `Оплата вже надійшла (переказ) — автоматично створить ТТН. Або накладений платіж — отримувач сплачує ${Math.max(0, orderTotal - (parseFloat(prepaymentInput) || 0)).toFixed(2)} грн при отриманні.`}
                     </p>
                     {!isPostomat && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      // Stacked, blocked-off card on mobile instead of a
+                      // cramped single row — label + number input + save
+                      // button don't fit one 375px line.
+                      <div
+                        className="flex-col sm:flex-row sm:items-center"
+                        style={{ display: "flex", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}
+                      >
                         <Label style={{ fontSize: 12, color: "var(--text-muted)" }}>Врахувати передоплату, грн</Label>
-                        <Input
-                          type="number" step="0.01" min="0" value={prepaymentInput}
-                          onChange={(e) => setPrepaymentInput(e.target.value)}
-                          style={{ width: 110, height: 30, fontSize: 13 }}
-                        />
-                        <button
-                          onClick={savePrepayment} disabled={savingPrepayment}
-                          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
-                        >
-                          {savingPrepayment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти для замовлення
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Input
+                            type="number" step="0.01" min="0" value={prepaymentInput}
+                            onChange={(e) => setPrepaymentInput(e.target.value)}
+                            style={{ width: 110, height: 30, fontSize: 13 }}
+                          />
+                          <button
+                            onClick={savePrepayment} disabled={savingPrepayment}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
+                          >
+                            {savingPrepayment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти для замовлення
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1312,15 +1346,16 @@ export default function OrderDetailPage() {
                   )}
 
                   {order.ttn && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div className="flex-col sm:flex-row" style={{ display: "flex", alignItems: "stretch", gap: 10 }}>
                       <Button
                         onClick={() => advanceStatus("Відправлено")}
+                        className="w-full sm:w-auto"
                         style={{ background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                       >
                         <Truck size={16} />
                         Позначити відправленим
                       </Button>
-                      <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                      <Button variant="outline" onClick={openManualPanel} className="w-full sm:w-auto" style={{ gap: 8, height: 42, fontSize: 14 }}>
                         <SlidersHorizontal size={14} /> Ручне керування
                       </Button>
                     </div>
@@ -1348,9 +1383,10 @@ export default function OrderDetailPage() {
                       </a>
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <div className="flex-col sm:flex-row" style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
                     <Button
                       onClick={() => advanceStatus("Завершено")}
+                      className="w-full sm:w-auto"
                       style={{ background: "linear-gradient(135deg,#10b981,#059669)", border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                     >
                       <MapPin size={16} />
@@ -1358,12 +1394,13 @@ export default function OrderDetailPage() {
                     </Button>
                     <Button
                       onClick={checkNpStatus} disabled={checkingNp}
+                      className="w-full sm:w-auto"
                       style={{ background: NP_RED, border: "none", color: "#fff", gap: 8, height: 42, fontSize: 14 }}
                     >
                       {checkingNp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={16} />}
                       Перевірити статус НП
                     </Button>
-                    <Button variant="outline" onClick={openManualPanel} style={{ gap: 8, height: 42, fontSize: 14 }}>
+                    <Button variant="outline" onClick={openManualPanel} className="w-full sm:w-auto" style={{ gap: 8, height: 42, fontSize: 14 }}>
                       <SlidersHorizontal size={14} /> Ручне керування
                     </Button>
                   </div>
@@ -2084,12 +2121,14 @@ export default function OrderDetailPage() {
                   <Button variant="outline" size="sm" onClick={() => setEditingResendEmail(false)}>Готово</Button>
                 </div>
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Адреса:</span>
-                  <strong>{resendEmail || "не вказано"}</strong>
+                <div className="flex-col sm:flex-row" style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
+                    <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>Адреса:</span>
+                    <strong style={{ overflowWrap: "break-word", minWidth: 0 }}>{resendEmail || "не вказано"}</strong>
+                  </div>
                   <button
                     onClick={() => setEditingResendEmail(true)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: 0 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: 0, flexShrink: 0 }}
                   >
                     <Pencil size={12} /> Змінити
                   </button>
@@ -2159,22 +2198,25 @@ export default function OrderDetailPage() {
                 ))}
               </div>
               {processLog && order.doc_field_1 && (
-                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <div className="grid grid-cols-1 sm:flex" style={{ marginTop: 12, justifyContent: "flex-end", gap: 8 }}>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
+                    className="w-full sm:w-auto"
+                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
                     <FileText size={14} /> Накладна зі знижкою
                   </button>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
+                    className="w-full sm:w-auto"
+                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
                     <FileText size={14} /> Рахунок-фактура
                   </button>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
+                    className="w-full sm:w-auto"
+                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
                     <ClipboardList size={14} /> Видаткова
                   </button>
@@ -2278,22 +2320,25 @@ export default function OrderDetailPage() {
                     <span className="text-gray-500">рахунок</span>{" "}
                     <span className="font-mono font-semibold">{order.doc_field_1}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                  <div className="grid grid-cols-1 sm:flex" style={{ justifyContent: "flex-end", gap: 8 }}>
                     <button
                       onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
+                      className="w-full sm:w-auto"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
                     >
                       <FileText size={14} /> Накладна зі знижкою
                     </button>
                     <button
                       onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
+                      className="w-full sm:w-auto"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", border: "none", cursor: "pointer" }}
                     >
                       <FileText size={14} /> Рахунок-фактура
                     </button>
                     <button
                       onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
+                      className="w-full sm:w-auto"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
                     >
                       <ClipboardList size={14} /> Видаткова
                     </button>
@@ -2312,30 +2357,28 @@ export default function OrderDetailPage() {
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Статус</Label>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{
-                    width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-                    background: ALL_STATUSES.find((s) => s.label === status)?.color ?? "#6b7280",
-                  }} />
-                  <Select value={status || "__empty__"} onValueChange={(v) => setStatus(v === "__empty__" ? "" : v)}>
-                    <SelectTrigger style={{ flex: 1, fontWeight: 600 }}>
-                      <SelectValue placeholder="Оберіть статус" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!ALL_STATUSES.find((s) => s.label === status) && status && (
-                        <SelectItem value={status}>{status}</SelectItem>
-                      )}
-                      {ALL_STATUSES.map((s) => (
-                        <SelectItem key={s.label} value={s.label}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
-                            {s.label}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* The status dot already lives inside SelectValue's own
+                    rendering (one per SelectItem, so it also updates when
+                    open) — a second standalone dot out here just duplicated
+                    it right next to the same select. */}
+                <Select value={status || "__empty__"} onValueChange={(v) => setStatus(v === "__empty__" ? "" : v)}>
+                  <SelectTrigger style={{ fontWeight: 600 }}>
+                    <SelectValue placeholder="Оберіть статус" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!ALL_STATUSES.find((s) => s.label === status) && status && (
+                      <SelectItem value={status}>{status}</SelectItem>
+                    )}
+                    {ALL_STATUSES.map((s) => (
+                      <SelectItem key={s.label} value={s.label}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2395,11 +2438,131 @@ export default function OrderDetailPage() {
                 Замовлення вже оплачено — зміна кількості тут не перерахує автоматично залишки на складі (списання відбулось один раз при підтвердженні оплати).
               </div>
             )}
-            {/* Scrolls within itself on phone instead of stretching the
-                whole page horizontally — this table's columns (photo +
-                name, price, qty, sum, actions) genuinely need more than a
-                375px-wide screen has to give. */}
-            <div style={{ overflowX: "auto" }}>
+            {/* ── Mobile cards (< md) — replaces the table entirely rather
+                than just scrolling it, so every column (name, price, qty,
+                sum) is fully visible without a sideways swipe. ──────── */}
+            {/* display:flex lives on the inner div, not here — an inline
+                style="display:..." on the same element as md:hidden always
+                wins over that class's @media rule (inline styles beat any
+                stylesheet rule regardless of media query), which silently
+                showed these cards on desktop too alongside the table. */}
+            <div className="md:hidden">
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: editingItems ? 0 : "0 16px 16px" }}>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {order.items?.map((item: any) => {
+                const isRemoved = item.active === false;
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex", flexDirection: "column", gap: 8, padding: 12,
+                      borderRadius: 10, border: "1px solid var(--border)",
+                      opacity: isRemoved ? 0.55 : 1,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {item.productImg ? (
+                        <img
+                          src={item.productImg}
+                          alt=""
+                          style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg)", filter: isRemoved ? "grayscale(1)" : undefined }}
+                        />
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: 6, flexShrink: 0, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Package size={18} color="var(--text-muted)" />
+                        </div>
+                      )}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        {item.productUrl ? (
+                          <a
+                            href={item.productUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontWeight: 500, fontSize: 13.5, color: "inherit", textDecoration: isRemoved ? "line-through" : "none" }}
+                          >
+                            {item.productTitle ?? `Товар #${item.product}`}
+                          </a>
+                        ) : (
+                          <div style={{ fontWeight: 500, fontSize: 13.5, textDecoration: isRemoved ? "line-through" : "none" }}>
+                            {item.productTitle ?? `Товар #${item.product}`}
+                          </div>
+                        )}
+                        <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {item.productPcode ? `${item.productPcode} · ` : ""}#{item.product}{item.type ? ` · ${item.type}` : ""}
+                          {isRemoved && <span style={{ marginLeft: 6, color: "#dc2626", fontWeight: 600 }}>прибрано</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {editingItems && !isRemoved && (
+                          <button
+                            onClick={() => saveItem(item.id)} disabled={savingItemId === item.id}
+                            style={{ padding: 6, borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#059669", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Зберегти"
+                          >
+                            {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check size={14} />}
+                          </button>
+                        )}
+                        {isRemoved ? (
+                          <button
+                            onClick={() => toggleItemActive(item.id, true)} disabled={savingItemId === item.id}
+                            style={{ padding: 6, borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#059669", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Відновити товар"
+                          >
+                            {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw size={14} />}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
+                            disabled={savingItemId === item.id}
+                            style={{ padding: 6, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
+                            title="Прибрати з замовлення"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {editingItems && !isRemoved ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>Ціна, грн</div>
+                          <Input
+                            type="number" step="0.01" value={item.price}
+                            onChange={(e) => updateItemField(item.id, "price", e.target.value)}
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>К-сть</div>
+                          <Input
+                            type="number" step="1" value={item.quantity}
+                            onChange={(e) => updateItemField(item.id, "quantity", e.target.value)}
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>Сума</div>
+                          <div className="font-medium">{(Number(item.price) * Number(item.quantity)).toFixed(2)} грн</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, textDecoration: isRemoved ? "line-through" : "none" }}>
+                        <span style={{ color: "var(--text-muted)" }}>{item.price.toFixed(2)} грн × {item.quantity}</span>
+                        <span className="font-medium">{isRemoved ? "0.00 грн" : `${(Number(item.price) * Number(item.quantity)).toFixed(2)} грн`}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                <span className="font-semibold">Разом:</span>
+                <span className="font-bold text-lg">{orderTotal.toFixed(2)} грн</span>
+              </div>
+            </div>
+            </div>
+
+            {/* ── Desktop table (>= md) ───────────────────────────────── */}
+            <div className="hidden md:block" style={{ overflowX: "auto" }}>
             <table className="crm-table">
               <thead>
                 <tr>
@@ -2530,7 +2693,12 @@ export default function OrderDetailPage() {
             {/* Also flips editingItems on — a new line always starts at
                 quantity 1, and without edit mode already active there was
                 no way to correct that right after adding without a second,
-                unrelated click on "Редагувати" first. */}
+                unrelated click on "Редагувати" first.
+                Own horizontal padding here regardless of editingItems —
+                CardContent's own padding is 0 while not editing (the
+                table/cards above compensate for that themselves), which
+                otherwise left this button flush against the card's edges. */}
+            <div style={{ padding: editingItems ? 0 : "0 16px 16px" }}>
             {!showAddItem ? (
               <button
                 onClick={() => { setShowAddItem(true); setEditingItems(true); }}
@@ -2583,6 +2751,7 @@ export default function OrderDetailPage() {
                 )}
               </div>
             )}
+            </div>
           </CardContent>
         </Card>
 
@@ -2622,38 +2791,61 @@ export default function OrderDetailPage() {
               <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Повернень по цьому замовленню ще не було.</p>
             )}
 
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-              <div className="space-y-1" style={{ flex: "1 1 200px", minWidth: 0 }}>
+            <div
+              className="flex-col sm:flex-row sm:items-end"
+              style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border)" }}
+            >
+              {/* flex-basis/grow/shrink are Tailwind classes (sm: only),
+                  not inline — the parent switches to flex-direction:column
+                  on phone (flex-col above), where the main axis is
+                  vertical, so an inline flex:"1 1 200px" here meant *200px
+                  of height*, not width, leaving a huge empty gap below a
+                  36px-tall closed select (confirmed live: 293×200 measured
+                  for this wrapper with nothing in it but a one-line label
+                  + select). Below `sm` this now just sizes to its content,
+                  which is exactly what a stacked mobile layout needs. */}
+              <div className="space-y-1 sm:flex-1 sm:basis-[200px] sm:min-w-0">
                 <Label style={{ fontSize: 12 }}>Товар</Label>
-                {/* width:100% — a native <select> with no explicit width
-                    sizes itself to its widest <option> text, and a full
-                    product name easily runs past a phone's whole screen
-                    width (measured live: 793px wide on a 375px viewport,
-                    stretching the entire page into horizontal scroll). */}
-                <select
-                  value={returnProduct}
-                  onChange={(e) => setReturnProduct(e.target.value)}
-                  className="crm-select"
-                  style={{ height: 36, width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "0 8px", background: "var(--bg)" }}
+                {/* A native <select>'s open dropdown is sized by the OS/
+                    browser itself to fit its widest <option> text,
+                    ignoring the select's own CSS width entirely — no
+                    amount of styling the closed element fixes that
+                    (confirmed live: the popup rendered ~2x the screen
+                    width on a phone even after this select itself was
+                    constrained to 100%). Radix's own Select doesn't have
+                    that native-popup problem — its content is a normal,
+                    CSS-styled div pinned to the trigger's own width (see
+                    SelectContent's w-full min-w-[var(--radix-select-trigger-width)]
+                    in components/ui/select.tsx), same component already
+                    used for "Статус" above. */}
+                <Select
+                  value={returnProduct || "__empty__"}
+                  onValueChange={(v) => setReturnProduct(v === "__empty__" ? "" : v)}
                 >
-                  <option value="">Оберіть товар…</option>
-                  {/* Removed lines are excluded — a return only makes sense
-                      for something that was actually shipped. */}
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {activeItems.map((item: any) => (
-                    <option key={item.id} value={item.product}>{item.productTitle ?? `Товар #${item.product}`} (замовлено {item.quantity})</option>
-                  ))}
-                </select>
+                  <SelectTrigger style={{ height: 36 }}>
+                    <SelectValue placeholder="Оберіть товар…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Removed lines are excluded — a return only makes
+                        sense for something that was actually shipped. */}
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {activeItems.map((item: any) => (
+                      <SelectItem key={item.id} value={String(item.product)}>
+                        {item.productTitle ?? `Товар #${item.product}`} (замовлено {item.quantity})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 w-full sm:w-auto">
                 <Label style={{ fontSize: 12 }}>К-сть</Label>
-                <Input type="number" min={1} value={returnQty} onChange={(e) => setReturnQty(e.target.value)} style={{ width: 80 }} />
+                <Input type="number" min={1} value={returnQty} onChange={(e) => setReturnQty(e.target.value)} className="w-full sm:w-20" />
               </div>
               <div className="space-y-1" style={{ flex: 1, minWidth: 160 }}>
                 <Label style={{ fontSize: 12 }}>Причина</Label>
                 <Input value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="напр. брак" />
               </div>
-              <Button onClick={submitReturn} disabled={submittingReturn} variant="outline">
+              <Button onClick={submitReturn} disabled={submittingReturn} variant="outline" className="w-full sm:w-auto">
                 {submittingReturn ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
                 Оформити повернення
               </Button>

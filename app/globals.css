@@ -262,6 +262,19 @@ body {
 .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 
+/* iOS Safari auto-zooms the whole page on focus for any text input whose
+   *computed* font-size is under 16px — a lot of this app's compact inputs
+   (crm-input, native <select>, shadcn Input/Textarea) are 12-13.5px via
+   inline style, which inline styles being higher-specificity than any
+   plain class rule, only !important here can override. Scoped to phone-
+   width viewports only — desktop/tablet keep each input's own, smaller,
+   intentional size. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ─── Utility classes ─── */
 .animate-fade-in  { animation: fadeIn 0.35s ease both; }
 .animate-scale-in { animation: scaleIn 0.25s ease both; }

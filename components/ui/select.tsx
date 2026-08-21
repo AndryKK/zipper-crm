@@ -36,14 +36,22 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] shadow-md",
-        position === "popper" && "data-[side=bottom]:translate-y-1",
+        // w- (an exact match, not just a min-w floor) to the trigger's own
+        // width — content used to only have a *minimum* width equal to the
+        // trigger, so it was free to grow wider to fit long item text
+        // (a full product name), landing asymmetrically off one edge of
+        // the trigger instead of lining up with both (confirmed live:
+        // 238px trigger, 715px popup, left edges aligned but right edge
+        // far past the trigger's own). max-w is just a safety cap for a
+        // trigger that's itself wider than the viewport.
+        "relative z-50 max-h-96 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] shadow-md",
+        position === "popper" && "data-[side=bottom]:translate-y-1 w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]",
         className
       )}
       position={position}
       {...props}
     >
-      <SelectPrimitive.Viewport className={cn("p-1", position === "popper" && "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]")}>
+      <SelectPrimitive.Viewport className={cn("p-1", position === "popper" && "h-[var(--radix-select-trigger-height)] w-full")}>
         {children}
       </SelectPrimitive.Viewport>
     </SelectPrimitive.Content>
