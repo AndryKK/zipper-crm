@@ -239,7 +239,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
             Статуси замовлень
           </h3>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
-            Розподіл
+            Розподіл за останні 7 днів
           </p>
         </div>
         {statusData.length > 0 ? (

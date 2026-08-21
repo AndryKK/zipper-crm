@@ -19,6 +19,8 @@ async function _getStats() {
   const now = new Date();
   const monthAgo = new Date(now);
   monthAgo.setDate(monthAgo.getDate() - 30);
+  const weekAgo = new Date(now);
+  weekAgo.setDate(weekAgo.getDate() - 7);
 
   /* Run independent queries in parallel */
   const [
@@ -81,21 +83,30 @@ async function _getStats() {
     0
   );
 
-  /* ── Status breakdown (last 30 days) ──
+  /* ── Status breakdown (last 7 days) ──
    * Legacy data has old/Russian status text mixed in with the current
    * Ukrainian pipeline (e.g. imported orders from before the CHAR-padding
    * fix): "Завершен"/"Завершено" are the same state, just spelled
    * differently depending on where the row came from. Normalize for
    * display so the pie chart doesn't split one real status into two
-   * differently-colored slices. */
+   * differently-colored slices. "Отримано"/"Получен" was its own pipeline
+   * step once (see PIPELINE's comment in app/(admin)/orders/[id]/page.tsx)
+   * but is now folded into "Завершено" — the CRM's status set is only the
+   * six from ALL_STATUSES there: Новий, В роботі, Оплачено, Відправлено,
+   * Завершено, Скасовано. */
   const STATUS_DISPLAY: Record<string, string> = {
     "Завершен": "Завершено",
-    "Получен": "Отримано",
+    "Отримано": "Завершено",
+    "Получен": "Завершено",
     "В работе": "В роботі",
     "new": "Новий",
   };
+  // Reuses monthOrderRows (last 30 days, already fetched for the revenue
+  // card) filtered down to 7 — no need for a second query since 7 days is
+  // a subset of what's already in memory.
   const statusMap: Record<string, number> = {};
   for (const o of monthOrderRows || []) {
+    if (new Date(o.date as string) < weekAgo) continue;
     const raw = (o.status as string) || "Новий";
     const s = STATUS_DISPLAY[raw] ?? raw;
     statusMap[s] = (statusMap[s] || 0) + 1;
