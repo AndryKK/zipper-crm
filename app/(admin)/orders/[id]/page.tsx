@@ -22,6 +22,7 @@ import {
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
   Truck, MapPin, Star, Pencil, Plus, X, Search, ClipboardList,
   Mail, Banknote, PackageSearch, SlidersHorizontal, RotateCcw,
+  MessageCircle,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -948,9 +949,22 @@ export default function OrderDetailPage() {
 
   return (
     <>
-      <Header title={`Замовлення #${order.id}`} />
+      <Header
+        title={`Замовлення #${order.id}`}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/orders/${params.id}/viber-messages`)}
+            style={{ gap: 6, borderColor: "#7360f255", color: "#8f5db7" }}
+          >
+            <MessageCircle size={14} />
+            <span className="hidden sm:inline">Viber</span>
+          </Button>
+        }
+      />
       {isBusy && <BusyOverlay />}
-      <div className="p-6 space-y-5 max-w-5xl">
+      <div className="p-4 md:p-6 space-y-5 max-w-5xl">
 
         <button
           onClick={() => router.push("/orders")}
@@ -970,14 +984,28 @@ export default function OrderDetailPage() {
         ) : (
           <Card>
             <CardContent style={{ padding: "24px 20px 20px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start" }}>
+              {/* overflow-x:auto — on the narrowest phones, 4 steps at a
+                  legible size genuinely need more than the ~295px a
+                  375px-wide screen leaves after card padding; better to
+                  swipe than to have step labels compress into each other
+                  (min-width already trims per-step below `sm`, see below —
+                  this scroll is the safety net for anything still short). */}
+              <div style={{ display: "flex", alignItems: "flex-start", overflowX: "auto" }}>
                 {PIPELINE.flatMap((p, i) => {
                   const isDone   = step > i;
                   const isActive = step === i;
                   const isFuture = step < i;
 
                   const circle = (
-                    <div key={p.status} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 84 }}>
+                    // Fixed width (not just a min), same at every
+                    // breakpoint — labels like "Опрацювання" need their
+                    // full ~80px to read cleanly on one line; shrinking the
+                    // column on phones just pushed that text into
+                    // mid-word wrapping or bleeding into the next step
+                    // (both tried and rejected — see the parent's
+                    // overflow-x:auto comment: a short swipe to see every
+                    // step reads far better than mangled labels).
+                    <div key={p.status} className="w-[84px]" style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
                       <div style={{
                         width: 44, height: 44, borderRadius: "50%",
                         background: isDone || isActive ? p.color : "transparent",
@@ -987,17 +1015,26 @@ export default function OrderDetailPage() {
                         fontWeight: 700, fontSize: 17,
                         boxShadow: isActive ? `0 0 0 5px ${p.color}28, 0 0 0 10px ${p.color}0f` : "none",
                         transition: "all 0.3s ease",
+                        flexShrink: 0,
                       }}>
                         {isDone ? <Check size={21} strokeWidth={3} /> : <span>{i + 1}</span>}
                       </div>
+                      {/* overflowWrap:break-word — "Опрацювання" etc. are
+                          single unbreakable words with no space to wrap at,
+                          so without this they render past their own 64px
+                          column and visually bleed into the next step's
+                          label on narrow phones (measured live: labels ran
+                          together as "ОпрацюванняОплата" with zero gap). */}
                       <div style={{
-                        marginTop: 9, textAlign: "center", lineHeight: 1.25,
-                        fontSize: 12, fontWeight: isActive ? 700 : isDone ? 600 : 400,
+                        marginTop: 9, textAlign: "center", lineHeight: 1.25, width: "100%",
+                        fontSize: 11.5, fontWeight: isActive ? 700 : isDone ? 600 : 400,
                         color: isFuture ? "var(--text-muted)" : "var(--text)",
+                        overflowWrap: "break-word",
                       }}>{p.label}</div>
                       <div style={{
                         fontSize: 10, color: "var(--text-muted)", textAlign: "center",
-                        maxWidth: 74, lineHeight: 1.3, marginTop: 2,
+                        width: "100%", lineHeight: 1.3, marginTop: 2,
+                        overflowWrap: "break-word",
                       }}>{p.sublabel}</div>
                     </div>
                   );
@@ -2059,18 +2096,35 @@ export default function OrderDetailPage() {
                 </div>
               )}
 
+              {/* whitespace-normal/text-left/h-auto override the shared
+                  Button's default whitespace-nowrap+fixed height — these
+                  labels are long sentences, not short button text, and
+                  nowrap forced each one wider than a phone screen (818px
+                  overflow measured live on 375px iPhone SE before this). */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Button variant="outline" size="sm" onClick={() => openEmailPreview("welcome")}>
-                  <Mail size={14} color={order.welcome_email_sent_at ? "#059669" : undefined} />
+                <Button
+                  variant="outline" size="sm" onClick={() => openEmailPreview("welcome")}
+                  className="whitespace-normal text-left h-auto py-2"
+                  style={{ flex: "1 1 220px" }}
+                >
+                  <Mail size={14} color={order.welcome_email_sent_at ? "#059669" : undefined} style={{ flexShrink: 0 }} />
                   {order.welcome_email_sent_at ? "Вітальне повідомлення — переглянути / надіслати повторно" : "Вітальне повідомлення — переглянути й надіслати"}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => openEmailPreview("invoice")}>
-                  <Mail size={14} />
+                <Button
+                  variant="outline" size="sm" onClick={() => openEmailPreview("invoice")}
+                  className="whitespace-normal text-left h-auto py-2"
+                  style={{ flex: "1 1 220px" }}
+                >
+                  <Mail size={14} style={{ flexShrink: 0 }} />
                   {step === -1 ? "Рахунок — переглянути й надіслати" : "Рахунок — переглянути й надіслати повторно"}
                 </Button>
                 {step >= 1 && (
-                  <Button variant="outline" size="sm" onClick={() => openEmailPreview("confirmed")}>
-                    <Mail size={14} />
+                  <Button
+                    variant="outline" size="sm" onClick={() => openEmailPreview("confirmed")}
+                    className="whitespace-normal text-left h-auto py-2"
+                    style={{ flex: "1 1 220px" }}
+                  >
+                    <Mail size={14} style={{ flexShrink: 0 }} />
                     Лист-подяка — переглянути й надіслати повторно
                   </Button>
                 )}
@@ -2341,6 +2395,11 @@ export default function OrderDetailPage() {
                 Замовлення вже оплачено — зміна кількості тут не перерахує автоматично залишки на складі (списання відбулось один раз при підтвердженні оплати).
               </div>
             )}
+            {/* Scrolls within itself on phone instead of stretching the
+                whole page horizontally — this table's columns (photo +
+                name, price, qty, sum, actions) genuinely need more than a
+                375px-wide screen has to give. */}
+            <div style={{ overflowX: "auto" }}>
             <table className="crm-table">
               <thead>
                 <tr>
@@ -2466,6 +2525,7 @@ export default function OrderDetailPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
 
             {/* Also flips editingItems on — a new line always starts at
                 quantity 1, and without edit mode already active there was
@@ -2563,13 +2623,18 @@ export default function OrderDetailPage() {
             )}
 
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-              <div className="space-y-1">
+              <div className="space-y-1" style={{ flex: "1 1 200px", minWidth: 0 }}>
                 <Label style={{ fontSize: 12 }}>Товар</Label>
+                {/* width:100% — a native <select> with no explicit width
+                    sizes itself to its widest <option> text, and a full
+                    product name easily runs past a phone's whole screen
+                    width (measured live: 793px wide on a 375px viewport,
+                    stretching the entire page into horizontal scroll). */}
                 <select
                   value={returnProduct}
                   onChange={(e) => setReturnProduct(e.target.value)}
                   className="crm-select"
-                  style={{ height: 36, borderRadius: 8, border: "1px solid var(--border)", padding: "0 8px", background: "var(--bg)" }}
+                  style={{ height: 36, width: "100%", borderRadius: 8, border: "1px solid var(--border)", padding: "0 8px", background: "var(--bg)" }}
                 >
                   <option value="">Оберіть товар…</option>
                   {/* Removed lines are excluded — a return only makes sense

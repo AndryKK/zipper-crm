@@ -2,10 +2,18 @@ import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
 import { isPathAllowed } from "@/lib/roles";
+import { verifyOrderDocToken } from "@/lib/doc-token";
 
 const { auth } = NextAuth(authConfig);
 
-export default auth((req) => {
+// Order documents (receipt/invoice/waybill) opened from a Viber link (see
+// app/(admin)/orders/[id]/viber-messages) carry their own ?token= instead
+// of a session — this blanket API auth gate would otherwise 401 a customer
+// before the route handler (which already knows how to check that token)
+// ever runs.
+const DOC_ROUTE = /^\/api\/orders\/(\d+)\/(receipt|invoice|waybill)$/;
+
+export default auth(async (req) => {
   const isLoggedIn = !!req.auth;
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
@@ -13,10 +21,14 @@ export default auth((req) => {
   const isCron = req.nextUrl.pathname.startsWith("/api/cron/");
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 
+  const docMatch = req.nextUrl.pathname.match(DOC_ROUTE);
+  const isPublicDocLink = !isLoggedIn && !!docMatch &&
+    await verifyOrderDocToken(parseInt(docMatch[1]), req.nextUrl.searchParams.get("token"));
+
   // Webhooks (e.g. Supabase Database Webhooks) and Vercel Cron invocations
   // never carry an admin session cookie — they authenticate via their own
   // shared-secret/Bearer header instead, checked inside the route handler.
-  if (isApiAuth || isWebhook || isCron) return NextResponse.next();
+  if (isApiAuth || isWebhook || isCron || isPublicDocLink) return NextResponse.next();
   if (isApiRoute && !isLoggedIn) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

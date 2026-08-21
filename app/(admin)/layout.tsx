@@ -115,6 +115,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           display: "flex",
           flexDirection: "column",
           minHeight: "100vh",
+          // A flex item's default min-width is "auto" — the intrinsic
+          // width of its widest unbreakable content, not 0 — so without
+          // this, any page whose content has an unbreakable element wider
+          // than the viewport (e.g. the order pipeline stepper's fixed-
+          // width steps) silently stretches this whole flex item past the
+          // viewport instead of letting that one element scroll/shrink,
+          // pushing the entire admin shell into horizontal scroll on
+          // phones. Confirmed live: without this, /orders/[id] rendered
+          // 875px wide on a 375px viewport.
+          minWidth: 0,
         }}
       >
         {children}

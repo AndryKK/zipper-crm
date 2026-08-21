@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -160,6 +161,7 @@ interface OrderRow {
 }
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [filter, setFilter] = useState<QuickFilterId>("all");
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
@@ -193,8 +195,15 @@ export default function OrdersPage() {
   return (
     <>
       <Header title="Замовлення" />
-      <div className="p-6 space-y-4">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Horizontally scrollable on phone instead of wrapping to N lines
+            of chips — a swipeable single row reads better at 375px than a
+            wrapped block eating vertical space before any actual orders
+            are visible. */}
+        <div
+          className="hide-scrollbar"
+          style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}
+        >
           {QUICK_FILTERS.map((f) => {
             const Icon = f.icon;
             const active = filter === f.id;
@@ -216,6 +225,7 @@ export default function OrdersPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 <Icon size={13} />
@@ -225,18 +235,109 @@ export default function OrdersPage() {
           })}
         </div>
 
-        <div style={{ position: "relative", maxWidth: 360 }}>
+        <div style={{ position: "relative" }} className="max-w-full md:max-w-[360px]">
           <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input
             className="crm-input"
-            placeholder="Пошук за номером замовлення, клієнтом, телефоном, логіном, ТТН..."
+            placeholder="Пошук за номером, клієнтом, телефоном, логіном, ТТН..."
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             style={{ paddingLeft: 36 }}
           />
         </div>
 
-        <div className="crm-card overflow-hidden">
+        {/* ── Mobile card list (< md) ──────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            <div className="crm-card" style={{ padding: "40px 16px", textAlign: "center", color: "var(--text-muted)" }}>
+              Завантаження...
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="crm-card" style={{ padding: "40px 16px", textAlign: "center", color: "var(--text-muted)" }}>
+              Замовлень немає
+            </div>
+          ) : (
+            orders.map((order) => {
+              const orderTotal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
+              return (
+                // A plain div (not <Link>/<a>) — the phone number inside
+                // needs its own real <a href="tel:...">, and nested <a>
+                // tags are invalid HTML (React hydration error in dev,
+                // undefined browser behavior in prod: the outer link's
+                // click handler wins over the inner one).
+                <div
+                  key={order.id}
+                  onClick={() => router.push(`/orders/${order.id}`)}
+                  className="crm-card block"
+                  style={{ padding: 14, cursor: "pointer" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <SiteBadge type={order.type} isPremiumUser={order.isPremiumUser} />
+                      <span className="font-mono" style={{ fontSize: 13, color: "var(--text-muted)", flexShrink: 0 }}>
+                        #{order.id}
+                      </span>
+                      {order.welcome_email_sent_at && (
+                        <span title="Вітальне повідомлення надіслано">
+                          <Mail size={12} color="#059669" />
+                        </span>
+                      )}
+                    </div>
+                    <span className={orderStatusClass(order.status)} style={{ flexShrink: 0 }}>
+                      {orderStatusLabel(order.status)}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
+                    {order.person ?? order.login ?? "—"}
+                  </div>
+                  {order.phone && (
+                    <a
+                      href={`tel:${order.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none", fontFamily: "monospace" }}
+                    >
+                      {order.phone}
+                    </a>
+                  )}
+                  {order.addr_delivery && (
+                    <div
+                      style={{
+                        fontSize: 12.5, color: "var(--text-muted)", marginTop: 4,
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      {order.addr_delivery}
+                    </div>
+                  )}
+                  {order.ttn && (
+                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)", opacity: 0.8, marginTop: 2 }}>
+                      ТТН: {order.ttn}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {(order.items || []).length} тов. · {formatDate(order.date)}
+                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+                      {orderTotal.toFixed(2)} грн
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────────── */}
+        <div className="crm-card overflow-hidden hidden md:block">
           <table className="crm-table">
             <thead>
               <tr>

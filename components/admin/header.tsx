@@ -64,6 +64,13 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
             ))}
           </div>
         )}
+        {/* Single line + ellipsis, not wrap — on a narrow phone with a
+            wide actions/theme/user cluster on the right, a long title had
+            almost no width left and wrapped to 3 cramped lines that
+            visually ran into the actions next to it (measured live: 76px
+            wide for "Замовлення #20807" on a 375px screen). Truncating
+            keeps the header a predictable single-line height everywhere;
+            the full title is still on the page below in every case here. */}
         <h1
           style={{
             fontSize: 18,
@@ -71,6 +78,9 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
             color: "var(--text)",
             lineHeight: 1.2,
             margin: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {title}
@@ -87,12 +97,21 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
 
         <ThemeToggle />
 
+        {/* Name text and horizontal padding drop below `sm` — on the
+            narrowest phones (iPhone SE etc.), this pill plus the theme
+            toggle plus any page actions left almost no room for the page
+            title, forcing it into an aggressively wrapped, near-1-char-wide
+            column (measured live: an 84px-tall 3-line wrap for
+            "Замовлення #20807" on a 375px screen). The avatar alone is
+            enough to show "you're logged in" at a glance on mobile. */}
         <div
+          className="px-1.5 sm:px-3"
           style={{
             display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "6px 12px",
+            paddingTop: 6,
+            paddingBottom: 6,
             background: "var(--bg)",
             border: "1px solid var(--border)",
             borderRadius: 8,
@@ -109,11 +128,12 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <User size={12} color="#fff" />
           </div>
-          <span style={{ fontWeight: 500 }}>{session?.user?.name ?? "Адмін"}</span>
+          <span className="hidden sm:inline" style={{ fontWeight: 500 }}>{session?.user?.name ?? "Адмін"}</span>
         </div>
       </div>
     </header>

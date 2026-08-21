@@ -257,6 +257,11 @@ body {
   }
 }
 
+/* Swipeable horizontal chip rows (orders list quick filters on phone) —
+   still scrolls via touch/trackpad, just without a visible scrollbar. */
+.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
 /* ─── Utility classes ─── */
 .animate-fade-in  { animation: fadeIn 0.35s ease both; }
 .animate-scale-in { animation: scaleIn 0.25s ease both; }
