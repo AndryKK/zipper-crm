@@ -64,7 +64,119 @@ export default async function TopSalesPage() {
               <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Даних продажів ще немає</p>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <>
+              {/* ── Mobile card list (< md) ──────────────────────────────── */}
+              <div className="md:hidden space-y-3" style={{ padding: 12 }}>
+                {items.map((item) => {
+                  const pct = Math.round((item.quantity / maxQty) * 100);
+                  return (
+                    <ProductQuickView
+                      key={item.pid}
+                      product={item.product}
+                      quantity={item.quantity}
+                      revenue={item.revenue}
+                      rank={item.rank}
+                      variant="card"
+                    >
+                      <div className="crm-card" style={{ padding: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 8,
+                              flexShrink: 0,
+                              background: item.rank <= 3
+                                ? `linear-gradient(135deg, ${["#f59e0b","#94a3b8","#92400e"][item.rank - 1]}, ${["#d97706","#64748b","#78350f"][item.rank - 1]})`
+                                : "var(--bg)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 12,
+                              fontWeight: 800,
+                              color: item.rank <= 3 ? "#fff" : "var(--text-muted)",
+                            }}
+                          >
+                            {item.rank}
+                          </div>
+                          {item.product?.img ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={getImgUrl(item.product.img, "products")}
+                              alt={item.product.title}
+                              style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "var(--bg)" }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 8,
+                                flexShrink: 0,
+                                background: "var(--bg)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              —
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.product?.title ?? `#${item.pid}`}
+                            </div>
+                            {item.product?.pcode && (
+                              <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                {item.product.pcode}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Продано</div>
+                            <div style={{ fontWeight: 700, fontFamily: "monospace" }}>{item.quantity}</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Виручка</div>
+                            <div style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--success)" }}>
+                              {item.revenue.toLocaleString("uk-UA")} ₴
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ height: 6, borderRadius: 3, background: "var(--border)", overflow: "hidden" }}>
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${pct}%`,
+                                background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
+                            {pct}%
+                          </div>
+                        </div>
+                      </div>
+                    </ProductQuickView>
+                  );
+                })}
+              </div>
+
+              {/* ── Desktop table (>= md) ────────────────────────────────── */}
+              <div className="hidden md:block" style={{ overflowX: "auto" }}>
               <table className="crm-table">
                 <thead>
                   <tr>
@@ -179,7 +291,8 @@ export default async function TopSalesPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

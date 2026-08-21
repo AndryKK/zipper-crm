@@ -24,22 +24,33 @@ export function ProductQuickView({
   revenue,
   rank,
   children,
+  // "row" wraps children in a <tr> (the desktop table). "card" wraps them
+  // in a plain clickable <div> instead — same Dialog, same click-to-open
+  // behavior, just a different container for the mobile card layout.
+  variant = "row",
 }: {
   product: Product;
   quantity: number;
   revenue: number;
   rank: number;
   children: React.ReactNode;
+  variant?: "row" | "card";
 }) {
   const [open, setOpen] = useState(false);
 
-  if (!product) return <tr>{children}</tr>;
+  if (!product) return variant === "card" ? <>{children}</> : <tr>{children}</tr>;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <tr onClick={() => setOpen(true)} style={{ cursor: "pointer" }}>
-        {children}
-      </tr>
+      {variant === "card" ? (
+        <div onClick={() => setOpen(true)} style={{ cursor: "pointer" }}>
+          {children}
+        </div>
+      ) : (
+        <tr onClick={() => setOpen(true)} style={{ cursor: "pointer" }}>
+          {children}
+        </tr>
+      )}
       <DialogContent style={{ maxWidth: 480 }}>
         <DialogHeader>
           <DialogTitle>Товар #{rank}</DialogTitle>
