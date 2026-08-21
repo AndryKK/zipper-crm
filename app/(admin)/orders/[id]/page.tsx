@@ -1029,13 +1029,13 @@ export default function OrderDetailPage() {
                         onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
                         style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.22)", cursor: "pointer" }}
                       >
-                        Накладна
+                        Видаткова
                       </button>
                       <button
                         onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
                         style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.22)", cursor: "pointer" }}
                       >
-                        Видаткова
+                        Накладна
                       </button>
                     </div>
                   )}
@@ -2039,7 +2039,7 @@ export default function OrderDetailPage() {
                     onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
-                    <FileText size={14} /> Видаткова зі знижкою
+                    <FileText size={14} /> Накладна зі знижкою
                   </button>
                   <button
                     onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
@@ -2051,7 +2051,7 @@ export default function OrderDetailPage() {
                     onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
                   >
-                    <ClipboardList size={14} /> Накладна
+                    <ClipboardList size={14} /> Видаткова
                   </button>
                 </div>
               )}
@@ -2158,7 +2158,7 @@ export default function OrderDetailPage() {
                       onClick={() => window.open(`/api/orders/${params.id}/receipt`, "_blank")}
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", border: "none", cursor: "pointer" }}
                     >
-                      <FileText size={14} /> Видаткова зі знижкою
+                      <FileText size={14} /> Накладна зі знижкою
                     </button>
                     <button
                       onClick={() => window.open(`/api/orders/${params.id}/invoice`, "_blank")}
@@ -2170,7 +2170,7 @@ export default function OrderDetailPage() {
                       onClick={() => window.open(`/api/orders/${params.id}/waybill`, "_blank")}
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", border: "none", cursor: "pointer" }}
                     >
-                      <ClipboardList size={14} /> Накладна
+                      <ClipboardList size={14} /> Видаткова
                     </button>
                   </div>
                 </div>
