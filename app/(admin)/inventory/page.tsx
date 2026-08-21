@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import {
-  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package,
+  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -92,7 +92,18 @@ function StatTile({
   );
   return (
     <div style={{ background: "var(--bg)", borderRadius: 8, padding: "8px 10px" }}>
-      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 2, display: "flex", alignItems: "center", gap: 4 }}>
+        {label}
+        {/* Tapping the value opens the history dialog, but on a phone
+            there's no hover to reveal that the way the desktop table's
+            dotted underline does — a small icon makes it obvious without
+            having to tap first to find out. */}
+        {onClick && (
+          <span title="Тапніть, щоб переглянути історію" style={{ display: "inline-flex" }}>
+            <History size={10} />
+          </span>
+        )}
+      </div>
       {onClick ? (
         <button
           onClick={onClick}
@@ -362,8 +373,12 @@ function InventoryContent() {
         title="Залишки на складі"
         subtitle={currentWarehouse ? `${currentWarehouse.title}` : "Оберіть склад"}
         actions={
+          // Label hidden below `sm`, matching TranslateButton elsewhere —
+          // full text left almost no room for the title/subtitle next to
+          // it (measured: the title truncated to a couple of characters,
+          // and the row still overflowed the screen by a few pixels).
           <button className="btn-primary" onClick={() => setShowAdd(true)}>
-            <Plus size={14} /> Додати запис
+            <Plus size={14} /> <span className="hidden sm:inline">Додати запис</span>
           </button>
         }
       />
