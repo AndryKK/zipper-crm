@@ -254,11 +254,11 @@ export default async function ProductsPage({
   return (
     <>
       <Header title={activeCategoryTitle ? `Товари — ${activeCategoryTitle}` : catId === 0 ? "Товари — без категорії" : "Товари"} />
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4">
+      <div className="p-4 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <ProductsSearch defaultValue={q} />
-          <Link href={`/products/new${catId !== undefined ? `?cat=${catId}` : ""}`}>
-            <Button><Plus className="h-4 w-4 mr-1.5" />Додати товар</Button>
+          <Link href={`/products/new${catId !== undefined ? `?cat=${catId}` : ""}`} className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1.5" />Додати товар</Button>
           </Link>
         </div>
 
@@ -271,7 +271,100 @@ export default async function ProductsPage({
           )}
         </div>
 
-        <div className="crm-card overflow-hidden">
+        {/* ── Mobile card list (< md) ──────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {allProductsWithOrphans.map((product: any) => {
+            const avail = AVAILABILITY[product.package as number] ?? AVAILABILITY[1];
+            const url = productUrlById.get(product.id);
+            const category = catMap.get(product.translation_id);
+            return (
+              <div key={product.id} className="crm-card" style={{ padding: 14 }}>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {product.img ? (
+                    <ImageZoom
+                      src={getImgUrl(product.img, "products")}
+                      alt={product.title}
+                      className="h-12 w-12 rounded object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded flex items-center justify-center text-xs flex-shrink-0" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>—</div>
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>#{product.id}</div>
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium"
+                        style={{ color: "inherit", textDecoration: "none" }}
+                      >
+                        {product.title}
+                      </a>
+                    ) : (
+                      <div className="font-medium">{product.title}</div>
+                    )}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                      {product.label_action === 1 && <Badge variant="warning">Акція</Badge>}
+                      {product.lang && product.lang !== "uk" && (
+                        <Badge variant="secondary">Без UK, {product.lang.toUpperCase()}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-medium whitespace-nowrap" style={{ textAlign: "right", flexShrink: 0 }}>
+                    {product.price_sale ? (
+                      <>
+                        <div className="text-red-600">{Number(product.price_sale).toFixed(2)}</div>
+                        <div className="line-through text-xs" style={{ color: "var(--text-muted)" }}>{Number(product.price).toFixed(2)}</div>
+                      </>
+                    ) : (
+                      <div>{Number(product.price).toFixed(2)}</div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                    marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                      {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
+                    </div>
+                    {category && (
+                      <div
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {category}
+                      </div>
+                    )}
+                  </div>
+                  <Badge variant={avail.variant} className="inline-flex items-center gap-1" style={{ flexShrink: 0 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: avail.dot, flexShrink: 0 }} />
+                    {avail.title}
+                  </Badge>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 8 }}>
+                  <EditProductLink productId={product.id} />
+                  <DuplicateProductButton productId={product.id} />
+                  <DeleteProductButton productId={product.id} />
+                </div>
+              </div>
+            );
+          })}
+          {allProductsWithOrphans.length === 0 && (
+            <div className="crm-card" style={{ padding: "48px 16px", textAlign: "center", color: "var(--text-muted)" }}>
+              Товарів не знайдено
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ────────────────────────────────────── */}
+        <div className="crm-card overflow-hidden hidden md:block">
           <table className="crm-table">
             <thead>
               <tr>

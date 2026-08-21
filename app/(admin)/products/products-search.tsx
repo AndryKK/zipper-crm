@@ -10,7 +10,7 @@ export function ProductsSearch({ defaultValue }: { defaultValue: string }) {
   const [isPending, startTransition] = useTransition();
 
   return (
-    <div className="relative max-w-xs">
+    <div className="relative w-full sm:max-w-xs">
       <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
       <Input
         defaultValue={defaultValue}
