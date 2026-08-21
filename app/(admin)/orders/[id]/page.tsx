@@ -1428,7 +1428,19 @@ export default function OrderDetailPage() {
 
         {/* ── WAREHOUSE STOCK-CONFIRMATION POPUP ─────────────────────────── */}
         <Dialog open={showStockConfirm} onOpenChange={setShowStockConfirm}>
-          <DialogContent style={{ maxWidth: 680 }}>
+          {/* This popup's content (item checklist + add-item + discount +
+              supplier picker + footer buttons) is taller than a phone
+              viewport. The base DialogContent vertically centers with no
+              height cap, so on mobile it overflowed both above and below
+              the screen with no way to scroll down to the confirm button.
+              Below `sm` it's anchored near the top with its own capped,
+              scrollable height instead; at `sm` and up every value is
+              reasserted back to the component's original centered,
+              uncapped layout — desktop is unchanged. */}
+          <DialogContent
+            style={{ maxWidth: 680 }}
+            className="top-4 translate-y-0 max-h-[calc(100vh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
+          >
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Package size={16} /> Перевірка наявності на складі
@@ -1467,13 +1479,19 @@ export default function OrderDetailPage() {
               {activeItems.map((item: any) => (
                 <div
                   key={item.id}
+                  // Stacked on mobile (checkbox+photo+title on their own
+                  // line, qty/remove below) — at the fixed single-row width
+                  // this had before, the title's flex:1 share shrank to
+                  // ~100px on a phone and wrapped one word per line. `sm:`
+                  // restores the exact original single-row layout.
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5"
                   style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                    padding: "8px 10px",
                     borderRadius: 8, border: "1px solid var(--border)",
                     background: stockChecks[item.id] ? "rgba(16,185,129,0.08)" : "transparent",
                   }}
                 >
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, cursor: "pointer" }}>
+                  <label className="flex items-center gap-2.5 flex-1 min-w-0" style={{ cursor: "pointer" }}>
                     <input
                       type="checkbox"
                       checked={!!stockChecks[item.id]}
@@ -1516,25 +1534,31 @@ export default function OrderDetailPage() {
                       popup has no per-row "Save" button the way the main
                       table's editingItems mode does. Outside the <label>
                       on purpose, alongside the remove button, so a click
-                      here never risks also toggling the checkbox. */}
-                  <Input
-                    type="number" min={1} step="1"
-                    defaultValue={item.quantity}
-                    key={`${item.id}-${item.quantity}`}
-                    onBlur={(e) => { if (e.target.value !== String(item.quantity)) saveItemQuantity(item.id, e.target.value); }}
-                    disabled={savingItemId === item.id}
-                    style={{ width: 60, flexShrink: 0, textAlign: "right", height: 32 }}
-                    title="Кількість"
-                  />
-                  <span style={{ flexShrink: 0, fontSize: 11.5, color: "var(--text-muted)" }}>шт</span>
-                  <button
-                    onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
-                    disabled={savingItemId === item.id}
-                    style={{ flexShrink: 0, padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
-                    title="Прибрати з замовлення"
-                  >
-                    <X size={14} />
-                  </button>
+                      here never risks also toggling the checkbox.
+                      `sm:contents` unwraps this div at `sm`+ so Input/span/
+                      button become direct flex children of the row again —
+                      identical desktop DOM/spacing to before; below `sm` it
+                      stays a real row, the stacked 2nd line under the label. */}
+                  <div className="flex items-center gap-2 sm:contents">
+                    <Input
+                      type="number" min={1} step="1"
+                      defaultValue={item.quantity}
+                      key={`${item.id}-${item.quantity}`}
+                      onBlur={(e) => { if (e.target.value !== String(item.quantity)) saveItemQuantity(item.id, e.target.value); }}
+                      disabled={savingItemId === item.id}
+                      style={{ width: 60, flexShrink: 0, textAlign: "right", height: 32 }}
+                      title="Кількість"
+                    />
+                    <span style={{ flexShrink: 0, fontSize: 11.5, color: "var(--text-muted)" }}>шт</span>
+                    <button
+                      onClick={() => setRemoveItemConfirm({ id: item.id, title: item.productTitle ?? `Товар #${item.product}` })}
+                      disabled={savingItemId === item.id}
+                      style={{ flexShrink: 0, padding: 5, borderRadius: 6, background: "rgba(220,38,38,0.1)", color: "#dc2626", border: "none", cursor: "pointer", display: "flex" }}
+                      title="Прибрати з замовлення"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1637,9 +1661,10 @@ export default function OrderDetailPage() {
                 За замовчуванням постачальник обирається автоматично за сумою замовлення й порогом у налаштуваннях — тут можна змінити лише для цього конкретного замовлення.
               </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
-              <Button variant="outline" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-2.5 mt-1">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowStockConfirm(false)}>Скасувати</Button>
               <Button
+                className="w-full sm:w-auto"
                 onClick={confirmStockAndProcess}
                 disabled={!activeItems.length || !activeItems.every((i: { id: number }) => stockChecks[i.id])}
                 style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)", border: "none", color: "#fff", gap: 8 }}
