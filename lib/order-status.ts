@@ -4,6 +4,13 @@
 // so a card on the dashboard is colored identically to the matching row
 // on the real orders list, not just similarly.
 
+// The six real statuses an order can be in, in canonical pipeline order —
+// same order PIPELINE/ALL_STATUSES in app/(admin)/orders/[id]/page.tsx
+// use. Exported so anything that needs to always show all six (even ones
+// with zero matching orders right now, e.g. the dashboard's status pie
+// chart legend) doesn't have to duplicate this list.
+export const ORDER_STATUSES = ["Новий", "В роботі", "Оплачено", "Відправлено", "Завершено", "Скасовано"] as const;
+
 // Brand-new/unprocessed orders carry the literal English status "new"
 // (lowercase — a legacy leftover, confirmed against the live orders table:
 // order #1 and presumably every never-touched order have status="new",

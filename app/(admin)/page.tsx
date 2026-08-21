@@ -6,7 +6,7 @@ import { DashboardCharts } from "@/components/admin/dashboard-charts";
 import { StatCard } from "@/components/admin/stat-card";
 import { TranslateButton } from "@/components/admin/translate-button";
 import { unstable_cache } from "next/cache";
-import { orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
+import { orderStatusLabel, orderStatusClass, orderRowClass, isNewStatus, ORDER_STATUSES } from "@/lib/order-status";
 
 // This is the CRM's most-visited page — force-dynamic meant every single
 // visit re-ran all 11 queries below from scratch, including a full fetch of
@@ -21,18 +21,16 @@ const getStats = unstable_cache(_getStats, ["dashboard-stats"], { revalidate: 12
 // fix): "Завершен"/"Завершено" are the same state, just spelled
 // differently depending on where the row came from. Normalize before
 // counting so the pie chart doesn't split one real status into two
-// differently-colored slices. The recent-orders list below does NOT use
-// this — it renders each order's raw status through the exact same
-// orderStatusLabel/orderStatusClass/orderRowClass (lib/order-status.ts)
-// the real /orders list uses, so a card/row here is colored identically
-// to the matching row there, including that page's own (different, older)
-// take on "Отримано"/"Получен" — not a second, competing interpretation.
+// differently-colored slices. "Новий"-like statuses (null, "new",
+// "Отримано"/"Получен" — the storefront's "we received the order", not a
+// distinct pipeline stage) are bucketed via isNewStatus(), the same check
+// used everywhere else a status is shown (recent-orders list below,
+// /orders, the order-detail page) — this used to be a separate exact-match
+// table that didn't cover "Отримано"/"Получен", so an order in that state
+// silently miscounted as "Завершено" instead of "Новий".
 const STATUS_DISPLAY: Record<string, string> = {
   "Завершен": "Завершено",
-  "Отримано": "Завершено",
-  "Получен": "Завершено",
   "В работе": "В роботі",
-  "new": "Новий",
 };
 
 async function _getStats() {
@@ -111,13 +109,17 @@ async function _getStats() {
   const statusMap: Record<string, number> = {};
   for (const o of monthOrderRows || []) {
     if (new Date(o.date as string) < weekAgo) continue;
-    const raw = (o.status as string) || "Новий";
-    const s = STATUS_DISPLAY[raw] ?? raw;
+    const raw = (o.status as string) || "";
+    const s = isNewStatus(raw) ? "Новий" : (STATUS_DISPLAY[raw] ?? raw);
     statusMap[s] = (statusMap[s] || 0) + 1;
   }
-  const statusData = Object.entries(statusMap)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+  // Always all six canonical statuses, in pipeline order, even ones with
+  // zero orders this week — a manager scanning the legend for "how many
+  // are still Відправлено" shouldn't have that row silently vanish just
+  // because it happens to be 0 right now, and the fixed order stops rows
+  // jumping around week to week (the old sort-by-count-descending did
+  // both of these wrong).
+  const statusData = ORDER_STATUSES.map((name) => ({ name, value: statusMap[name] ?? 0 }));
 
   return {
     productsCount: productsCount ?? 0,

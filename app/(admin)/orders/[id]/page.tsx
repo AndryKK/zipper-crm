@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
+import { orderStatusLabel } from "@/lib/order-status";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { NpAddressPicker } from "@/components/admin/np-address-picker";
 import {
@@ -270,7 +271,13 @@ export default function OrderDetailPage() {
     apiFetch<any>(`/api/orders/${params.id}`).then((data) => {
       if (!data) return;
       setOrder(data);
-      setStatus(data.status ?? "");
+      // Legacy raw statuses like "Получен"/"Отримано" (storefront's "we
+      // received the order", not a distinct pipeline stage — see
+      // isNewStatus() in lib/order-status.ts) get normalized to the
+      // canonical "Новий" here, same as everywhere else it's displayed
+      // (/orders list, dashboard). Editing this dropdown must never offer
+      // the raw legacy string as its own option.
+      setStatus(orderStatusLabel(data.status));
       setNotes(data.notes ?? "");
       setTtn(data.ttn ?? "");
       setResendEmail(data.login ?? "");
@@ -302,7 +309,7 @@ export default function OrderDetailPage() {
     // from that panel would silently overwrite the real TTN with the
     // stale empty value. See advanceStatus() above for the other half of
     // this same bug class.
-    if (updated) { setOrder(updated); setStatus(updated.status ?? ""); setPrepaymentInput(String(updated.prepayment ?? 0)); setTtn(updated.ttn ?? ""); }
+    if (updated) { setOrder(updated); setStatus(orderStatusLabel(updated.status)); setPrepaymentInput(String(updated.prepayment ?? 0)); setTtn(updated.ttn ?? ""); }
   }
 
   // Silently checks Nova Poshta's delivery status once whenever a shipped
@@ -2366,9 +2373,6 @@ export default function OrderDetailPage() {
                     <SelectValue placeholder="Оберіть статус" />
                   </SelectTrigger>
                   <SelectContent>
-                    {!ALL_STATUSES.find((s) => s.label === status) && status && (
-                      <SelectItem value={status}>{status}</SelectItem>
-                    )}
                     {ALL_STATUSES.map((s) => (
                       <SelectItem key={s.label} value={s.label}>
                         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>

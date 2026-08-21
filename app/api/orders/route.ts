@@ -13,12 +13,34 @@ const PAGE_SIZE = 15;
 // Ukrainian and Russian status text for the same real states.
 type QuickFilter = "all" | "new" | "payment" | "shipping";
 
+// Exact-status deep link from the dashboard's "Статуси замовлень" pie
+// chart (app/(admin)/page.tsx) — that chart counts orders via
+// lib/order-status.ts's isNewStatus() for the "Новий" bucket (Отримано/
+// Получен included, same as everywhere else in the app), so clicking a
+// slice showing "9" must land here on exactly those 9 orders. Kept as its
+// own table (not the "payment"/"shipping" quick filters above) since this
+// needs all six exact pipeline names, not just those two fuzzy buckets.
+const STATUS_FILTER_CLAUSES: Record<string, string> = {
+  "Новий": "status.is.null,status.ilike.new,status.ilike.*нов*,status.ilike.*отримано*,status.ilike.*получен*",
+  "В роботі": "status.ilike.*в работ*,status.ilike.*в робот*",
+  "Оплачено": "status.ilike.*оплач*",
+  "Відправлено": "status.ilike.*відправлен*,status.ilike.*отправлен*",
+  "Завершено": "status.ilike.*завершен*",
+  "Скасовано": "status.ilike.*скасован*,status.ilike.*отмен*",
+};
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const filter = (searchParams.get("filter") ?? "all") as QuickFilter;
+  const status = searchParams.get("status") ?? "";
+  // Only meaningful together with status= — the dashboard pie chart counts
+  // a fixed trailing window (currently 7 days), so a click-through link
+  // that only carried status= would land on every order of that status
+  // ever (tens of thousands), not the handful the chart actually counted.
+  const days = parseInt(searchParams.get("days") ?? "");
   const q = searchParams.get("q") ?? "";
   const page = parseInt(searchParams.get("page") ?? "1");
 
@@ -55,9 +77,24 @@ export async function GET(req: NextRequest) {
   // order", not "customer received the parcel"): verified directly
   // against the live table, all 89 orders with this status have both
   // ttn=null and pay_method=null, i.e. none were ever paid or shipped.
-  // See isNewStatus() in app/(admin)/orders/page.tsx for the same check
-  // applied client-side to row coloring/labeling.
-  if (filter === "new") query = query.or("status.is.null,status.ilike.new,status.ilike.*нов*,status.ilike.*отримано*,status.ilike.*получен*");
+  // See isNewStatus() in lib/order-status.ts for the same check applied
+  // client-side to row coloring/labeling.
+  //
+  // A status= deep link (from the dashboard pie chart) takes priority
+  // over the filter= quick-filter buckets — the two are never both
+  // present in practice (the pie-chart link only ever sends status=), but
+  // status= being the more specific ask is the more sensible tiebreak if
+  // a URL somehow carried both.
+  const statusClause = STATUS_FILTER_CLAUSES[status];
+  if (statusClause) {
+    query = query.or(statusClause);
+    if (Number.isFinite(days) && days > 0) {
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      query = query.gte("date", since.toISOString());
+    }
+  }
+  else if (filter === "new") query = query.or("status.is.null,status.ilike.new,status.ilike.*нов*,status.ilike.*отримано*,status.ilike.*получен*");
   else if (filter === "payment") query = query.ilike("status", "%в робот%");
   else if (filter === "shipping") query = query.ilike("status", "%оплач%");
 

@@ -1,14 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail } from "lucide-react";
+import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail, X } from "lucide-react";
 import { Pagination } from "@/components/admin/data-table-controls";
 import { isNewStatus, orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
+
+// useSearchParams() below (reading a status= deep link from the dashboard
+// pie chart) requires a Suspense boundary during static generation —
+// unlike app/(admin)/users/page.tsx (a server component wrapping a
+// separate client child, where force-dynamic on the server page alone was
+// enough), this whole file is one client component, so force-dynamic here
+// doesn't skip the same build-time prerender check; the actual fix is the
+// Suspense wrapper around OrdersPageInner below.
+export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 15;
 
@@ -125,8 +134,41 @@ interface OrderRow {
   isPremiumUser: boolean;
 }
 
-export default function OrdersPage() {
+function OrdersPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Deep link from the dashboard's "Статуси замовлень" pie chart
+  // (/orders?status=Завершено&days=7) — an exact-status filter distinct
+  // from the filter= quick-filter pills below (see STATUS_FILTER_CLAUSES
+  // in app/api/orders/route.ts for why it can't just reuse them). days
+  // matches that chart's own "last 7 days" window — without it, clicking
+  // a slice that says "9" landed on every order of that status ever
+  // (20,000+), not the 9 the chart actually counted.
+  // Read directly from the initial URL via lazy useState initializers
+  // (not a useEffect syncing from searchParams) — an effect-based sync
+  // still lets the very first load() fire with the pre-sync (empty)
+  // filter before the corrected one lands a render later, so a fast
+  // network genuinely displayed the wrong total handful of moments before
+  // self-correcting.
+  const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get("status"));
+  const [statusDays, setStatusDays] = useState<string | null>(() => searchParams.get("days"));
+
+  // Re-sync when the URL's query changes out from under an already-mounted
+  // instance of this page — e.g. clicking the sidebar's "Замовлення" link
+  // while already viewing a filtered /orders?status=... URL: Next keeps
+  // this client component mounted across that navigation (same route), so
+  // the lazy useState initializers above never re-run and the filter chip
+  // stayed stuck showing the old status. Safe against the original mount-
+  // time race this replaced (see the initializers' own comment): on first
+  // mount this sets the exact same values the initializers already read,
+  // which React no-ops (same primitive), so it never fires an extra load()
+  // — it only actually changes state (and triggers load() via the normal
+  // dependency chain) on a genuine later URL change.
+  useEffect(() => {
+    setStatusFilter(searchParams.get("status"));
+    setStatusDays(searchParams.get("days"));
+  }, [searchParams]);
+
   const [filter, setFilter] = useState<QuickFilterId>("all");
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
@@ -137,17 +179,23 @@ export default function OrdersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ filter, page: String(page), limit: String(PAGE_SIZE) });
+    const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+    if (statusFilter) {
+      params.set("status", statusFilter);
+      if (statusDays) params.set("days", statusDays);
+    } else {
+      params.set("filter", filter);
+    }
     if (q) params.set("q", q);
     const res = await fetch(`/api/orders?${params}`);
     const data = await res.json();
     setOrders(data.items ?? []);
     setTotal(data.total ?? 0);
     setLoading(false);
-  }, [filter, page, q]);
+  }, [filter, statusFilter, statusDays, page, q]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [filter, q]);
+  useEffect(() => { setPage(1); }, [filter, statusFilter, q]);
 
   // Debounce search input before it hits the server.
   useEffect(() => {
@@ -169,13 +217,28 @@ export default function OrdersPage() {
           className="hide-scrollbar"
           style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}
         >
+          {statusFilter && (
+            <button
+              onClick={() => { setStatusFilter(null); setStatusDays(null); }}
+              title="Прибрати фільтр за статусом"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 13px", borderRadius: 999,
+                border: "1px solid var(--accent)", background: "var(--accent)",
+                color: "#fff", fontSize: 12.5, fontWeight: 600,
+                cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+              }}
+            >
+              Статус: {statusFilter}{statusDays ? ` · ${statusDays} дн.` : ""} <X size={13} />
+            </button>
+          )}
           {QUICK_FILTERS.map((f) => {
             const Icon = f.icon;
-            const active = filter === f.id;
+            const active = !statusFilter && filter === f.id;
             return (
               <button
                 key={f.id}
-                onClick={() => setFilter(f.id)}
+                onClick={() => { setStatusFilter(null); setStatusDays(null); setFilter(f.id); }}
                 title={f.hint}
                 style={{
                   display: "flex",
@@ -386,5 +449,13 @@ export default function OrdersPage() {
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
     </>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrdersPageInner />
+    </Suspense>
   );
 }

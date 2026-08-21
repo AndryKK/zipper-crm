@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Area, ComposedChart, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -19,7 +20,21 @@ interface Bucket {
   orders: number; revenue: number;
 }
 
-const STATUS_PIE_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+// Fixed per status name (not per array index, which the previous version
+// used — a slice's color used to depend on where it landed after sorting
+// by count, so "Завершено" could be indigo one week and green the next).
+// Same hex values as PIPELINE/ALL_STATUSES in
+// app/(admin)/orders/[id]/page.tsx, so this chart's colors mean the same
+// thing everywhere else in the app already uses them.
+const STATUS_PIE_COLORS: Record<string, string> = {
+  "Новий":       "#6b7280",
+  "В роботі":    "#d97706",
+  "Оплачено":    "#2563eb",
+  "Відправлено": "#7c3aed",
+  "Завершено":   "#059669",
+  "Скасовано":   "#dc2626",
+};
+const FALLBACK_PIE_COLOR = "#94a3b8";
 
 // RU = zipper.in.ua (Russian-language site), UA = zipper.com.ua
 // (Ukrainian-language site), Premium = Zipper Premium (zipper-new-shop) —
@@ -118,6 +133,16 @@ function MetricToggle({ metric, onChange }: { metric: "revenue" | "orders"; onCh
 }
 
 export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
+  const router = useRouter();
+  // /orders' own STATUS_FILTER_CLAUSES (app/api/orders/route.ts) matches
+  // this chart's exact grouping (STATUS_DISPLAY in app/(admin)/page.tsx),
+  // and days=7 matches the "Розподіл за останні 7 днів" window this chart
+  // itself counts within — together they land on precisely the orders
+  // this slice/legend row counted, not a differently-drawn subset (e.g.
+  // every order of that status ever, which without days= was 20,000+
+  // instead of the single-digit count shown here).
+  const goToStatus = (name: string) => router.push(`/orders?status=${encodeURIComponent(name)}&days=7`);
+
   const [period, setPeriod] = useState("month");
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
   const [buckets, setBuckets] = useState<Bucket[]>([]);
@@ -237,21 +262,31 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
             Розподіл за останні 7 днів
           </p>
         </div>
-        {statusData.length > 0 ? (
+        {/* statusData always has all six statuses now (some can be 0) so
+            the list always shows every status — but the pie/legend pair
+            as a whole should still fall back to "Немає даних" when every
+            one of them is 0, not render an empty ring. */}
+        {statusData.some((s) => s.value > 0) ? (
           <>
             <ResponsiveContainer width="100%" height={160}>
               <PieChart>
                 <Pie
-                  data={statusData}
+                  // Only non-zero slices in the ring itself — a 0-value
+                  // entry would still claim a sliver of paddingAngle,
+                  // drawing a stray gap for a status that has nothing to
+                  // show. The legend below lists all six regardless.
+                  data={statusData.filter((s) => s.value > 0)}
                   cx="50%"
                   cy="50%"
                   innerRadius={42}
                   outerRadius={72}
                   paddingAngle={3}
                   dataKey="value"
+                  onClick={(entry) => goToStatus((entry as unknown as StatusData).name)}
+                  style={{ cursor: "pointer" }}
                 >
-                  {statusData.map((_, i) => (
-                    <Cell key={i} fill={STATUS_PIE_COLORS[i % STATUS_PIE_COLORS.length]} />
+                  {statusData.filter((s) => s.value > 0).map((s, i) => (
+                    <Cell key={i} fill={STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR} />
                   ))}
                 </Pie>
                 <Tooltip content={customTooltip} />
@@ -259,13 +294,22 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
             </ResponsiveContainer>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 8 }}>
               {statusData.map((s, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <button
+                  key={i}
+                  onClick={() => goToStatus(s.name)}
+                  title={`Переглянути замовлення зі статусом «${s.name}»`}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+                    background: "none", border: "none", padding: "2px 0", width: "100%",
+                    cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit",
+                  }}
+                >
                   <span
                     style={{
                       width: 8,
                       height: 8,
                       borderRadius: "50%",
-                      background: STATUS_PIE_COLORS[i % STATUS_PIE_COLORS.length],
+                      background: STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR,
                       flexShrink: 0,
                     }}
                   />
@@ -273,7 +317,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
                     {s.name}
                   </span>
                   <span style={{ fontWeight: 700, color: "var(--text)" }}>{s.value}</span>
-                </div>
+                </button>
               ))}
             </div>
           </>
