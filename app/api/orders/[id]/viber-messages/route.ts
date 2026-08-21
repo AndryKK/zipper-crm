@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
-import { getOrderDocumentData } from "@/lib/order-documents";
+import { getOrderDocumentData, welcomeGreetingText } from "@/lib/order-documents";
+import { paymentRequestIntro, paymentConfirmedIntro } from "@/lib/email-templates";
 import { signOrderDocToken } from "@/lib/doc-token";
 
 // Ukrainian mobile numbers are stored in whatever shape whoever typed them
@@ -18,6 +19,11 @@ function toViberPhone(raw: string): string {
 function looksLikePhone(v: string | null | undefined): v is string {
   return !!v && v.replace(/\D/g, "").length >= 9;
 }
+
+// Same pipeline the order page itself uses (PIPELINE in
+// app/(admin)/orders/[id]/page.tsx) — exact status-string match, not fuzzy,
+// since every status here is written by this app's own routes.
+const PAID_STATUSES = new Set(["Оплачено", "Відправлено", "Завершено"]);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -44,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const clientPhoneViber = clientPhone ? toViberPhone(clientPhone) : null;
 
   // Greeting-only name — see lib/order-documents.ts's own comment. Never
-  // used for NP/shipping data, only for how the client is addressed here.
+  // used for NP/shipping data.
   const name = order.original_client_name || order.person || order.login || "клієнте";
 
   const origin = req.nextUrl.origin;
@@ -52,44 +58,63 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const link = (path: string, extra?: string) =>
     `${origin}/api/orders/${orderId}/${path}?token=${token}${extra ? `&${extra}` : ""}`;
 
-  const links = {
-    welcome: link("receipt", "greeting=1"),
-    invoice: link("invoice"),
-    receipt: link("receipt"),
-    waybill: link("waybill"),
-  };
+  // Was this order's item list actually touched by a manager since the
+  // customer's own checkout — same detection the process route uses (see
+  // its own comment) — so the invoice-stage message picks the same
+  // "itemsChanged" copy the real email would have sent, not always the
+  // default "availability confirmed" framing.
+  const { data: allItems } = await supabaseServer.from("orders_item").select("active, added_by_admin").eq("oid", orderId);
+  const itemsChanged = (allItems ?? []).some((i) => i.active === false)
+    || (allItems ?? []).some((i) => i.active !== false && i.added_by_admin);
 
-  const total = orderTotal.toFixed(2);
+  const hasInvoice = !!order.doc_field_1;
+  const hasPayment = !!order.status && PAID_STATUSES.has(order.status);
 
-  // Viber's own text formatting: *bold*, _italic_, ~strikethrough~ — plain
-  // \n line breaks, no HTML. Four ready-to-paste steps in the order a real
-  // order actually moves through the pipeline.
-  const messages = [
-    {
-      key: "welcome",
-      title: "1. Вітальне повідомлення",
-      hint: "Надсилається одразу після оформлення замовлення",
-      text: `🎉 *Замовлення №${order.id} отримано!*\n\nДякуємо за замовлення, ${name}! Перевіряємо наявність товару на наших складах — щойно підтвердимо, надішлемо рахунок на оплату.\n\n📄 Деталі замовлення: ${links.welcome}`,
-    },
-    {
+  // Messages appear progressively, mirroring exactly how far the order has
+  // actually been processed — same three stages the CRM's own emails send
+  // (sendWelcomeEmail / sendPaymentRequestEmail / sendPaymentConfirmedEmail),
+  // in the same order, with the same wording (see the imported *Intro
+  // helpers — single source of truth shared with the HTML emails so Viber
+  // text can never say something different from what was actually
+  // emailed). A later stage never replaces an earlier one — all stages
+  // reached so far stay visible.
+  const messages: { key: string; title: string; hint: string; text: string }[] = [];
+
+  messages.push({
+    key: "welcome",
+    title: "Вітальне повідомлення",
+    hint: "Надсилається одразу після оформлення замовлення",
+    text: `🎉 *Замовлення №${order.id} отримано!*\n\n${welcomeGreetingText(name, order.id)}\n\n📄 Деталі замовлення: ${link("receipt", "greeting=1")}`,
+  });
+
+  if (hasInvoice) {
+    const reason = itemsChanged ? "itemsChanged" as const : "confirmed" as const;
+    const intro = paymentRequestIntro(name, order, docNumber, { reason });
+    const emoji = reason === "itemsChanged" ? "📝" : "✅";
+    messages.push({
       key: "invoice",
-      title: "2. Рахунок на оплату",
-      hint: "Наявність підтверджено — надсилається рахунок-фактура",
-      text: `✅ *Наявність підтверджено!*\n\nЗамовлення №${order.id} готове до оплати.\n💰 Сума до сплати: *${total} грн*\n\n📄 Рахунок-фактура: ${links.invoice}`,
-    },
-    {
-      key: "receipt",
-      title: "3. Накладна зі знижкою",
-      hint: "Підсумкова сума з урахуванням особистої знижки клієнта",
-      text: `🏷 *Накладна зі знижкою*\n\nВаша особиста знижка вже врахована в сумі.\n💰 Сума до сплати: *${total} грн*\n\n📄 Накладна: ${links.receipt}`,
-    },
-    {
-      key: "waybill",
-      title: "4. Видаткова накладна",
-      hint: "Документ для отримання посилки на Новій Пошті",
-      text: `📦 *Видаткова накладна*\n\nДокумент до вашого замовлення №${order.id} для отримання посилки на Новій Пошті.\n\n📄 Накладна: ${links.waybill}`,
-    },
-  ];
+      title: "Рахунок та накладна",
+      hint: reason === "itemsChanged" ? "Склад замовлення було змінено — надіслано оновлений рахунок" : "Наявність підтверджено — надіслано рахунок і накладну",
+      text: `${emoji} *${intro.title}*\n\n${intro.text}\n\n💰 Сума до сплати: *${orderTotal.toFixed(2)} грн*\n\n📄 Рахунок-фактура: ${link("invoice")}\n📦 Видаткова накладна: ${link("waybill")}`,
+    });
+  }
+
+  if (hasPayment) {
+    const intro = paymentConfirmedIntro(name, order, order.ttn ?? null);
+    const ttnBlock = order.ttn
+      ? `\n\n📦 ТТН (Нова Пошта): *${order.ttn}*\nhttps://novaposhta.ua/tracking/${order.ttn}`
+      : "";
+    messages.push({
+      key: "payment",
+      title: "Оплата підтверджена",
+      hint: order.ttn ? "Оплату отримано, номер ТТН для відстеження додано" : "Оплату отримано, замовлення готується до відправки",
+      text: `✅ *${intro.title}*\n\n${intro.text}${ttnBlock}`,
+    });
+  }
+
+  // Numbered by actual position, not a fixed 1-4 — a "Новий" order only
+  // ever has message #1 here, not gaps where #2/#3 would've been.
+  const numberedMessages = messages.map((m, i) => ({ ...m, key: m.key, title: `${i + 1}. ${m.title}` }));
 
   return NextResponse.json({
     orderId: order.id,
@@ -98,6 +123,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     clientPhone,
     clientPhoneViber,
     orderTotal,
-    messages,
+    messages: numberedMessages,
   });
 }

@@ -79,7 +79,11 @@ export type EmailRenderOptions = {
   discountPercent?: number;
 };
 
-function paymentRequestIntro(name: string, order: OrderDocumentData["order"], docNumber: string, opts: EmailRenderOptions): { title: string; text: string } {
+// Exported — app/api/orders/[id]/viber-messages/route.ts reuses this exact
+// copy for its "Рахунок та накладна" Viber message, so the two channels
+// never drift apart (the CRM's own request: Viber text must say exactly
+// what the email said).
+export function paymentRequestIntro(name: string, order: OrderDocumentData["order"], docNumber: string, opts: EmailRenderOptions): { title: string; text: string } {
   if (opts.reason === "discountChanged") {
     const pct = (opts.discountPercent ?? 0).toString().replace(".", ",");
     return {
@@ -149,11 +153,22 @@ export function renderPaymentRequestEmail(doc: OrderDocumentData, opts: EmailRen
   };
 }
 
+// Exported for the same reason as paymentRequestIntro above.
+export function paymentConfirmedIntro(name: string, order: OrderDocumentData["order"], ttn: string | null): { title: string; text: string } {
+  return {
+    title: `Оплату підтверджено, ${name}!`,
+    text: `Ми отримали й підтвердили оплату за замовленням №${order.id}. ${ttn
+      ? "Замовлення вже передано в доставку — номер ТТН для відстеження посилки додано нижче."
+      : "Замовлення готується до відправки — номер ТТН для відстеження посилки надішлемо окремим повідомленням, щойно його буде створено."}`,
+  };
+}
+
 export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string | null, opts: EmailRenderOptions = {}): { subject: string; html: string } {
   const { order } = doc;
   // See renderPaymentRequestEmail's comment — original_client_name is a
   // greeting-only name, never used for NP/shipping data.
   const name = order.original_client_name || order.person || order.login || "Шановний(а) клієнте";
+  const intro = paymentConfirmedIntro(name, order, ttn);
 
   const trackBlock = ttn ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5; border-radius:10px; margin:20px 0;">
@@ -169,11 +184,9 @@ export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string 
     </table>` : "";
 
   const body = `
-    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Оплату підтверджено, ${name}!</h1>
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">${intro.title}</h1>
     <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
-      Ми отримали й підтвердили оплату за замовленням №${order.id}. ${ttn
-        ? "Замовлення вже передано в доставку — номер ТТН для відстеження посилки додано нижче."
-        : "Замовлення готується до відправки — номер ТТН для відстеження посилки надішлемо окремим повідомленням, щойно його буде створено."}
+      ${intro.text}
     </p>
     ${noteBlock(opts.note)}
     ${trackBlock}

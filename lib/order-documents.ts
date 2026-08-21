@@ -426,6 +426,13 @@ function confirmationItemRowsHtml(items: OrderDocumentItem[]): string {
   }).join("");
 }
 
+// Exported — app/api/orders/[id]/viber-messages/route.ts reuses this exact
+// copy for its "Вітальне повідомлення" Viber message, so the two channels
+// never say something different for the same stage.
+export function welcomeGreetingText(name: string, orderId: number): string {
+  return `Дякуємо за замовлення, ${name}! Ваше замовлення №${orderId} наразі перевіряється на наявність необхідної кількості товару на наших складах. Щойно ми підтвердимо наявність — надішлемо вам повідомлення та рахунок на оплату.\n\nДякуємо, що обираєте Zipper — ми намагаємось опрацювати кожне замовлення якнайшвидше!`;
+}
+
 export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { greeting?: boolean } = {}): string {
   const { order, items, orderTotal } = doc;
   // original_client_name is purely a greeting/address name for letters —
@@ -439,13 +446,9 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
   const baseTotal = items.reduce((s, i) => s + i.sumBase, 0);
   const discountedTotal = baseTotal > orderTotal + 0.001;
 
-  const greetingHtml = opts.greeting ? `
-    <p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#1c1d1f;">
-      Дякуємо за замовлення, ${name}! Ваше замовлення №${order.id} наразі перевіряється на наявність
-      необхідної кількості товару на наших складах. Щойно ми підтвердимо наявність — надішлемо вам
-      повідомлення та рахунок на оплату.<br/><br/>
-      Дякуємо, що обираєте Zipper — ми намагаємось опрацювати кожне замовлення якнайшвидше!
-    </p>` : "";
+  const greetingHtml = opts.greeting
+    ? `<p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#1c1d1f;">${welcomeGreetingText(name, order.id).replace(/\n\n/, "<br/><br/>")}</p>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="uk">

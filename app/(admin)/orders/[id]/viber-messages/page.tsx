@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw, CheckCircle2 } from "lucide-react";
 
 type ViberMessage = { key: string; title: string; hint: string; text: string };
 type ViberData = {
@@ -63,8 +63,31 @@ async function sendViaViber(text: string, phoneViber: string) {
   window.location.href = `viber://chat?number=${phoneViber}`;
 }
 
-function MessageCard({ msg, clientPhoneViber }: { msg: ViberMessage; clientPhoneViber: string | null }) {
+// Per-message "did I already send this" checkmark — purely local to this
+// browser/device (a personal reminder, not a shared audit trail; the
+// CRM's own welcome_email_sent_at/doc_field_1/status fields are already
+// the real record of what actually went out by email). Keyed by order so
+// it doesn't leak across orders, and by message key so re-sending stage 2
+// doesn't un-mark stage 1.
+function sentStorageKey(orderId: number, msgKey: string) {
+  return `viber-sent:${orderId}:${msgKey}`;
+}
+function readSentAt(orderId: number, msgKey: string): string | null {
+  try { return localStorage.getItem(sentStorageKey(orderId, msgKey)); } catch { return null; }
+}
+function writeSentAt(orderId: number, msgKey: string) {
+  try { localStorage.setItem(sentStorageKey(orderId, msgKey), new Date().toISOString()); } catch { /* ignore */ }
+}
+
+function MessageCard({
+  orderId, msg, clientPhoneViber,
+}: {
+  orderId: number; msg: ViberMessage; clientPhoneViber: string | null;
+}) {
   const [copied, setCopied] = useState(false);
+  const [sentAt, setSentAt] = useState<string | null>(null);
+
+  useEffect(() => { setSentAt(readSentAt(orderId, msg.key)); }, [orderId, msg.key]);
 
   async function onCopy() {
     const ok = await copyText(msg.text);
@@ -77,12 +100,38 @@ function MessageCard({ msg, clientPhoneViber }: { msg: ViberMessage; clientPhone
     }
   }
 
+  async function onSend() {
+    if (!clientPhoneViber) return;
+    await sendViaViber(msg.text, clientPhoneViber);
+    writeSentAt(orderId, msg.key);
+    setSentAt(new Date().toISOString());
+  }
+
   return (
     <div className="crm-card" style={{ padding: 16 }}>
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{msg.title}</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{msg.hint}</div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{msg.title}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{msg.hint}</div>
+        </div>
+        {sentAt && (
+          <div
+            title={`Надіслано ${new Date(sentAt).toLocaleString("uk-UA")}`}
+            style={{
+              display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+              padding: "3px 9px", borderRadius: 999, background: "rgba(16,185,129,0.12)",
+              color: "#10b981", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap",
+            }}
+          >
+            <CheckCircle2 size={12} /> Надіслано
+          </div>
+        )}
       </div>
+      {sentAt && (
+        <div style={{ fontSize: 11.5, color: "#10b981", marginBottom: 8 }}>
+          Ви надсилали це повідомлення клієнту {new Date(sentAt).toLocaleDateString("uk-UA")}.
+        </div>
+      )}
       <pre
         style={{
           margin: 0,
@@ -115,7 +164,7 @@ function MessageCard({ msg, clientPhoneViber }: { msg: ViberMessage; clientPhone
         {clientPhoneViber && (
           <a
             href={`viber://chat?number=${clientPhoneViber}`}
-            onClick={(e) => { e.preventDefault(); sendViaViber(msg.text, clientPhoneViber); }}
+            onClick={(e) => { e.preventDefault(); onSend(); }}
             style={{
               flex: "1 1 140px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
               padding: "0 12px", height: 32, borderRadius: 8,
@@ -151,10 +200,10 @@ export default function ViberMessagesPage() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  // Order state (discount, items, invoice number, totals...) can change
-  // after this page was first opened — the messages below are generated
-  // once at load time, so this re-fetches and regenerates all four from
-  // scratch rather than only reflecting whatever was true at page-open.
+  // Order state (discount, items, status, TTN...) can change after this
+  // page was first opened — messages are generated fresh on every fetch
+  // from the order's current state (see the route), so this just re-runs
+  // that fetch rather than only reflecting whatever was true at page-open.
   async function onRefresh() {
     setRefreshing(true);
     try {
@@ -247,51 +296,34 @@ export default function ViberMessagesPage() {
               ) : (
                 <div style={{ color: "var(--text-muted)", fontSize: 14 }}>Телефон не вказано</div>
               )}
-
-              {data.clientPhoneViber && (
-                <a
-                  href={`viber://chat?number=${data.clientPhoneViber}`}
-                  onClick={(e) => { e.preventDefault(); sendViaViber(data.messages[0].text, data.clientPhoneViber!); }}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    marginTop: 12, padding: "10px 16px", borderRadius: 10,
-                    background: "linear-gradient(135deg,#7360f2,#8f5db7)",
-                    color: "#fff", fontSize: 13.5, fontWeight: 600,
-                    textDecoration: "none",
-                  }}
-                >
-                  <Send size={15} />
-                  Надіслати через Viber
-                </a>
-              )}
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Копіює перше повідомлення в буфер обміну і відкриває чат з клієнтом у Viber — може не спрацювати на всіх телефонах. Якщо чат відкрився порожнім, вставте текст вручну. Те саме є під кожним повідомленням нижче.
-              </div>
             </div>
 
             <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px" }}>
-              Готові повідомлення в хронологічному порядку — скопіюйте потрібне й надішліть у Viber. Документи за посиланнями відкриваються без входу в CRM. Якщо в замовленні щось змінилось — натисніть «Оновити» вгорі, щоб перегенерувати всі повідомлення.
+              Повідомлення з'являються по мірі опрацювання замовлення — текст точно відповідає тому, що надсилається на email. Скопіюйте потрібне або надішліть його кнопкою під повідомленням. Документи за посиланнями відкриваються без входу в CRM. Якщо в замовленні щось змінилось — натисніть «Оновити» вгорі.
             </div>
 
             {data.messages.map((m) => (
-              <MessageCard key={m.key} msg={m} clientPhoneViber={data.clientPhoneViber} />
+              <MessageCard key={m.key} orderId={data.orderId} msg={m} clientPhoneViber={data.clientPhoneViber} />
             ))}
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
-              {data.messages.map((m) => (
-                <a
-                  key={m.key}
-                  href={m.text.match(/https?:\/\/\S+/)?.[0]}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 12, color: "var(--accent)", textDecoration: "none",
-                  }}
-                >
-                  <ExternalLink size={12} /> {m.title.replace(/^\d+\.\s*/, "")}
-                </a>
-              ))}
+              {data.messages.flatMap((m) => {
+                const urls = m.text.match(/https?:\/\/\S+/g) ?? [];
+                return urls.map((url, i) => (
+                  <a
+                    key={`${m.key}-${i}`}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      fontSize: 12, color: "var(--accent)", textDecoration: "none",
+                    }}
+                  >
+                    <ExternalLink size={12} /> {m.title.replace(/^\d+\.\s*/, "")}{urls.length > 1 ? ` (${i + 1})` : ""}
+                  </a>
+                ));
+              })}
             </div>
           </>
         )}
