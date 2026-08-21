@@ -1436,10 +1436,19 @@ export default function OrderDetailPage() {
               Below `sm` it's anchored near the top with its own capped,
               scrollable height instead; at `sm` and up every value is
               reasserted back to the component's original centered,
-              uncapped layout — desktop is unchanged. */}
+              uncapped layout — desktop is unchanged.
+              `dvh` not `vh` for the cap — mobile Safari/Chrome report `vh`
+              against the LARGEST viewport (address bar hidden), so a cap
+              sized in `vh` sat partly behind the address bar whenever it
+              was showing: the dialog's own bottom edge (and the confirm
+              button right above it) ended up below the real visible area,
+              and since the page behind a modal can't be scrolled, that
+              sliver was permanently unreachable no matter how far the
+              dialog's internal content was scrolled. `dvh` tracks the
+              actual visible viewport as the address bar shows/hides. */}
           <DialogContent
             style={{ maxWidth: 680 }}
-            className="top-4 translate-y-0 max-h-[calc(100vh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
+            className="top-4 translate-y-0 max-h-[calc(100dvh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
           >
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
