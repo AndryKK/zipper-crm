@@ -937,7 +937,7 @@ function EditForm({
   const activeProductId = activeLangVariants.find((v: any) => v.lang === "uk")?.id ?? baseVariant.id;
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
 
       {/* ── Color dropdown ──────────────────────────────────────────── */}
       {colorDropdownOpen && (
@@ -1195,7 +1195,7 @@ function EditForm({
       {/* ── Основне ──────────────────────────────────────────────── */}
       {activeTab === "main" && (
         <div className="grid gap-6 max-w-3xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Назва * <span className="text-gray-400 font-normal">({activeLang.toUpperCase()})</span></Label>
               <Input value={ld.title} onChange={(e) => setLD(activeLang, "title", e.target.value)} />
@@ -1210,7 +1210,7 @@ function EditForm({
             <Input value={ld.uri} onChange={(e) => setLD(activeLang, "uri", e.target.value)} />
           </div>
           {activeColorEntry?.isMain && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Мінімальна кількість</Label>
                 <Input type="number" value={common.minquantity} onChange={(e) => setC("minquantity", e.target.value)} />
@@ -1222,7 +1222,7 @@ function EditForm({
             </div>
           )}
           {activeColorEntry?.isMain && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Акційний</Label>
                 <Select value={String(common.labelAction)} onValueChange={(v) => setC("labelAction", parseInt(v))}>
@@ -1274,7 +1274,7 @@ function EditForm({
       {/* ── Ціни ─────────────────────────────────────────────────── */}
       {activeTab === "prices" && (
         <div className="grid gap-4 max-w-xl">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Ціна $ *</Label>
               <Input type="number" step="0.01" value={common.price} onChange={(e) => setC("price", e.target.value)} />
@@ -1286,7 +1286,7 @@ function EditForm({
           </div>
           <div className="border rounded-md p-4 space-y-3">
             <p className="text-sm font-medium text-gray-700">Оптові ціни</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Ціна 2</Label><Input type="number" step="0.01" value={common.price2} onChange={(e) => setC("price2", e.target.value)} /></div>
               <div className="space-y-1.5"><Label>Від (кількість)</Label><Input type="number" value={common.price2n} onChange={(e) => setC("price2n", e.target.value)} /></div>
               <div className="space-y-1.5"><Label>Ціна 3</Label><Input type="number" step="0.01" value={common.price3} onChange={(e) => setC("price3", e.target.value)} /></div>
@@ -1469,16 +1469,18 @@ function EditForm({
               <p className="text-xs text-gray-400">Мова: <strong>{activeLang.toUpperCase()}</strong></p>
               <div className="space-y-2">
                 {(charsData[activeLang] ?? []).map((char, i) => (
-                  <div key={i} className="flex gap-2 items-center">
+                  <div key={i} className="flex flex-col sm:flex-row gap-2 sm:items-center">
                     <Input placeholder="Характеристика" value={char.title}
                       onChange={(e) => setCharsData((p) => ({ ...p, [activeLang]: p[activeLang].map((c, j) => j === i ? { ...c, title: e.target.value } : c) }))}
-                      className="w-48" />
-                    <Input placeholder="Значення" value={char.value}
-                      onChange={(e) => setCharsData((p) => ({ ...p, [activeLang]: p[activeLang].map((c, j) => j === i ? { ...c, value: e.target.value } : c) }))} />
-                    <button onClick={() => setCharsData((p) => ({ ...p, [activeLang]: p[activeLang].filter((_, j) => j !== i) }))}
-                      className="text-red-400 hover:text-red-600 shrink-0">
-                      <X className="h-4 w-4" />
-                    </button>
+                      className="w-full sm:w-48" />
+                    <div className="flex gap-2 items-center flex-1 min-w-0">
+                      <Input placeholder="Значення" value={char.value}
+                        onChange={(e) => setCharsData((p) => ({ ...p, [activeLang]: p[activeLang].map((c, j) => j === i ? { ...c, value: e.target.value } : c) }))} />
+                      <button onClick={() => setCharsData((p) => ({ ...p, [activeLang]: p[activeLang].filter((_, j) => j !== i) }))}
+                        className="text-red-400 hover:text-red-600 shrink-0">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
