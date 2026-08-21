@@ -456,7 +456,7 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
   ${greetingHtml}
 
   <div style="font-weight:700; font-size:15px; margin-bottom:6px;">Замовлення №${order.id} від ${dateStr}</div>
-  <div><b>Замовник:</b> ${order.person || "—"}</div>
+  <div><b>Отримувач:</b> ${order.person || "—"}</div>
   <div><b>Телефон:</b> ${order.phone || "—"}</div>
   <div><b>Адреса доставки:</b> ${order.addr_delivery || "—"}</div>
   ${order.notes ? `<div><b>Примітка:</b> ${order.notes}</div>` : ""}
