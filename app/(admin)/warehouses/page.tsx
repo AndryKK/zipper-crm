@@ -193,29 +193,58 @@ export default function WarehousesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newForm, setNewForm] = useState(emptyForm);
   const [saving, setSaving]   = useState(false);
+  // Mirrors /inventory's own "Не відображати не введені позиції" toggle —
+  // same localStorage key (HIDE_UNENTERED_KEY there), so switching it on
+  // either page shows a consistent picture: the fill %/counts on these
+  // banners come from warehouse_stats_entered (only rows actually manually
+  // entered at least once) instead of warehouse_stats (every row,
+  // including thousands of never-touched auto-inserted ones) — see
+  // scripts/create-warehouse-stats-entered-view.sql for why that split
+  // exists. Starts false on the server-rendered pass (matches SSR/CSR
+  // markup), synced from localStorage right after mount, same pattern
+  // /inventory's own toggle already uses.
+  const [hideUnentered, setHideUnentered] = useState(false);
+  // Gates the very first load() until the localStorage read below has had
+  // a chance to run — without this, the effect below fires once with the
+  // default `false` and again right after with the real value once
+  // setHideUnentered resolves it, two in-flight fetches racing each other.
+  // Whichever response happened to land second silently overwrote the
+  // other's `stats`, occasionally leaving the entered-only numbers
+  // clobbered back to the full-warehouse ones a moment after the toggle
+  // should have applied. Same race class as the /orders status-filter fix
+  // elsewhere in this app — see that page's own comment.
+  const [prefsReady, setPrefsReady] = useState(false);
 
-  async function load() {
+  useEffect(() => {
+    if (localStorage.getItem("inventory-hide-unentered") === "1") setHideUnentered(true);
+    setPrefsReady(true);
+  }, []);
+
+  async function load(entered: boolean) {
     setLoading(true);
-    const res = await fetch("/api/warehouses/stats");
+    const res = await fetch(`/api/warehouses/stats${entered ? "?entered=1" : ""}`);
     const data = await res.json();
     setStats(Array.isArray(data) ? data : []);
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!prefsReady) return;
+    load(hideUnentered);
+  }, [prefsReady, hideUnentered]);
 
   async function saveEdit() {
     if (!editRow) return;
     setSaving(true);
     const res = await fetch(`/api/warehouses/${editRow.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
     setSaving(false);
-    if (res.ok) { toast.success("Збережено"); setEditRow(null); load(); }
+    if (res.ok) { toast.success("Збережено"); setEditRow(null); load(hideUnentered); }
     else { const e = await res.json(); toast.error(e.error); }
   }
 
   async function deleteRow(id: number) {
     if (!confirm("Видалити склад?")) return;
     const res = await fetch(`/api/warehouses/${id}`, { method: "DELETE" });
-    if (res.ok) { toast.success("Видалено"); load(); }
+    if (res.ok) { toast.success("Видалено"); load(hideUnentered); }
     else toast.error("Помилка");
   }
 
@@ -224,7 +253,7 @@ export default function WarehousesPage() {
     setSaving(true);
     const res = await fetch("/api/warehouses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newForm) });
     setSaving(false);
-    if (res.ok) { toast.success("Склад створено"); setShowCreate(false); setNewForm(emptyForm); load(); }
+    if (res.ok) { toast.success("Склад створено"); setShowCreate(false); setNewForm(emptyForm); load(hideUnentered); }
     else { const e = await res.json(); toast.error(e.error); }
   }
 
@@ -256,6 +285,18 @@ export default function WarehousesPage() {
       />
 
       <div className="page-content p-4 md:p-6" style={{ flex: 1 }}>
+
+        {hideUnentered && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
+              padding: "8px 14px", borderRadius: 8, fontSize: 12.5,
+              background: "rgba(99,102,241,0.1)", color: "var(--accent)",
+            }}
+          >
+            Показано без урахування не введених позицій — як у «Не відображати не введені позиції» на сторінці Залишків.
+          </div>
+        )}
 
         {/* ── Inline forms (edit / create) ── */}
         {showCreate && <InlineForm f={newForm} setF={setNewForm} onSave={createWarehouse} onCancel={() => { setShowCreate(false); setNewForm(emptyForm); }} label="Новий склад" />}

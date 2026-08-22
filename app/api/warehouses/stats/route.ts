@@ -20,16 +20,24 @@ async function fetchAllInventory() {
 }
 
 /* Falls back to computing stats in JS from `inventory` directly when the
- * `warehouse_stats` view hasn't been created yet (run
- * scripts/create-warehouse-stats-view.sql in the Supabase SQL editor) —
- * this slow path should only ever be hit on a project where that script
- * hasn't run at all. `warehouse_stats` itself is a plain (live) view, not
- * materialized — see that script for why. */
-async function computeStatsFallback() {
-  const [{ data: warehouses }, inventory] = await Promise.all([
+ * `warehouse_stats`/`warehouse_stats_entered` view hasn't been created yet
+ * (run scripts/create-warehouse-stats-view.sql and
+ * scripts/create-warehouse-stats-entered-view.sql in the Supabase SQL
+ * editor) — this slow path should only ever be hit on a project where
+ * those scripts haven't run at all. Both views are plain (live) views, not
+ * materialized — see create-warehouse-stats-view.sql for why.
+ *
+ * `entered`, mirroring warehouse_stats_entered: when true, only inventory
+ * rows with initial_quantity > 0 (actually manually entered at least once
+ * — see that view's own comment) count toward every number, same "не
+ * введені позиції" exclusion the /inventory page's hide-unentered toggle
+ * already applies. */
+async function computeStatsFallback(entered: boolean) {
+  const [{ data: warehouses }, inventoryAll] = await Promise.all([
     supabaseServer.from("warehouses").select("*").order("priority"),
     fetchAllInventory(),
   ]);
+  const inventory = entered ? inventoryAll.filter((i: any) => Number(i.initial_quantity) > 0) : inventoryAll;
 
   return (warehouses || []).map((w: any) => {
     const items = (inventory || []).filter((i: any) => i.warehouse_id === w.id);
@@ -73,9 +81,18 @@ async function computeStatsFallback() {
   });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // ?entered=1 — see warehouse_stats_entered's own comment (scripts/
+  // create-warehouse-stats-entered-view.sql) for why this exists: the
+  // /warehouses banners mirror /inventory's "hide unentered positions"
+  // toggle (a shared localStorage preference, see HIDE_UNENTERED_KEY),
+  // showing a fill % over only what's actually been counted instead of one
+  // dragged down by thousands of never-touched auto-inserted rows.
+  const entered = new URL(req.url).searchParams.get("entered") === "1";
+  const viewName = entered ? "warehouse_stats_entered" : "warehouse_stats";
+
   const { data, error } = await supabaseServer
-    .from("warehouse_stats")
+    .from(viewName)
     .select("*")
     .order("priority");
 
@@ -96,5 +113,5 @@ export async function GET() {
     return NextResponse.json(stats);
   }
 
-  return NextResponse.json(await computeStatsFallback());
+  return NextResponse.json(await computeStatsFallback(entered));
 }
