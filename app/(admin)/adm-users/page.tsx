@@ -138,11 +138,11 @@ export default function AdmUsersPage() {
   return (
     <>
       <Header title="Адміністратори" />
-      <div className="p-6 max-w-2xl space-y-6">
+      <div className="p-4 md:p-6 max-w-2xl space-y-6">
         <Card>
           <CardHeader><CardTitle className="text-sm">Новий адміністратор</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Логін</Label>
                 {/* autoComplete="off" alone is routinely ignored by Chrome
@@ -168,14 +168,52 @@ export default function AdmUsersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={addUser} disabled={adding}>
+            <Button onClick={addUser} disabled={adding} className="w-full sm:w-auto">
               {adding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />}
               Додати
             </Button>
           </CardContent>
         </Card>
 
-        <div className="rounded-md border overflow-hidden bg-white">
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {users.map((u) => {
+            const roleLocked = String(u.id) === String(myId) || u.login === PROTECTED_LOGIN;
+            return (
+              <div key={u.id} className="crm-card" style={{ padding: 14 }}>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 600 }}>{u.login}</div>
+                  <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>#{u.id}</div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  {roleLocked ? (
+                    <span className="text-gray-600" style={{ fontSize: 13 }}>{ROLE_LABELS[u.role]}</span>
+                  ) : (
+                    <Select value={u.role} onValueChange={(v) => changeRole(u.id, v as Role)}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.values(ROLES).map((r) => (
+                          <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button variant="outline" size="sm" onClick={() => openResetDialog(u)} className="flex-1">Змінити пароль</Button>
+                  {!roleLocked && (
+                    <button onClick={() => setDeleteId(u.id)} className="text-red-400 hover:text-red-600" style={{ padding: "0 10px", flexShrink: 0 }}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -250,7 +288,7 @@ export default function AdmUsersPage() {
           <div
             style={{
               background: "var(--bg)", border: "1px solid var(--border)",
-              borderRadius: 14, padding: "24px 28px", width: 420,
+              borderRadius: 14, padding: "24px 28px", width: 420, maxWidth: "calc(100vw - 32px)",
               boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
             }}
           >
