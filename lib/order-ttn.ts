@@ -149,7 +149,7 @@ async function finishTtnCreation(
       // whatever Cost says, calculated automatically as ~0.5% of it), so this
       // must always be the full order total, never a discounted/net figure.
       cost:        orderTotal,
-      description: "Товари",
+      description: "Швейна фурнітура",
       codAmount:   opts.codAmount,
       seat,
     });

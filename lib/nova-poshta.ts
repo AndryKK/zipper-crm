@@ -229,7 +229,7 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
     Weight: String(Math.max(0.1, p.seat?.weight ?? p.weight)),
     ServiceType: "WarehouseWarehouse",
     SeatsAmount: "1",
-    Description: p.description || "Товари",
+    Description: p.description || "Швейна фурнітура",
     Cost: String(Math.max(1, Math.round(p.cost))),
     CitySender: p.senderCityRef,
     Sender: p.senderRef,
