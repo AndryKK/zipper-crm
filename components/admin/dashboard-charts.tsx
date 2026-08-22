@@ -75,6 +75,33 @@ const customTooltip = (props: any) => {
   );
 };
 
+// Recharts renders ticks via JS, not CSS — there's no media-query way to
+// thin out the X-axis on a narrow screen, so viewport width has to be
+// tracked in state. Starts false (matches the server-rendered pass), synced
+// after mount, same pattern used elsewhere for a client-only preference.
+function useIsMobile(breakpointPx = 768): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpointPx]);
+  return isMobile;
+}
+
+// First/middle/last bucket labels only — the desktop `interval` math below
+// (targeting ~8-10 evenly-spaced ticks) packed 10+ date labels into a
+// phone-width axis, all overlapping into an unreadable smear.
+function threeTickLabels(buckets: { label: string }[]): string[] {
+  if (buckets.length <= 3) return buckets.map((b) => b.label);
+  const first = buckets[0].label;
+  const mid = buckets[Math.floor((buckets.length - 1) / 2)].label;
+  const last = buckets[buckets.length - 1].label;
+  return [...new Set([first, mid, last])];
+}
+
 function PeriodToggle({ period, onChange }: { period: string; onChange: (p: string) => void }) {
   return (
     <div style={{ display: "flex", gap: 4, background: "var(--bg)", borderRadius: 8, padding: 3, flexWrap: "wrap" }}>
@@ -147,6 +174,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -210,7 +238,8 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
                 tick={{ fontSize: 10, fill: "var(--text-muted)" }}
                 axisLine={false}
                 tickLine={false}
-                interval={Math.max(0, Math.floor(buckets.length / 8) - 1)}
+                interval={isMobile ? 0 : Math.max(0, Math.floor(buckets.length / 8) - 1)}
+                ticks={isMobile ? threeTickLabels(buckets) : undefined}
               />
               <YAxis
                 tick={{ fontSize: 11, fill: "var(--text-muted)" }}
@@ -363,7 +392,8 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
                 tick={{ fontSize: 10, fill: "var(--text-muted)" }}
                 axisLine={false}
                 tickLine={false}
-                interval={Math.max(0, Math.floor(buckets.length / 10) - 1)}
+                interval={isMobile ? 0 : Math.max(0, Math.floor(buckets.length / 10) - 1)}
+                ticks={isMobile ? threeTickLabels(buckets) : undefined}
               />
               <YAxis
                 tick={{ fontSize: 10, fill: "var(--text-muted)" }}
