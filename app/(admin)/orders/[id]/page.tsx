@@ -124,6 +124,7 @@ export default function OrderDetailPage() {
   // process/confirm-payment pipeline (no TTN/status side-effects).
   const [resendEmail, setResendEmail] = useState("");
   const [editingResendEmail, setEditingResendEmail] = useState(false);
+  const [fixingEmailTypo, setFixingEmailTypo] = useState(false);
 
   // Postomat shipping — Nova Poshta only releases postomat parcels once
   // fully prepaid and wants real per-parcel dimensions (OptionsSeat), so it
@@ -764,6 +765,27 @@ export default function OrderDetailPage() {
     setOrder((prev: any) => ({ ...prev, ...clientDraft }));
     setEditingClient(false);
     toast.success("Дані клієнта оновлено");
+  }
+
+  // Applies the typo-detector's suggested address both to the local resend
+  // state (so the very next send/preview uses it) and to orders.login
+  // itself, since that's the single field every send path reads from (see
+  // checkEmailForMistakes usage below) — a manager clicking "виправити" is
+  // correcting the order's actual email, not just this one outgoing letter.
+  async function fixEmailTypo(suggestion: string) {
+    setFixingEmailTypo(true);
+    const res = await fetch(`/api/orders/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login: suggestion }),
+    });
+    setFixingEmailTypo(false);
+    if (!res.ok) { toast.error("Не вдалося зберегти виправлений email"); return; }
+    setResendEmail(suggestion);
+    setEditingResendEmail(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrder((prev: any) => ({ ...prev, login: suggestion }));
+    toast.success("Email виправлено та збережено");
   }
 
   function updateItemField(itemId: number, field: "price" | "quantity", value: string) {
@@ -2210,15 +2232,16 @@ export default function OrderDetailPage() {
                       <span>Ймовірно, в адресі є помилка: {emailCheck.reason}.</span>
                       {emailCheck.suggestion && (
                         <button
-                          onClick={() => {
-                            setResendEmail(emailCheck.suggestion!);
-                            setEditingResendEmail(false);
-                          }}
+                          onClick={() => fixEmailTypo(emailCheck.suggestion!)}
+                          disabled={fixingEmailTypo}
                           style={{
                             alignSelf: "flex-start", background: "none", border: "1px solid #dc2626",
-                            borderRadius: 6, cursor: "pointer", color: "#dc2626", padding: "4px 10px", fontSize: 12,
+                            borderRadius: 6, cursor: fixingEmailTypo ? "default" : "pointer", color: "#dc2626",
+                            padding: "4px 10px", fontSize: 12, opacity: fixingEmailTypo ? 0.6 : 1,
+                            display: "flex", alignItems: "center", gap: 6,
                           }}
                         >
+                          {fixingEmailTypo && <Loader2 size={12} className="animate-spin" />}
                           Виправити допущену помилку в емейлі ({emailCheck.suggestion})
                         </button>
                       )}
