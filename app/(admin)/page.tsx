@@ -9,11 +9,21 @@ import { unstable_cache } from "next/cache";
 import { orderStatusLabel, orderStatusClass, orderRowClass, isNewStatus, ORDER_STATUSES } from "@/lib/order-status";
 
 // This is the CRM's most-visited page — force-dynamic meant every single
-// visit re-ran all 11 queries below from scratch, including a full fetch of
+// visit re-ran all these queries from scratch, including a full fetch of
 // every order (and every one of THEIR order_item rows) from the last 30
 // days. Wrapped in unstable_cache so repeat visits within the window reuse
-// the same result instead of re-querying — dashboard stats don't need to be
-// second-by-second fresh.
+// the same result instead of re-querying — most of this dashboard doesn't
+// need to be second-by-second fresh.
+//
+// The status pie and the recent-orders table are the two exceptions —
+// "виправ швидкість оновлення" — a manager watching either one right after
+// changing an order's status found the 120s cache window too slow to
+// reflect it. Both are deliberately kept OUT of this cached function and
+// queried live on every request instead (getStatusData/getRecentOrders
+// below): each is a small, cheap query on its own (last 7 days' worth of
+// order statuses; the 10 newest orders), so querying them uncached doesn't
+// meaningfully add to Supabase egress the way re-running the other 30-day/
+// catalog-wide queries on every visit used to.
 const getStats = unstable_cache(_getStats, ["dashboard-stats"], { revalidate: 120 });
 
 // Legacy data has old/Russian status text mixed in with the current
@@ -37,8 +47,6 @@ async function _getStats() {
   const now = new Date();
   const monthAgo = new Date(now);
   monthAgo.setDate(monthAgo.getDate() - 30);
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
 
   /* Run independent queries in parallel */
   const [
@@ -47,7 +55,6 @@ async function _getStats() {
     { count: usersCount },
     { count: articlesCount },
     { count: newOrdersCount },
-    { data: recentOrderRows },
     { data: monthOrderRows },
     { data: warehousesRaw },
   ] = await Promise.all([
@@ -60,38 +67,19 @@ async function _getStats() {
       .from("orders")
       .select("*", { count: "exact", head: true })
       .eq("status", "Нове"),
-    /* last 10 rows for the table display */
+    /* ALL orders in the last 30 days for the revenue chart */
     supabaseServer
       .from("orders")
-      .select("id, date, status, person, login, phone, addr_delivery")
-      .order("date", { ascending: false })
-      .limit(10),
-    /* ALL orders in the last 30 days for chart + revenue */
-    supabaseServer
-      .from("orders")
-      .select("id, date, status")
-      .gte("date", monthAgo.toISOString())
-      .order("date", { ascending: true }),
+      .select("id")
+      .gte("date", monthAgo.toISOString()),
     supabaseServer.from("warehouses").select("id, title").eq("active", 1).order("priority"),
   ]);
-
-  /* Fetch order items for recent table (to show totals) */
-  const recentIds = (recentOrderRows || []).map((o: any) => o.id);
-  const { data: recentItems } = recentIds.length > 0
-    ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", recentIds)
-    : { data: [] };
 
   /* Fetch order items for month orders (revenue chart) */
   const monthIds = (monthOrderRows || []).map((o: any) => o.id);
   const { data: monthItems } = monthIds.length > 0
     ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", monthIds)
     : { data: [] };
-
-  /* ── Recent orders table ── */
-  const recentOrders = (recentOrderRows || []).map((o: any) => ({
-    ...o,
-    items: (recentItems || []).filter((i: any) => i.oid === o.id),
-  }));
 
   const newOrders = newOrdersCount ?? 0;
 
@@ -101,14 +89,56 @@ async function _getStats() {
     0
   );
 
-  /* ── Status breakdown (last 7 days) ── (STATUS_DISPLAY defined at
-     module scope above — shared with recentOrders' normalization). */
-  // Reuses monthOrderRows (last 30 days, already fetched for the revenue
-  // card) filtered down to 7 — no need for a second query since 7 days is
-  // a subset of what's already in memory.
+  return {
+    productsCount: productsCount ?? 0,
+    ordersCount: ordersCount ?? 0,
+    usersCount: usersCount ?? 0,
+    articlesCount: articlesCount ?? 0,
+    newOrders,
+    totalRevenue,
+    warehouses: warehousesRaw || [],
+    warehousesCount: (warehousesRaw || []).length,
+  };
+}
+
+// Deliberately NOT wrapped in unstable_cache — see getStats' own comment.
+// Cheap on its own (LIMIT 10 + one items query keyed to just those ids), so
+// querying it live on every dashboard visit doesn't add meaningful load.
+async function getRecentOrders() {
+  const { data: recentOrderRows } = await supabaseServer
+    .from("orders")
+    .select("id, date, status, person, login, phone, addr_delivery")
+    .order("date", { ascending: false })
+    .limit(10);
+
+  const recentIds = (recentOrderRows || []).map((o: any) => o.id);
+  const { data: recentItems } = recentIds.length > 0
+    ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", recentIds)
+    : { data: [] };
+
+  return (recentOrderRows || []).map((o: any) => ({
+    ...o,
+    items: (recentItems || []).filter((i: any) => i.oid === o.id),
+  }));
+}
+
+// Deliberately NOT wrapped in unstable_cache — see getStats' own comment.
+// Queries only the last 7 days' status column directly (not the 30-day
+// order set the revenue card needs), so it's a small, cheap query on its
+// own even run live on every visit.
+async function getStatusData() {
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  const { data: weekOrderRows } = await supabaseServer
+    .from("orders")
+    .select("status")
+    .gte("date", weekAgo.toISOString());
+
+  // STATUS_DISPLAY defined at module scope above — legacy old/Russian
+  // status text mixed in with the current Ukrainian pipeline.
   const statusMap: Record<string, number> = {};
-  for (const o of monthOrderRows || []) {
-    if (new Date(o.date as string) < weekAgo) continue;
+  for (const o of weekOrderRows || []) {
     const raw = (o.status as string) || "";
     const s = isNewStatus(raw) ? "Новий" : (STATUS_DISPLAY[raw] ?? raw);
     statusMap[s] = (statusMap[s] || 0) + 1;
@@ -117,29 +147,16 @@ async function _getStats() {
   // zero orders this week — a manager scanning the legend for "how many
   // are still Відправлено" shouldn't have that row silently vanish just
   // because it happens to be 0 right now, and the fixed order stops rows
-  // jumping around week to week (the old sort-by-count-descending did
-  // both of these wrong).
-  const statusData = ORDER_STATUSES.map((name) => ({ name, value: statusMap[name] ?? 0 }));
-
-  return {
-    productsCount: productsCount ?? 0,
-    ordersCount: ordersCount ?? 0,
-    usersCount: usersCount ?? 0,
-    articlesCount: articlesCount ?? 0,
-    recentOrders,
-    newOrders,
-    totalRevenue,
-    statusData,
-    warehouses: warehousesRaw || [],
-    warehousesCount: (warehousesRaw || []).length,
-  };
+  // jumping around week to week.
+  return ORDER_STATUSES.map((name) => ({ name, value: statusMap[name] ?? 0 }));
 }
 
 export default async function DashboardPage() {
-  const {
-    productsCount, ordersCount, usersCount, articlesCount,
-    recentOrders, newOrders, totalRevenue, statusData, warehouses, warehousesCount,
-  } = await getStats();
+  const [
+    { productsCount, ordersCount, usersCount, articlesCount, newOrders, totalRevenue, warehouses, warehousesCount },
+    recentOrders,
+    statusData,
+  ] = await Promise.all([getStats(), getRecentOrders(), getStatusData()]);
 
   const stats = [
     {
