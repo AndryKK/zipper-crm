@@ -45,8 +45,8 @@ export default function EditArticlePage() {
   return (
     <>
       <Header title={isNew ? "Нова стаття" : form.title} />
-      <div className="p-6 max-w-3xl space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <div className="p-4 md:p-6 max-w-3xl space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Назва *</Label>
             <Input value={form.title} onChange={(e) => { set("title", e.target.value); if (isNew) set("uri", transliterate(e.target.value)); }} />
@@ -56,7 +56,7 @@ export default function EditArticlePage() {
             <Input value={form.uri} onChange={(e) => set("uri", e.target.value)} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Заголовок на сторінці (H1)</Label>
             <Input value={form.heading ?? ""} onChange={(e) => set("heading", e.target.value)} />
@@ -68,7 +68,7 @@ export default function EditArticlePage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={form.img} alt="" style={{ height: 36, width: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
               )}
-              <Input value={form.img ?? ""} onChange={(e) => set("img", e.target.value)} />
+              <Input value={form.img ?? ""} onChange={(e) => set("img", e.target.value)} className="min-w-0" />
             </div>
           </div>
         </div>
@@ -85,12 +85,12 @@ export default function EditArticlePage() {
           <Input placeholder="SEO заголовок" value={form.seoTitle ?? ""} onChange={(e) => set("seoTitle", e.target.value)} />
           <Textarea placeholder="SEO опис" rows={2} value={form.seoDescr ?? ""} onChange={(e) => set("seoDescr", e.target.value)} />
         </div>
-        <div className="flex gap-3">
-          <Button onClick={save} disabled={saving}>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button onClick={save} disabled={saving} className="w-full sm:w-auto">
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {isNew ? "Створити" : "Зберегти"}
           </Button>
-          <Button variant="outline" onClick={() => router.push("/articles")}>Скасувати</Button>
+          <Button variant="outline" onClick={() => router.push("/articles")} className="w-full sm:w-auto">Скасувати</Button>
         </div>
       </div>
     </>

@@ -26,11 +26,25 @@ export default async function ArticlesPage() {
   return (
     <>
       <Header title="Статті" />
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
         <div className="flex justify-end">
           <Link href="/articles/new"><Button><Plus className="h-4 w-4 mr-1.5" />Нова стаття</Button></Link>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {articles.map((a: any) => (
+            <ArticleRow key={a.id} article={a} variant="card" />
+          ))}
+          {articles.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Статей ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
