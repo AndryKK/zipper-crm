@@ -2092,7 +2092,21 @@ export default function OrderDetailPage() {
 
         {/* ── EMAIL PREVIEW / EDIT / SEND ─────────────────────────────────── */}
         <Dialog open={showEmailPreview} onOpenChange={setShowEmailPreview}>
-          <DialogContent style={{ maxWidth: 640 }}>
+          {/* Same fix as the stock-check popup above (see its own comment):
+              this dialog's content (Кому + Тема + note textarea + a 380px
+              email-preview iframe + footer buttons) is taller than a phone
+              viewport, and the base DialogContent centers vertically with
+              no height cap or scroll — content got cut off top and bottom
+              with no way to reach "Надіслати". Below sm it's anchored near
+              the top with its own capped, scrollable height (dvh, not vh —
+              vh is sized against the LARGEST mobile-browser viewport even
+              while the address bar is actually showing); at sm+ every
+              value is reasserted back to the original centered, uncapped
+              layout — desktop is unchanged. */}
+          <DialogContent
+            style={{ maxWidth: 640 }}
+            className="top-4 translate-y-0 max-h-[calc(100dvh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
+          >
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Mail size={16} /> {emailPreviewKind === "confirmed" ? "Лист-подяка" : emailPreviewKind === "welcome" ? "Вітальне повідомлення" : "Рахунок клієнту"} — перегляд перед надсиланням
@@ -2130,13 +2144,15 @@ export default function OrderDetailPage() {
                   <iframe
                     srcDoc={emailPreviewHtml}
                     sandbox=""
-                    style={{ width: "100%", height: 380, border: "1px solid var(--border)", borderRadius: 8, background: "#fff" }}
+                    className="h-[260px] sm:h-[380px]"
+                    style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, background: "#fff" }}
                   />
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                  <Button variant="outline" onClick={() => setShowEmailPreview(false)}>Закрити</Button>
+                <div className="flex flex-col sm:flex-row sm:justify-end gap-2.5">
+                  <Button variant="outline" onClick={() => setShowEmailPreview(false)} className="w-full sm:w-auto">Закрити</Button>
                   <Button
                     onClick={sendPreviewedEmail} disabled={emailSending}
+                    className="w-full sm:w-auto"
                     style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", color: "#fff", gap: 8 }}
                   >
                     {emailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail size={15} />}
