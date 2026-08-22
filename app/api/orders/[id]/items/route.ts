@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { getUahRate, resolveOrderDiscountPercent, computeItemPricing } from "@/lib/pricing";
+import { isPastPayment } from "@/lib/order-status";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -25,10 +26,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // see lib/pricing.ts) the same way the storefront's own checkout does.
   const [{ data: productRow }, { data: order }] = await Promise.all([
     supabaseServer.from("products").select("price").eq("id", product).single(),
-    supabaseServer.from("orders").select("login, discount_percent").eq("id", orderId).single(),
+    supabaseServer.from("orders").select("login, discount_percent, status").eq("id", orderId).single(),
   ]);
   if (!productRow) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
   if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
+
+  // Mirrors the order detail page's own "Додати товар до замовлення" gate
+  // (which only renders the add-item UI while step < 1, i.e. before
+  // Оплачено) — enforced here too so the restriction holds even if a
+  // request reaches this endpoint some other way, not just via that button
+  // being hidden.
+  if (isPastPayment(order.status)) {
+    return NextResponse.json({ error: "Додавання товарів доступне лише до оплати замовлення" }, { status: 409 });
+  }
 
   const rate = await getUahRate();
   const discountPercent = await resolveOrderDiscountPercent(order);

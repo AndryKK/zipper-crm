@@ -872,7 +872,7 @@ export default function OrderDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ product: product.id, quantity }),
     });
-    if (!res.ok) { toast.error("Не вдалося додати товар"); return; }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); toast.error(e.error ?? "Не вдалося додати товар"); return; }
     // POST /api/orders/[id]/items only returns the raw orders_item row —
     // no productTitle/productImg/productPcode/productUrl, those are joined
     // in by GET /api/orders/[id] only. Appending that raw row straight into
@@ -1615,8 +1615,15 @@ export default function OrderDetailPage() {
                           {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
                           {p.title}
                         </span>
+                        {/* products.price is a raw USD value (see addItem's
+                            own comment — the server recomputes the real
+                            грн price from this × the currency rate), but
+                            this was rendering it bare with a "грн" suffix,
+                            e.g. an $0.09 product shown as "0.09 грн" —
+                            wildly wrong. Simplest correct fix: don't show
+                            a price here at all. */}
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#6366f1", fontWeight: 600, flexShrink: 0, marginLeft: 10 }}>
-                          <Plus size={13} /> {p.price?.toFixed?.(2) ?? p.price} грн
+                          <Plus size={13} />
                         </span>
                       </button>
                     ))}
@@ -2737,7 +2744,17 @@ export default function OrderDetailPage() {
                 table/cards above compensate for that themselves), which
                 otherwise left this button flush against the card's edges. */}
             <div style={{ padding: editingItems ? 0 : "0 16px 16px" }}>
-            {!showAddItem ? (
+            {/* Adding new items is only offered while an order hasn't been
+                paid yet (step -1 "Новий" or 0 "В роботі") — once step >= 1
+                (Оплачено/Відправлено/Завершено), the customer already paid
+                for a specific set of items, so appending more here without
+                a corresponding payment/invoice adjustment would silently
+                under-charge them. */}
+            {step >= 1 ? (
+              <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--text-muted)", textAlign: "center" }}>
+                Додавання товарів доступне лише до оплати замовлення.
+              </p>
+            ) : !showAddItem ? (
               <button
                 onClick={() => { setShowAddItem(true); setEditingItems(true); }}
                 style={{
@@ -2780,8 +2797,15 @@ export default function OrderDetailPage() {
                           {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
                           {p.title}
                         </span>
+                        {/* products.price is a raw USD value (see addItem's
+                            own comment — the server recomputes the real
+                            грн price from this × the currency rate), but
+                            this was rendering it bare with a "грн" suffix,
+                            e.g. an $0.09 product shown as "0.09 грн" —
+                            wildly wrong. Simplest correct fix: don't show
+                            a price here at all. */}
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#6366f1", fontWeight: 600, flexShrink: 0, marginLeft: 10 }}>
-                          <Plus size={13} /> {p.price?.toFixed?.(2) ?? p.price} грн
+                          <Plus size={13} />
                         </span>
                       </button>
                     ))}

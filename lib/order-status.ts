@@ -49,6 +49,17 @@ export function orderStatusClass(status: string | null): string {
 // Скасовано intentionally get no tint, same as the plain (untinted) rows
 // they already are on the real orders list — a card mirrors that exactly
 // rather than inventing its own always-colored scheme.
+// True once an order has been paid (Оплачено), shipped (Відправлено), or
+// completed (Завершено) — the point past which new items can no longer be
+// appended (see app/api/orders/[id]/items/route.ts and the order detail
+// page's own "Додати товар до замовлення" gate): the customer already paid
+// for a specific set of items, so silently appending more here would
+// under-charge them without a corresponding invoice/payment adjustment.
+export function isPastPayment(status: string | null): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s.includes("оплач") || s.includes("відправлен") || s.includes("отправлен") || s.includes("завершен");
+}
+
 export function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
