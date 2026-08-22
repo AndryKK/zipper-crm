@@ -55,7 +55,23 @@ create index if not exists idx_all_filters_filters_items_fid on all_filters_filt
 --    before being reclassified as a pure-number token — matched the
 --    entire catalog regardless of threshold).
 --
--- 3. EVERYTHING ELSE — word_similarity()/`<%`, NOT similarity()/`%`
+-- 3. EVERYTHING ELSE — word_similarity()/`<%` (typo/case-ending tolerance,
+--    threshold 0.9 — see below) OR a plain substring match. The substring
+--    half was added per an explicit "шукати по частинам слів" report:
+--    word_similarity alone requires the query word to be nearly a whole
+--    word of the title (via its trigram set), so a genuine word fragment
+--    like "блиск" (typed while still typing "блискавка", or a deliberate
+--    partial search) scored well under 0.9 and matched nothing — confirmed
+--    live: "блиск"/"трактор"/"нікел"/"бігун" (prefixes of real title
+--    words) all returned zero rows before this, despite "блискавка"/
+--    "тракторна"/"нікель"/"бігунок" themselves matching fine. Plain
+--    substring closes that gap directly (any fragment, not just a prefix)
+--    without weakening the digit rule above (unaffected — different
+--    branch) or the "тест" vs "тесьма" rejection below (still rejected —
+--    "тест" isn't a substring of "тесьма" either: т-е-с-т vs т-е-с-ь-м-а,
+--    the 4th letter doesn't line up).
+--
+--    word_similarity() is used, NOT similarity()/`%`
 --    (which compares whole strings and dilutes a short word's score
 --    against a long title regardless of match quality — confirmed:
 --    similarity('Бігунок тест Тип 3 ...', 'бігунок') = 0.2, always below
@@ -66,8 +82,10 @@ create index if not exists idx_all_filters_filters_items_fid on all_filters_filt
 --    tight enough to reject "тест" vs "тесьма"-style unrelated overlap,
 --    loose enough to still tolerate a single-character typo/OCR slip in a
 --    longer word and Ukrainian case-ending variation on most words (e.g.
---    "тракторна" vs the title's own "тракторної" scores 0.8 and will NOT
---    match at 0.9 — a known, accepted tightening, not a bug).
+--    "тракторна" vs the title's own "тракторної" scores 0.8 and won't
+--    match via this half — but a real fragment search now also has the
+--    substring half as a second path, so this stays a narrow, accepted
+--    gap rather than a regression).
 --
 -- PCODE matching mirrors the same split: substring for non-numeric words
 -- (an artikul is normally copy-pasted or partially typed — "1028" finding
@@ -140,7 +158,7 @@ begin
           where m.digits[1] = w.word
         )
         when length(w.word) <= 2 then lower(p.title) like '%' || w.word || '%'
-        else w.word <% lower(p.title)
+        else w.word <% lower(p.title) or lower(p.title) like '%' || w.word || '%'
       end) as via_title
     from unnest(words) as w(word)
     join products p
@@ -151,7 +169,7 @@ begin
             where m.digits[1] = w.word
           )
           when length(w.word) <= 2 then lower(p.title) like '%' || w.word || '%'
-          else w.word <% lower(p.title)
+          else w.word <% lower(p.title) or lower(p.title) like '%' || w.word || '%'
         end
       )
       or (
@@ -173,7 +191,7 @@ begin
           where m.digits[1] = w.word
         )
         when length(w.word) <= 2 then lower(aff.title) like '%' || w.word || '%'
-        else w.word <% lower(aff.title)
+        else w.word <% lower(aff.title) or lower(aff.title) like '%' || w.word || '%'
       end
     )
     join all_filters_filters_items affi on affi.fid = aff.translation_id
