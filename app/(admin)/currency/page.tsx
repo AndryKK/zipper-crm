@@ -30,8 +30,31 @@ export default function CurrencyPage() {
   return (
     <>
       <Header title="Валюти" />
-      <div className="p-6 max-w-xl space-y-4">
-        <div className="rounded-md border overflow-hidden bg-white">
+      <div className="p-4 md:p-6 max-w-xl space-y-4">
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {currencies.map((c) => (
+            <div key={c.id} className="crm-card" style={{ padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                <div style={{ fontWeight: 600 }}>{c.title}</div>
+                <span className="font-mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>{c.uri}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Курс</label>
+                  <Input type="number" step="0.0001" value={c.rate} onChange={(e) => update(c.id, "rate", parseFloat(e.target.value))} className="w-full" />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer", paddingBottom: 8 }}>
+                  <input type="checkbox" checked={!!c.enabled} onChange={(e) => update(c.id, "enabled", e.target.checked ? 1 : 0)} className="h-4 w-4" />
+                  Активна
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -57,7 +80,7 @@ export default function CurrencyPage() {
             </tbody>
           </table>
         </div>
-        <Button onClick={save} disabled={saving}>
+        <Button onClick={save} disabled={saving} className="w-full sm:w-auto">
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           Зберегти
         </Button>
