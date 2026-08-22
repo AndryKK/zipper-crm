@@ -31,18 +31,41 @@ export default function CustomStringsPage() {
   return (
     <>
       <Header title="Тексти інтерфейсу" />
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="relative max-w-xs">
+      <div className="p-4 md:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Пошук..." className="pl-9" />
           </div>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving} className="w-full sm:w-auto">
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Зберегти всі зміни
           </Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {filtered.map((s) => (
+            <div key={s.id} className="crm-card" style={{ padding: 14 }}>
+              <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, overflowWrap: "break-word" }}>
+                {s.value}
+              </div>
+              <input
+                value={s.text}
+                onChange={(e) => update(s.id, e.target.value)}
+                className="crm-input w-full"
+              />
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Нічого не знайдено
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
