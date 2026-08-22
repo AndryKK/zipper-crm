@@ -31,8 +31,18 @@ export async function GET(req: NextRequest) {
     .select("*, labelAction:label_action, translationId:translation_id, seoTitle:seo_title, seoKey:seo_key, seoDescr:seo_descr", { count: "exact" })
     .eq("lang", lang);
 
+  // Same typo-tolerant, punctuation-insensitive, word-order-independent
+  // search as app/(admin)/products/page.tsx (title, pcode, and any filter
+  // value — including colors, which are modeled as filter values —
+  // assigned to the product) instead of a plain substring match, so every
+  // caller of this shared endpoint (the order page's "Додати товар"
+  // search, the product form's "Скопіювати з" search) behaves exactly
+  // like the main catalog search. See scripts/add-fuzzy-product-search.sql
+  // for the matching logic itself.
   if (q) {
-    query = query.or(`title.ilike.%${q}%,pcode.ilike.%${q}%,uri.ilike.%${q}%`);
+    const { data: matches } = await supabaseServer.rpc("search_products", { search_query: q });
+    const matchedTranslationIds = [...new Set(((matches ?? []) as { translation_id: number }[]).map((m) => m.translation_id))];
+    query = query.in("translation_id", matchedTranslationIds);
   }
 
   const { data: items, count } = await query
