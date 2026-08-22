@@ -52,7 +52,7 @@ export function NewsForm({ news }: { news?: any }) {
   }
 
   return (
-    <form onSubmit={submit} className="p-6 max-w-2xl space-y-4">
+    <form onSubmit={submit} className="p-4 md:p-6 max-w-2xl space-y-4">
       <div className="space-y-1">
         <Label>Заголовок *</Label>
         <Input value={form.title} onChange={(e) => set("title", e.target.value)} required />
@@ -73,24 +73,24 @@ export function NewsForm({ news }: { news?: any }) {
         <Label>Текст</Label>
         <Textarea value={form.text} onChange={(e) => set("text", e.target.value)} rows={10} />
       </div>
-      <div className="flex gap-4">
-        <div className="space-y-1">
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="space-y-1 sm:w-24">
           <Label>Приоритет</Label>
-          <Input type="number" value={form.priority} onChange={(e) => set("priority", parseInt(e.target.value))} className="w-24" />
+          <Input type="number" value={form.priority} onChange={(e) => set("priority", parseInt(e.target.value))} />
         </div>
         <div className="space-y-1">
           <Label>Дата</Label>
           <Input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} />
         </div>
       </div>
-      <div className="flex items-center gap-3 pt-2">
-        <Button type="submit" disabled={saving}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
+        <Button type="submit" disabled={saving} className="w-full sm:w-auto">
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {isEdit ? "Зберегти" : "Додати"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>Скасувати</Button>
+        <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">Скасувати</Button>
         {isEdit && (
-          <Button type="button" variant="destructive" onClick={remove} disabled={deleting} className="ml-auto">
+          <Button type="button" variant="destructive" onClick={remove} disabled={deleting} className="w-full sm:w-auto sm:ml-auto">
             {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             <Trash2 className="h-4 w-4 mr-2" />Видалити
           </Button>

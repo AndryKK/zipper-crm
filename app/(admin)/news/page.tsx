@@ -25,12 +25,44 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
   return (
     <>
       <Header title="Новини" />
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">Всього: {total}</p>
           <Button asChild><Link href="/news/new"><Plus className="h-4 w-4 mr-2" />Додати новину</Link></Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {allItems.map((n: any, i: number) => (
+            <Link
+              key={n.id}
+              href={`/news/${n.id}`}
+              className="crm-card block"
+              style={{ padding: 14, textDecoration: "none", color: "inherit" }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    #{(page - 1) * limit + i + 1}
+                  </div>
+                  <div style={{ fontWeight: 600, overflowWrap: "break-word" }}>{n.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {new Date(n.data).toLocaleDateString("uk-UA")}
+                  </div>
+                </div>
+                <Pencil size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+              </div>
+            </Link>
+          ))}
+          {allItems.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Новин ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -41,9 +73,13 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
               </tr>
             </thead>
             <tbody>
-              {allItems.map((n: any) => (
+              {/* # is a page-aware row number (1, 2, 3…), not
+                  news.priority — every single row in the table has
+                  priority=0 (never actually populated), so this column
+                  showed "0" for literally every news item. */}
+              {allItems.map((n: any, i: number) => (
                 <tr key={n.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-400">{n.priority}</td>
+                  <td className="px-4 py-2 text-gray-400">{(page - 1) * limit + i + 1}</td>
                   <td className="px-4 py-2 font-medium">{n.title}</td>
                   <td className="px-4 py-2 text-gray-500 text-xs">{new Date(n.data).toLocaleDateString("uk-UA")}</td>
                   <td className="px-4 py-2 text-right">
@@ -57,7 +93,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
           </table>
         </div>
         {pages > 1 && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
               <Button key={p} variant={p === page ? "default" : "outline"} size="sm" asChild>
                 <Link href={`/news?page=${p}${q ? `&q=${q}` : ""}`}>{p}</Link>
