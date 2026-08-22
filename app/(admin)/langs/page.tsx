@@ -29,8 +29,31 @@ export default function LangsPage() {
   return (
     <>
       <Header title="Мови" />
-      <div className="p-6 max-w-xl space-y-4">
-        <div className="rounded-md border overflow-hidden bg-white">
+      <div className="p-4 md:p-6 max-w-xl space-y-4">
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {langs.map((l) => (
+            <div key={l.id} className="crm-card" style={{ padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                <div style={{ fontWeight: 600 }}>{l.title}</div>
+                <span className="font-mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>{l.code}</span>
+              </div>
+              <div style={{ display: "flex", gap: 20 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!l.active} onChange={(e) => update(l.id, "active", e.target.checked ? 1 : 0)} className="h-4 w-4" />
+                  Активна
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!l.visibility} onChange={(e) => update(l.id, "visibility", e.target.checked ? 1 : 0)} className="h-4 w-4" />
+                  Видима
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -56,7 +79,7 @@ export default function LangsPage() {
             </tbody>
           </table>
         </div>
-        <Button onClick={save} disabled={saving}>
+        <Button onClick={save} disabled={saving} className="w-full sm:w-auto">
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           Зберегти
         </Button>
