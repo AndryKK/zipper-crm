@@ -54,11 +54,11 @@ export default function SliderPage() {
   return (
     <>
       <Header title="Слайдер" />
-      <div className="p-6 space-y-6 max-w-4xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-4xl">
         <Card>
           <CardHeader><CardTitle className="text-sm">Новий слайд</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Заголовок</Label>
                 <Input value={newSlide.title} onChange={(e) => setNewSlide((p) => ({ ...p, title: e.target.value }))} />
@@ -72,7 +72,7 @@ export default function SliderPage() {
               <Label>Опис</Label>
               <Textarea rows={2} value={newSlide.descr} onChange={(e) => setNewSlide((p) => ({ ...p, descr: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Зображення (десктоп)</Label>
                 <Input type="file" accept="image/*" onChange={(e) => setImgFile(e.target.files?.[0] ?? null)} />
@@ -82,7 +82,7 @@ export default function SliderPage() {
                 <Input type="file" accept="image/*" onChange={(e) => setImg2File(e.target.files?.[0] ?? null)} />
               </div>
             </div>
-            <Button onClick={addSlide} disabled={adding}>
+            <Button onClick={addSlide} disabled={adding} className="w-full sm:w-auto">
               {adding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />}
               Додати слайд
             </Button>
@@ -92,20 +92,29 @@ export default function SliderPage() {
         <div className="space-y-3">
           {slides.map((slide) => (
             <Card key={slide.id} className="overflow-hidden">
-              <div className="flex gap-4 p-4">
-                <div className="shrink-0 flex items-center text-gray-300">
-                  <GripVertical className="h-5 w-5" />
+              {/* flex-col below sm: grip+image on their own row (identity),
+                  then the text fields, then priority+delete — the original
+                  single flex-row (grip + 128px image + flex-1 fields +
+                  fixed priority/delete column, all with gap-4 between)
+                  never had room on a phone. `sm:contents` unwraps the
+                  grip+image pairing back into direct row children at sm+,
+                  restoring the exact original desktop spacing/layout. */}
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 p-4">
+                <div className="flex items-center gap-3 sm:contents">
+                  <div className="shrink-0 flex items-center text-gray-300">
+                    <GripVertical className="h-5 w-5" />
+                  </div>
+                  {slide.img && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={getImgUrl(slide.img, "slider")} alt="" className="h-16 w-24 sm:h-20 sm:w-32 rounded object-cover shrink-0" />
+                  )}
                 </div>
-                {slide.img && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={getImgUrl(slide.img, "slider")} alt="" className="h-20 w-32 rounded object-cover shrink-0" />
-                )}
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2 min-w-0">
                   <Input defaultValue={slide.title} onBlur={(e) => updateSlide(slide.id, { title: e.target.value })} placeholder="Заголовок" />
                   <Input defaultValue={slide.uri ?? ""} onBlur={(e) => updateSlide(slide.id, { uri: e.target.value })} placeholder="Посилання" />
                   <Input defaultValue={slide.descr ?? ""} onBlur={(e) => updateSlide(slide.id, { descr: e.target.value })} placeholder="Опис" />
                 </div>
-                <div className="flex flex-col gap-2 shrink-0">
+                <div className="flex items-center gap-3 sm:flex-col sm:gap-2 sm:items-stretch shrink-0">
                   <Input type="number" defaultValue={slide.priority} onBlur={(e) => updateSlide(slide.id, { priority: parseInt(e.target.value) })} className="w-20" placeholder="Порядок" />
                   <button onClick={() => deleteSlide(slide.id)} className="text-red-400 hover:text-red-600 flex items-center gap-1 text-sm">
                     <Trash2 className="h-4 w-4" />
