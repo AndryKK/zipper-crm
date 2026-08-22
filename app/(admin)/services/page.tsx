@@ -10,12 +10,39 @@ export default async function ServicesPage() {
   return (
     <>
       <Header title="Послуги" />
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">Всього: {items.length}</p>
           <Button asChild><Link href="/services/new"><Plus className="h-4 w-4 mr-2" />Додати послугу</Link></Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {items.map((s: any) => (
+            <Link
+              key={s.id}
+              href={`/services/${s.id}`}
+              className="crm-card block"
+              style={{ padding: 14, textDecoration: "none", color: "inherit" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>#{s.priority}</div>
+                  <div style={{ fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                </div>
+                <Pencil size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+              </div>
+            </Link>
+          ))}
+          {items.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Послуг ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
