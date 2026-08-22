@@ -56,17 +56,25 @@ export default async function TopSalesPage() {
         subtitle="Найпопулярніші товари за кількістю продажів"
       />
 
-      <div className="page-content" style={{ padding: "24px 28px", flex: 1 }}>
-        <div className="crm-card">
-          {items.length === 0 ? (
-            <div style={{ padding: "64px 24px", textAlign: "center" }}>
-              <TrendingUp size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
-              <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Даних продажів ще немає</p>
-            </div>
-          ) : (
-            <>
-              {/* ── Mobile card list (< md) ──────────────────────────────── */}
-              <div className="md:hidden space-y-3" style={{ padding: 12 }}>
+      {/* p-6 (24px, uniform) below md matches /returns' page padding
+          exactly — the mobile card list should sit the same distance from
+          the screen edges there as it does here. md:p-[24px_28px]
+          reasserts the original desktop value — padding has to be a
+          className here, not inline style, since an inline style property
+          always wins over any class regardless of breakpoint. */}
+      <div className="page-content p-6 md:p-[24px_28px]" style={{ flex: 1 }}>
+        {items.length === 0 ? (
+          <div className="crm-card" style={{ padding: "64px 24px", textAlign: "center" }}>
+            <TrendingUp size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Даних продажів ще немає</p>
+          </div>
+        ) : (
+          <>
+            {/* ── Mobile card list (< md) — a plain sibling of the desktop
+                table's own card below, not nested inside a second outer
+                card the way this used to be. Same page padding, same
+                card-to-edge spacing as /returns' list. ────────────────── */}
+            <div className="md:hidden space-y-3">
                 {items.map((item) => {
                   const pct = Math.round((item.quantity / maxQty) * 100);
                   return (
@@ -176,7 +184,7 @@ export default async function TopSalesPage() {
               </div>
 
               {/* ── Desktop table (>= md) ────────────────────────────────── */}
-              <div className="hidden md:block" style={{ overflowX: "auto" }}>
+              <div className="hidden md:block crm-card" style={{ overflowX: "auto" }}>
               <table className="crm-table">
                 <thead>
                   <tr>
@@ -294,7 +302,6 @@ export default async function TopSalesPage() {
               </div>
             </>
           )}
-        </div>
       </div>
     </>
   );
