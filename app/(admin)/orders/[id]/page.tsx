@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
 import { orderStatusLabel } from "@/lib/order-status";
+import { checkEmailForMistakes } from "@/lib/email-typo-check";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { NpAddressPicker } from "@/components/admin/np-address-picker";
 import {
@@ -2198,6 +2199,33 @@ export default function OrderDetailPage() {
                   </button>
                 </div>
               )}
+
+              {(() => {
+                const emailCheck = checkEmailForMistakes(resendEmail);
+                if (!emailCheck.hasError) return null;
+                return (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#dc2626" }}>
+                    <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span>Ймовірно, в адресі є помилка: {emailCheck.reason}.</span>
+                      {emailCheck.suggestion && (
+                        <button
+                          onClick={() => {
+                            setResendEmail(emailCheck.suggestion!);
+                            setEditingResendEmail(false);
+                          }}
+                          style={{
+                            alignSelf: "flex-start", background: "none", border: "1px solid #dc2626",
+                            borderRadius: 6, cursor: "pointer", color: "#dc2626", padding: "4px 10px", fontSize: 12,
+                          }}
+                        >
+                          Виправити допущену помилку в емейлі ({emailCheck.suggestion})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* whitespace-normal/text-left/h-auto override the shared
                   Button's default whitespace-nowrap+fixed height — these
