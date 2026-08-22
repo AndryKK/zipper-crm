@@ -448,6 +448,7 @@ function EditForm({
   const [addingColor, setAddingColor] = useState(false);
   const [deletingColorTrId, setDeletingColorTrId] = useState<number | null>(null);
   const [detachingColorTrId, setDetachingColorTrId] = useState<number | null>(null);
+  const [makingMainColorTrId, setMakingMainColorTrId] = useState<number | null>(null);
   // Set only when the color being detached is the group's current active=1
   // ("main"/searchable) one — the group left behind needs a replacement,
   // and only a person can pick which, so this opens a small picker dialog
@@ -675,11 +676,13 @@ function EditForm({
   async function handleMakeMain(color: AllColor) {
     const ukV = color.langVariants.find((v: any) => v.lang === "uk") ?? color.langVariants[0];
     if (!ukV?.id) return;
+    setMakingMainColorTrId(color.trId);
     try {
       const res = await fetch(`/api/products/${ukV.id}/colors`, { method: "PATCH" });
-      if (!res.ok) { toast.error("Не вдалося зробити колір головним"); return; }
+      if (!res.ok) { toast.error("Не вдалося зробити колір головним"); setMakingMainColorTrId(null); return; }
     } catch {
       toast.error("Помилка з'єднання");
+      setMakingMainColorTrId(null);
       return;
     }
     router.push(`/products/${ukV.id}`);
@@ -974,15 +977,20 @@ function EditForm({
           <button
             type="button"
             onClick={() => handleMakeMain(activeColorEntry)}
+            disabled={makingMainColorTrId === activeColorEntry.trId}
             title="Ставить active=1 для цього кольору й active=0 для решти групи — саме це визначає, який колір сайт показує в пошуку"
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               marginLeft: 8, padding: "6px 12px", borderRadius: 8,
               border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)",
-              fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+              fontSize: 12.5, fontWeight: 600,
+              cursor: makingMainColorTrId === activeColorEntry.trId ? "wait" : "pointer",
+              opacity: makingMainColorTrId === activeColorEntry.trId ? 0.6 : 1,
             }}
           >
-            <Star size={12} /> Зробити цей колір основним
+            {makingMainColorTrId === activeColorEntry.trId
+              ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+              : <Star size={12} />} Зробити цей колір основним
           </button>
         )}
 
@@ -1046,14 +1054,18 @@ function EditForm({
                         <button
                           type="button"
                           onClick={() => handleMakeMain(color)}
+                          disabled={makingMainColorTrId === color.trId}
                           title="Зробити головним кольором групи"
                           style={{
-                            background: "none", border: "none", cursor: "pointer",
+                            background: "none", border: "none",
+                            cursor: makingMainColorTrId === color.trId ? "wait" : "pointer",
                             color: "var(--text-muted)", padding: "4px 6px", flexShrink: 0, borderRadius: 4,
                             display: "flex", alignItems: "center",
                           }}
                         >
-                          <Star size={12} />
+                          {makingMainColorTrId === color.trId
+                            ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+                            : <Star size={12} />}
                         </button>
                         <button
                           type="button"
@@ -1545,10 +1557,17 @@ function EditForm({
                     <button
                       type="button"
                       onClick={() => handleMakeMain(color)}
+                      disabled={makingMainColorTrId === color.trId}
                       title="Зробити головним кольором групи"
-                      style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}
+                      style={{
+                        color: "var(--text-muted)", background: "none", border: "none",
+                        cursor: makingMainColorTrId === color.trId ? "wait" : "pointer",
+                        display: "flex", alignItems: "center", flexShrink: 0,
+                      }}
                     >
-                      <Star size={14} />
+                      {makingMainColorTrId === color.trId
+                        ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                        : <Star size={14} />}
                     </button>
                     <button
                       type="button"
