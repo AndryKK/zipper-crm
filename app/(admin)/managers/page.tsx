@@ -43,10 +43,10 @@ export default function ManagersPage() {
   return (
     <>
       <Header title="Менеджери" />
-      <div className="p-6 space-y-6 max-w-3xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-3xl">
         <div className="rounded-md border bg-white p-4 space-y-3">
           <h3 className="font-medium text-sm">Додати менеджера</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label>ПІБ / Назва *</Label>
               <Input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} />
@@ -60,12 +60,49 @@ export default function ManagersPage() {
               <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
             </div>
           </div>
-          <Button onClick={add} disabled={saving}>
+          <Button onClick={add} disabled={saving} className="w-full sm:w-auto">
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
             Додати
           </Button>
         </div>
-        <div className="rounded-md border overflow-hidden bg-white">
+
+        {/* ── Mobile cards (< md) ────────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {managers.map((m) => (
+            <div key={m.id} className="crm-card" style={{ padding: 14 }}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <input
+                  defaultValue={m.title}
+                  onBlur={(e) => update(m.id, "title", e.target.value)}
+                  placeholder="ПІБ / Назва"
+                  className="crm-input flex-1 min-w-0"
+                  style={{ fontWeight: 600 }}
+                />
+                <button onClick={() => remove(m.id)} className="text-red-400 hover:text-red-600 shrink-0" style={{ padding: 6 }}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="space-y-2.5">
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Телефон</label>
+                  <input defaultValue={m.phone ?? ""} onBlur={(e) => update(m.id, "phone", e.target.value)} className="crm-input w-full" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Email</label>
+                  <input defaultValue={m.email ?? ""} onBlur={(e) => update(m.id, "email", e.target.value)} className="crm-input w-full" />
+                </div>
+              </div>
+            </div>
+          ))}
+          {managers.length === 0 && (
+            <div className="crm-card" style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Менеджерів ще немає
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+        <div className="rounded-md border overflow-hidden bg-white hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
