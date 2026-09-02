@@ -8,7 +8,7 @@ import {
   FileText, Newspaper, Image, Settings, Filter, UserCog,
   PackageCheck, DollarSign, Globe, MessageSquare, Briefcase, Star,
   FileSpreadsheet, ChevronDown, LogOut, Zap, Warehouse, Boxes,
-  TrendingUp, RotateCcw, Menu, X,
+  TrendingUp, RotateCcw, Menu, X, AlertTriangle,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,7 @@ const navGroups = [
     items: [
       { href: "/warehouses", label: "Склади", icon: Warehouse },
       { href: "/inventory", label: "Залишки", icon: Boxes },
+      { href: "/inventory/low-stock", label: "Під мінімумом", icon: AlertTriangle },
     ],
   },
   {
