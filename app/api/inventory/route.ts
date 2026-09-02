@@ -60,17 +60,21 @@ export async function GET(req: Request) {
 
   let productIds: number[] | null = null;
   if (q) {
-    const { data: matches, error } = await supabaseServer
-      .from("products")
-      .select("id, translation_id")
-      .or(`title.ilike.%${q}%,pcode.ilike.%${q}%`)
-      .limit(1000);
+    // Was a plain .or(`title.ilike.%${q}%,...`) — PostgREST's embedded
+    // filter-list syntax treats a literal comma in `q` as a separator
+    // between filter clauses, not part of the search string, so anything
+    // after the first comma in the query got silently dropped (same class
+    // of bug already fixed on /products — see scripts/add-fuzzy-product-
+    // search.sql). Reusing that same RPC here fixes it identically and
+    // also gains typo-tolerance, word-order independence, and matching by
+    // filter values (colors etc.), same as everywhere else it's used.
+    const { data: matches, error } = await supabaseServer.rpc("search_products", { search_query: q });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     // `inventory` is keyed by translation_id (the ru/uk pair's shared id —
-    // see lib/inventory.ts), so a match on either language's title/pcode
-    // must resolve to that shared key, or a uk-only title search would find
-    // 0 rows even though the merged stock row exists under the ru id.
-    productIds = Array.from(new Set((matches || []).map((p: any) => p.translation_id ?? p.id)));
+    // see lib/inventory.ts) — search_products already returns that same
+    // shared key per match, so no extra id/translation_id reconciliation
+    // is needed here.
+    productIds = Array.from(new Set(((matches ?? []) as { translation_id: number }[]).map((m) => m.translation_id)));
     if (productIds.length === 0) return NextResponse.json(page ? { rows: [], total: 0 } : []);
   }
 
