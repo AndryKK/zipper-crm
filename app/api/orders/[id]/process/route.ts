@@ -31,6 +31,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await supabaseServer.from("orders").update({ is_oversized: body.isOversized }).eq("id", orderId);
   }
 
+  // Organization/ЄДРПОУ — set/edited from the stock-confirmation popup or
+  // the "змінити і надіслати повторно" discount box (see orgCheckbox in
+  // orders/[id]/page.tsx). Read straight off this order row by every later
+  // Nova Poshta TTN path (lib/order-ttn.ts's finishTtnCreation) unless a
+  // manager overrides it again in the manual TTN dialog.
+  if (typeof body.isOrganization === "boolean") {
+    await supabaseServer.from("orders").update({
+      is_organization: body.isOrganization,
+      edrpou: body.isOrganization ? String(body.edrpou ?? "").trim() || null : null,
+    }).eq("id", orderId);
+  }
+
   // Manual supplier override (also from the stock-confirmation popup) —
   // must be written before STEP 3 below generates the invoice/sends the
   // email, since getOrderDocumentData reads it fresh from the order row.

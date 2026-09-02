@@ -117,6 +117,15 @@ export default function OrderDetailPage() {
   // the order is already in progress (see resendWithDiscount below).
   const [discountInput, setDiscountInput] = useState("5");
   const [resendingDiscount, setResendingDiscount] = useState(false);
+  // Organization/ЄДРПОУ — prefilled from order.is_organization/order.edrpou
+  // (set either by the storefront checkout or a manager here) but always
+  // editable, same override relationship as the manual-TTN dialog's own
+  // copy of this pair (see openNpManualDialog below). Saved via
+  // /api/orders/[id]/process, alongside either the first "Опрацювати
+  // замовлення" or a later "змінити і надіслати повторно" — see autoProcess
+  // and resendWithDiscount.
+  const [orgCheckbox, setOrgCheckbox] = useState(false);
+  const [edrpouInput, setEdrpouInput] = useState("");
 
   // Resend email — lets a manager fix a typo'd address before either the
   // payment-request or payment-confirmed letter is (re)sent via the
@@ -291,6 +300,8 @@ export default function OrderDetailPage() {
       setResendEmail(data.login ?? "");
       setPrepaymentInput(String(data.prepayment ?? 0));
       setDiscountInput(String(data.discount_percent ?? data.clientDiscountPercent ?? 5));
+      setOrgCheckbox(!!data.is_organization);
+      setEdrpouInput(data.edrpou ?? "");
     });
   }, [params.id]);
 
@@ -373,10 +384,13 @@ export default function OrderDetailPage() {
     setIsOversized(false);
     setSupplierOverride("auto");
     setDiscountInput(String(order.discount_percent ?? order.clientDiscountPercent ?? 5));
+    setOrgCheckbox(!!order.is_organization);
+    setEdrpouInput(order.edrpou ?? "");
     setShowStockConfirm(true);
   }
 
   async function confirmStockAndProcess() {
+    if (orgCheckbox && !edrpouInput.trim()) { toast.error("Вкажіть код ЄДРПОУ для організації"); return; }
     setShowStockConfirm(false);
     const discountPercent = parseFloat(discountInput);
     await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined);
@@ -393,6 +407,8 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           isOversized: oversized,
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
+          isOrganization: orgCheckbox,
+          edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
           ...(discountPercent !== undefined ? { discountPercent } : {}),
         }),
       });
@@ -417,12 +433,17 @@ export default function OrderDetailPage() {
   async function resendWithDiscount() {
     const discountPercent = parseFloat(discountInput);
     if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
+    if (orgCheckbox && !edrpouInput.trim()) { toast.error("Вкажіть код ЄДРПОУ для організації"); return; }
     setResendingDiscount(true);
     try {
       const res = await fetch(`/api/orders/${params.id}/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ discountPercent }),
+        body: JSON.stringify({
+          discountPercent,
+          isOrganization: orgCheckbox,
+          edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
@@ -1188,6 +1209,25 @@ export default function OrderDetailPage() {
                         />
                         <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>%</span>
                       </div>
+                      <div className="flex-col sm:flex-row sm:items-center" style={{ display: "flex", gap: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", flexShrink: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={orgCheckbox}
+                            onChange={(e) => setOrgCheckbox(e.target.checked)}
+                            style={{ width: 14, height: 14, cursor: "pointer" }}
+                          />
+                          Організація (ЄДРПОУ)
+                        </label>
+                        {orgCheckbox && (
+                          <Input
+                            value={edrpouInput}
+                            onChange={(e) => setEdrpouInput(e.target.value)}
+                            placeholder="Код ЄДРПОУ"
+                            style={{ width: 140, height: 28, fontSize: 12.5 }}
+                          />
+                        )}
+                      </div>
                       <button
                         onClick={resendWithDiscount}
                         disabled={resendingDiscount}
@@ -1697,6 +1737,35 @@ export default function OrderDetailPage() {
                 За замовчуванням — знижка групи клієнта ({order.clientDiscountPercent ?? 5}%, за рангом клієнта). Тут можна вказати іншу для цього замовлення — застосується до ціни кожного товару.
               </div>
             </div>
+            <label
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
+                background: orgCheckbox ? "rgba(245,158,11,0.08)" : "transparent",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={orgCheckbox}
+                onChange={(e) => setOrgCheckbox(e.target.checked)}
+                style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Організація (юридична особа)</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                  Пізніше ТТН Нової Пошти формуватиметься на організацію за цим кодом ЄДРПОУ
+                </div>
+                {orgCheckbox && (
+                  <Input
+                    value={edrpouInput}
+                    onChange={(e) => setEdrpouInput(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Код ЄДРПОУ"
+                    style={{ marginTop: 8, width: 160 }}
+                  />
+                )}
+              </div>
+            </label>
             <div className="space-y-1.5">
               <Label style={{ fontSize: 13, fontWeight: 500 }}>Постачальник для рахунку</Label>
               <Select value={supplierOverride} onValueChange={(v) => setSupplierOverride(v as "auto" | "1" | "2")}>
