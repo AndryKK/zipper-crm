@@ -46,6 +46,18 @@ const PIPELINE = [
 // shipping, even though it also creates a TTN as a side effect).
 const NP_RED = "linear-gradient(135deg,#e4032e,#b8021f)";
 
+// Shared by every processing-flow DialogContent below — the base component
+// centers vertically with no height cap or scroll, so a popup whose content
+// can grow (an item checklist, a long email preview) overflowed the
+// viewport on ANY screen size with no way to reach the buttons below the
+// fold — reported live on desktop with a large order, not just mobile.
+// `dvh` not `vh` for the cap: mobile Safari/Chrome report `vh` against the
+// LARGEST viewport (address bar hidden), so a `vh`-sized cap sat partly
+// behind the address bar whenever it was showing. sm+ gets a bigger margin
+// since desktop has more room to spare.
+const SCROLLABLE_DIALOG_CLASS =
+  "top-4 translate-y-0 max-h-[calc(100dvh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-[calc(100dvh-4rem)]";
+
 const ALL_STATUSES = [
   { label: "Новий",        color: "#6b7280" },
   { label: "В роботі",    color: "#d97706" },
@@ -1528,14 +1540,15 @@ export default function OrderDetailPage() {
         {/* ── WAREHOUSE STOCK-CONFIRMATION POPUP ─────────────────────────── */}
         <Dialog open={showStockConfirm} onOpenChange={setShowStockConfirm}>
           {/* This popup's content (item checklist + add-item + discount +
-              supplier picker + footer buttons) is taller than a phone
-              viewport. The base DialogContent vertically centers with no
-              height cap, so on mobile it overflowed both above and below
-              the screen with no way to scroll down to the confirm button.
-              Below `sm` it's anchored near the top with its own capped,
-              scrollable height instead; at `sm` and up every value is
-              reasserted back to the component's original centered,
-              uncapped layout — desktop is unchanged.
+              supplier picker + footer buttons) scales with the order's item
+              count and can be taller than the viewport on ANY screen size —
+              a big order overflowed a full desktop monitor just as easily
+              as a phone, with the base DialogContent's uncapped centered
+              layout giving no way to scroll down to the confirm button
+              (originally fixed for mobile only; the same overflow was
+              reported live on desktop with a large order, so the cap+scroll
+              now applies at every breakpoint — sm just gets a bigger margin
+              since desktop viewports have more room to spare).
               `dvh` not `vh` for the cap — mobile Safari/Chrome report `vh`
               against the LARGEST viewport (address bar hidden), so a cap
               sized in `vh` sat partly behind the address bar whenever it
@@ -1547,7 +1560,7 @@ export default function OrderDetailPage() {
               actual visible viewport as the address bar shows/hides. */}
           <DialogContent
             style={{ maxWidth: 680 }}
-            className="top-4 translate-y-0 max-h-[calc(100dvh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
+            className={SCROLLABLE_DIALOG_CLASS}
           >
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1830,7 +1843,7 @@ export default function OrderDetailPage() {
 
         {/* ── POSTOMAT SHIPPING ────────────────────────────────────────────── */}
         <Dialog open={showPostomatDialog} onOpenChange={setShowPostomatDialog}>
-          <DialogContent style={{ maxWidth: 420 }}>
+          <DialogContent style={{ maxWidth: 420 }} className={SCROLLABLE_DIALOG_CLASS}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <PackageSearch size={16} /> Відправка на поштомат
@@ -1888,7 +1901,7 @@ export default function OrderDetailPage() {
             NP) — search Nova Poshta's own city/warehouse API instead of
             fixing the address text, then create the TTN with those refs. */}
         <Dialog open={showNpManualDialog} onOpenChange={setShowNpManualDialog}>
-          <DialogContent style={{ maxWidth: 460 }}>
+          <DialogContent style={{ maxWidth: 460 }} className={SCROLLABLE_DIALOG_CLASS}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <MapPin size={16} /> Обрати місто/відділення вручну
@@ -2065,7 +2078,7 @@ export default function OrderDetailPage() {
 
         {/* ── CASH ON DELIVERY (НАКЛАДЕНИЙ ПЛАТІЖ) ───────────────────────── */}
         <Dialog open={showCodDialog} onOpenChange={setShowCodDialog}>
-          <DialogContent style={{ maxWidth: 460 }}>
+          <DialogContent style={{ maxWidth: 460 }} className={SCROLLABLE_DIALOG_CLASS}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8, color: "#e4032e" }}>
                 <Banknote size={16} /> Відправка накладеним платежем
@@ -2140,7 +2153,7 @@ export default function OrderDetailPage() {
 
         {/* ── CANCEL TTN ───────────────────────────────────────────────────── */}
         <Dialog open={showCancelTtnDialog} onOpenChange={setShowCancelTtnDialog}>
-          <DialogContent style={{ maxWidth: 420 }}>
+          <DialogContent style={{ maxWidth: 420 }} className={SCROLLABLE_DIALOG_CLASS}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <XCircle size={16} color="#dc2626" /> Скасувати ТТН
@@ -2164,7 +2177,7 @@ export default function OrderDetailPage() {
 
         {/* ── MANUAL CONTROL PANEL ────────────────────────────────────────── */}
         <Dialog open={showManualPanel} onOpenChange={setShowManualPanel}>
-          <DialogContent style={{ maxWidth: 540 }}>
+          <DialogContent style={{ maxWidth: 540 }} className={SCROLLABLE_DIALOG_CLASS}>
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <SlidersHorizontal size={16} /> Ручне керування
@@ -2267,18 +2280,17 @@ export default function OrderDetailPage() {
         <Dialog open={showEmailPreview} onOpenChange={setShowEmailPreview}>
           {/* Same fix as the stock-check popup above (see its own comment):
               this dialog's content (Кому + Тема + note textarea + a 380px
-              email-preview iframe + footer buttons) is taller than a phone
+              email-preview iframe + footer buttons) can be taller than the
               viewport, and the base DialogContent centers vertically with
               no height cap or scroll — content got cut off top and bottom
-              with no way to reach "Надіслати". Below sm it's anchored near
-              the top with its own capped, scrollable height (dvh, not vh —
-              vh is sized against the LARGEST mobile-browser viewport even
-              while the address bar is actually showing); at sm+ every
-              value is reasserted back to the original centered, uncapped
-              layout — desktop is unchanged. */}
+              with no way to reach "Надіслати". Capped + scrollable at every
+              breakpoint now (dvh, not vh — vh is sized against the LARGEST
+              mobile-browser viewport even while the address bar is actually
+              showing), with a bigger margin at sm+ since desktop has more
+              room to spare. */}
           <DialogContent
             style={{ maxWidth: 640 }}
-            className="top-4 translate-y-0 max-h-[calc(100dvh-2rem)] overflow-y-auto sm:top-[50%] sm:translate-y-[-50%] sm:max-h-none sm:overflow-visible"
+            className={SCROLLABLE_DIALOG_CLASS}
           >
             <DialogHeader>
               <DialogTitle style={{ display: "flex", alignItems: "center", gap: 8 }}>
