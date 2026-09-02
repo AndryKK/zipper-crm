@@ -124,6 +124,7 @@ interface OrderRow {
   status: string | null;
   person: string | null;
   login: string | null;
+  original_client_name: string | null;
   addr_delivery: string | null;
   type: string | null;
   phone: string | null;
@@ -317,7 +318,7 @@ function OrdersPageInner() {
                   </div>
 
                   <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
-                    {order.person ?? order.login ?? "—"}
+                    {order.original_client_name || order.person || order.login || "—"}
                   </div>
                   {order.phone && (
                     <a
@@ -419,7 +420,7 @@ function OrdersPageInner() {
                           {orderStatusLabel(order.status)}
                         </span>
                       </td>
-                      <td className="font-medium">{order.person ?? order.login ?? "—"}</td>
+                      <td className="font-medium">{order.original_client_name || order.person || order.login || "—"}</td>
                       <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>
                         {order.addr_delivery ?? "—"}
                         {order.ttn && (
