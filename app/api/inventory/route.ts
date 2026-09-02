@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { resolveInventoryProductId } from "@/lib/inventory";
+import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 
 const SELECT = `
   *,
-  product:products!inventory_product_id_fkey(id, title, pcode, lang, img),
+  product:products!inventory_product_id_fkey(id, title, pcode, lang, img, uri, translation_id),
   warehouse:warehouses!inventory_warehouse_id_fkey(id, title)
 `;
 
@@ -108,22 +109,41 @@ export async function GET(req: Request) {
   async function attachSiblingTitles(rows: any[]): Promise<any[]> {
     const ruRows = rows.filter((r) => r.product?.lang === "ru");
     const ruIds = ruRows.map((r) => r.product.id);
-    if (ruIds.length === 0) return rows;
-    const { data: siblings } = await supabaseServer
-      .from("products")
-      .select("id, title, translation_id")
-      .eq("lang", "uk")
-      .in("translation_id", ruIds);
-    const ruTitleByRuId = new Map(ruRows.map((r) => [r.product.id, r.product.title]));
     const byTranslationId = new Map<number, { id: number; title: string; translation_id: number }>();
-    for (const s of (siblings || []) as { id: number; title: string; translation_id: number }[]) {
-      const existing = byTranslationId.get(s.translation_id);
-      const isRealTranslation = s.title !== ruTitleByRuId.get(s.translation_id);
-      if (!existing || (isRealTranslation && existing.title === ruTitleByRuId.get(s.translation_id))) {
-        byTranslationId.set(s.translation_id, s);
+    if (ruIds.length > 0) {
+      const { data: siblings } = await supabaseServer
+        .from("products")
+        .select("id, title, translation_id")
+        .eq("lang", "uk")
+        .in("translation_id", ruIds);
+      const ruTitleByRuId = new Map(ruRows.map((r) => [r.product.id, r.product.title]));
+      for (const s of (siblings || []) as { id: number; title: string; translation_id: number }[]) {
+        const existing = byTranslationId.get(s.translation_id);
+        const isRealTranslation = s.title !== ruTitleByRuId.get(s.translation_id);
+        if (!existing || (isRealTranslation && existing.title === ruTitleByRuId.get(s.translation_id))) {
+          byTranslationId.set(s.translation_id, s);
+        }
       }
     }
-    return rows.map((r) => ({ ...r, product_uk: r.product?.lang === "ru" ? byTranslationId.get(r.product.id) ?? null : null }));
+
+    // Storefront link for the "open on site" click on the product title —
+    // same resolution GET /api/orders/[id] already uses for its own
+    // productUrl (see lib/products.ts's resolveStorefrontGroups/
+    // buildStorefrontProductPath doc comments for why a plain uri isn't
+    // enough on its own: an inactive color needs its group's main uk uri).
+    const groupIds = rows.map((r) => r.product?.translation_id).filter((id): id is number => !!id);
+    const { ukRowByGroupId, mainUkUriByGroupId } = await resolveStorefrontGroups(groupIds);
+
+    return rows.map((r) => {
+      const path = r.product
+        ? buildStorefrontProductPath(r.product.translation_id, ukRowByGroupId, mainUkUriByGroupId, r.product.uri)
+        : null;
+      return {
+        ...r,
+        product_uk: r.product?.lang === "ru" ? byTranslationId.get(r.product.id) ?? null : null,
+        productUrl: path ? `${process.env.MAIN_DOMAIN}${path}` : null,
+      };
+    });
   }
 
   /* The "Всього одиниць"/"Під мінімумом" summary cards normally come from

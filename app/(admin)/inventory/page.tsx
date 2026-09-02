@@ -32,6 +32,7 @@ interface InventoryRow {
   product?: { id: number; title: string; pcode?: string; lang: string; img?: string | null };
   product_uk?: { id: number; title: string } | null;
   warehouse?: { id: number; title: string };
+  productUrl?: string | null;
 }
 
 function rowTitle(row: InventoryRow) {
@@ -56,6 +57,29 @@ function ProductThumb({ row, size }: { row: InventoryRow; size: number }) {
     <div style={{ width: size, height: size, borderRadius: 6, flexShrink: 0, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <Package size={size * 0.45} color="var(--text-muted)" />
     </div>
+  );
+}
+
+// Opens the product on the storefront in a new tab — same productUrl
+// resolution GET /api/orders/[id] already uses for its own item titles.
+// Falls back to plain (non-link) text when no storefront page could be
+// resolved (removed/inactive product, missing MAIN_DOMAIN, etc.).
+function ProductTitleLink({ row, fontSize }: { row: InventoryRow; fontSize: number }) {
+  const title = rowTitle(row);
+  if (!row.productUrl) {
+    return <div style={{ fontWeight: 600, fontSize }}>{title}</div>;
+  }
+  return (
+    <a
+      href={row.productUrl}
+      target="_blank" rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      style={{ fontWeight: 600, fontSize, color: "inherit", textDecoration: "none" }}
+      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+    >
+      {title}
+    </a>
   );
 }
 
@@ -602,7 +626,7 @@ function InventoryContent() {
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <ProductThumb row={row} size={36} />
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{rowTitle(row)}</div>
+                              <ProductTitleLink row={row} fontSize={13.5} />
                               {row.product?.pcode && (
                                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
                                   {row.product.pcode}
@@ -702,7 +726,7 @@ function InventoryContent() {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                       <ProductThumb row={row} size={40} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{rowTitle(row)}</div>
+                        <ProductTitleLink row={row} fontSize={14} />
                         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
                           {row.product?.pcode && <span style={{ fontFamily: "monospace" }}>{row.product.pcode}</span>}
                           {row.product?.pcode && " · "}
