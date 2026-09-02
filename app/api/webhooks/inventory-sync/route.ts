@@ -106,8 +106,21 @@ export async function POST(req: NextRequest) {
         // Restored — re-reserve it, same as a fresh add.
         await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_reactivated" });
       } else if (wasActive && isActive) {
-        await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
-        await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+        // A price-only edit (or any other column change) fires this same
+        // UPDATE — restocking-then-deducting unconditionally logged two
+        // "Зміна кількості в замовленні" history rows on every price edit
+        // even though nothing was actually reserved/released, and wasn't
+        // even reliably a no-op: adjustInventory clamps at 0 (lib/inventory.ts),
+        // so on an oversold line the revert could land above the real
+        // quantity before the reapply pulled it back down, silently
+        // inflating stock for that moment. Only touch inventory when the
+        // product or quantity actually changed.
+        const productChanged = payload.old_record.product !== payload.record.product;
+        const quantityChanged = payload.old_record.quantity !== payload.record.quantity;
+        if (productChanged || quantityChanged) {
+          await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
+          await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+        }
       }
       // wasActive === false && isActive === false: still removed, e.g. a
       // price edit while inactive — no stock effect either way.
