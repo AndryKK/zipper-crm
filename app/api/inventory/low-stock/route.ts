@@ -18,6 +18,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+  // Same "не введені позиції" filter as the main inventory page (initial_quantity
+  // still 0 — never gone through a manual entry, just auto-inserted by the
+  // order webhook) — see HIDE_UNENTERED_KEY in components/admin/toggle.tsx.
+  const hideUnentered = searchParams.get("hide_unentered") === "1";
 
   let translationIds: number[] | null = null;
   if (q) {
@@ -31,6 +35,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseServer.from("inventory_low_stock").select("*", { count: "exact" });
   if (translationIds) query = query.in("product_translation_id", translationIds);
+  if (hideUnentered) query = query.gt("initial_quantity", 0);
 
   const from = (page - 1) * PAGE_SIZE;
   // Worst-off (furthest below minimum, as a fraction) first — a position at

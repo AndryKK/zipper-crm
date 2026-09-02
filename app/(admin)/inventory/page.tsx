@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
 import { getImgUrl } from "@/lib/utils";
+import { Toggle, HIDE_UNENTERED_KEY } from "@/components/admin/toggle";
 
 const PAGE_SIZE = 50;
 
@@ -164,32 +165,6 @@ function StatTile({
 
 // Persisted per-browser display preference, not a business setting — a
 // plain localStorage flag is enough, no need for a DB column/settings row.
-const HIDE_UNENTERED_KEY = "inventory-hide-unentered";
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 9, cursor: "pointer", userSelect: "none" }}>
-      <span
-        onClick={() => onChange(!checked)}
-        style={{
-          width: 36, height: 21, borderRadius: 999, flexShrink: 0, position: "relative",
-          background: checked ? "var(--accent)" : "var(--border)",
-          transition: "background 0.15s ease",
-        }}
-      >
-        <span
-          style={{
-            position: "absolute", top: 2, left: checked ? 17 : 2,
-            width: 17, height: 17, borderRadius: "50%", background: "#fff",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.3)", transition: "left 0.15s ease",
-          }}
-        />
-      </span>
-      <span style={{ fontSize: 13, color: "var(--text)" }}>{label}</span>
-    </label>
-  );
-}
-
 function InventoryContent() {
   const searchParams = useSearchParams();
   const router = useRouter();

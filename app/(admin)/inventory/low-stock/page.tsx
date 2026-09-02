@@ -6,6 +6,7 @@ import { Boxes, Search, Package, AlertTriangle } from "lucide-react";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 import { Pagination } from "@/components/admin/data-table-controls";
 import { getImgUrl } from "@/lib/utils";
+import { Toggle, HIDE_UNENTERED_KEY } from "@/components/admin/toggle";
 
 const PAGE_SIZE = 50;
 
@@ -63,6 +64,7 @@ export default function LowStockPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [hideUnentered, setHideUnentered] = useState(false);
 
   // Debounced — same 400ms as the main inventory page's own search.
   useEffect(() => {
@@ -70,18 +72,32 @@ export default function LowStockPage() {
     return () => clearTimeout(t);
   }, [qInput]);
 
-  useEffect(() => { setPage(1); }, [q]);
+  useEffect(() => { setPage(1); }, [q, hideUnentered]);
+
+  // Restore the toggle's saved state once mounted (kept out of the initial
+  // useState so server-rendered and first-client-render markup still
+  // match — reading localStorage during render would break that). Shares
+  // its key with /inventory, so the preference carries over between pages.
+  useEffect(() => {
+    if (localStorage.getItem(HIDE_UNENTERED_KEY) === "1") setHideUnentered(true);
+  }, []);
+
+  function toggleHideUnentered(next: boolean) {
+    setHideUnentered(next);
+    localStorage.setItem(HIDE_UNENTERED_KEY, next ? "1" : "0");
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (q) params.set("q", q);
+    if (hideUnentered) params.set("hide_unentered", "1");
     const res = await fetch(`/api/inventory/low-stock?${params}`);
     const data = await res.json();
     setRows(data.rows ?? []);
     setTotal(data.total ?? 0);
     setLoading(false);
-  }, [page, q]);
+  }, [page, q, hideUnentered]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -97,14 +113,22 @@ export default function LowStockPage() {
           <div style={{ fontSize: 28, fontWeight: 800, color: "var(--danger)" }}>{total.toLocaleString("uk-UA")}</div>
         </div>
 
-        <div className="relative mb-4" style={{ maxWidth: 360 }}>
-          <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-          <input
-            className="crm-input w-full"
-            style={{ paddingLeft: 34 }}
-            placeholder="Пошук за назвою або кодом…"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center mb-4">
+          <div className="relative w-full sm:w-auto" style={{ maxWidth: 360 }}>
+            <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+            <input
+              className="crm-input w-full"
+              style={{ paddingLeft: 34 }}
+              placeholder="Пошук за назвою або кодом…"
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+            />
+          </div>
+
+          <Toggle
+            checked={hideUnentered}
+            onChange={toggleHideUnentered}
+            label="Не відображати не введені позиції"
           />
         </div>
 
