@@ -2826,7 +2826,7 @@ export default function OrderDetailPage() {
                       </div>
                     ) : (
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, textDecoration: isRemoved ? "line-through" : "none" }}>
-                        <span style={{ color: "var(--text-muted)" }}>{item.price.toFixed(2)} грн × {item.quantity}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{Number(item.price).toFixed(2)} грн × {item.quantity}</span>
                         <span className="font-medium">{isRemoved ? "0.00 грн" : `${(Number(item.price) * Number(item.quantity)).toFixed(2)} грн`}</span>
                       </div>
                     )}
@@ -2918,7 +2918,7 @@ export default function OrderDetailPage() {
                       </>
                     ) : (
                       <>
-                        <td style={{ textAlign: "right", textDecoration: isRemoved ? "line-through" : "none" }}>{item.price.toFixed(2)} грн</td>
+                        <td style={{ textAlign: "right", textDecoration: isRemoved ? "line-through" : "none" }}>{Number(item.price).toFixed(2)} грн</td>
                         <td style={{ textAlign: "right", textDecoration: isRemoved ? "line-through" : "none" }}>{item.quantity}</td>
                       </>
                     )}
