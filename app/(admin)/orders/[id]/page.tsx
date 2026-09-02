@@ -932,7 +932,7 @@ export default function OrderDetailPage() {
     setItemSearch(q);
     if (!q.trim()) { setItemSearchResults([]); return; }
     setItemSearching(true);
-    const data = await apiFetch<{ items: { id: number; title: string; pcode: string | null; price: number; minquantity: number | null }[] }>(
+    const data = await apiFetch<{ items: { id: number; title: string; pcode: string | null; price: number; minquantity: number | null; img: string | null }[] }>(
       `/api/products?q=${encodeURIComponent(q)}&lang=uk&limit=8`
     );
     setItemSearching(false);
@@ -1710,9 +1710,18 @@ export default function OrderDetailPage() {
                         onClick={() => addItem(p)}
                         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "8px 12px", background: "var(--bg)", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", textAlign: "left", fontSize: 13 }}
                       >
-                        <span>
-                          {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
-                          {p.title}
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          {p.img ? (
+                            <img src={p.img} alt="" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 5, flexShrink: 0, background: "var(--bg-secondary)" }} />
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: 5, flexShrink: 0, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Package size={12} color="var(--text-muted)" />
+                            </div>
+                          )}
+                          <span>
+                            {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
+                            {p.title}
+                          </span>
                         </span>
                         {/* products.price is a raw USD value (see addItem's
                             own comment — the server recomputes the real
@@ -3018,9 +3027,18 @@ export default function OrderDetailPage() {
                         onClick={() => addItem(p)}
                         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "8px 12px", background: "var(--bg)", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", textAlign: "left", fontSize: 13 }}
                       >
-                        <span>
-                          {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
-                          {p.title}
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          {p.img ? (
+                            <img src={p.img} alt="" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 5, flexShrink: 0, background: "var(--bg-secondary)" }} />
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: 5, flexShrink: 0, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Package size={12} color="var(--text-muted)" />
+                            </div>
+                          )}
+                          <span>
+                            {p.pcode && <span className="font-mono text-xs" style={{ color: "var(--text-muted)", marginRight: 8 }}>{p.pcode}</span>}
+                            {p.title}
+                          </span>
                         </span>
                         {/* products.price is a raw USD value (see addItem's
                             own comment — the server recomputes the real
