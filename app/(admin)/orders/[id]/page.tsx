@@ -2575,7 +2575,10 @@ export default function OrderDetailPage() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12.5 }}>
                     {Object.entries(order.np_org_details as Record<string, unknown>)
-                      .filter(([, v]) => v !== null && v !== "" && typeof v !== "object")
+                      // Ref/Counterparty/OwnershipForm are internal NP UUIDs
+                      // (opaque, not human-readable) — kept in the DB row
+                      // as-is, just not worth showing a manager.
+                      .filter(([k, v]) => v !== null && v !== "" && typeof v !== "object" && !["Ref", "Counterparty", "OwnershipForm"].includes(k))
                       .map(([key, value]) => (
                         <div key={key}><span className="text-gray-500">{key}:</span> {String(value)}</div>
                       ))}
