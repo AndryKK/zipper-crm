@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
+import { looksLikePhone } from "@/lib/phone";
 
 // Keep in sync with app/(admin)/orders/page.tsx's PAGE_SIZE.
 const PAGE_SIZE = 15;
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   // reflects real creation order, for both sources.
   let query = supabaseServer
     .from("orders")
-    .select("id, status, person, login, original_client_name, addr_delivery, type, phone, date, ttn, welcome_email_sent_at", { count: "exact" })
+    .select("id, status, person, login, original_client_name, addr_delivery, type, phone, callme, date, ttn, welcome_email_sent_at", { count: "exact" })
     .order("id", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
@@ -116,16 +117,28 @@ export async function GET(req: NextRequest) {
 
   const logins = Array.from(new Set((orderRows || []).map((o: { login: string | null }) => o.login).filter(Boolean)));
   const { data: loginUsers } = logins.length > 0
-    ? await supabaseServer.from("users").select("login, password").in("login", logins)
+    ? await supabaseServer.from("users").select("login, password, phone").in("login", logins)
     : { data: [] };
   const premiumLogins = (loginUsers || [])
     .filter((u: { password: string }) => u.password === "SUPABASE_AUTH")
     .map((u: { login: string }) => u.login);
+  // users.phone (the account's own number) is the actual CLIENT's phone —
+  // orders.phone is only ever the shipping recipient's, which can be
+  // someone else entirely (same distinction as original_client_name vs
+  // person — see the viber-messages route's own version of this lookup).
+  // Only matters for the "клієнт просить передзвонити" (callme) badge below;
+  // every other phone display on this page still shows orders.phone as-is.
+  const phoneByLogin = new Map(
+    (loginUsers || [])
+      .filter((u: { phone: string | null }) => looksLikePhone(u.phone))
+      .map((u: { login: string; phone: string }) => [u.login, u.phone])
+  );
 
-  const items = (orderRows || []).map((o: { id: number; login: string | null }) => ({
+  const items = (orderRows || []).map((o: { id: number; login: string | null; phone: string | null }) => ({
     ...o,
     items: (allItems || []).filter((i: { oid: number }) => i.oid === o.id),
     isPremiumUser: premiumLogins.includes(o.login ?? ""),
+    clientPhone: (o.login && phoneByLogin.get(o.login)) || o.phone,
   }));
 
   return NextResponse.json({ items, total: count ?? 0 });

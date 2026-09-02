@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase";
 import { getOrderDocumentData, welcomeGreetingText } from "@/lib/order-documents";
 import { paymentRequestIntro, paymentConfirmedIntro } from "@/lib/email-templates";
 import { signOrderDocToken } from "@/lib/doc-token";
+import { looksLikePhone } from "@/lib/phone";
 
 // Ukrainian mobile numbers are stored in whatever shape whoever typed them
 // used (0XXXXXXXXX, +380XXXXXXXXX, spaces/dashes...) — Viber's own
@@ -14,10 +15,6 @@ function toViberPhone(raw: string): string {
   if (d.startsWith("0") && d.length === 10) return `38${d}`;
   if (d.length === 9) return `380${d}`;
   return d;
-}
-
-function looksLikePhone(v: string | null | undefined): v is string {
-  return !!v && v.replace(/\D/g, "").length >= 9;
 }
 
 // Same pipeline the order page itself uses (PIPELINE in

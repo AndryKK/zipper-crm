@@ -6,7 +6,7 @@ import { Header } from "@/components/admin/header";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail, X } from "lucide-react";
+import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail, X, Phone } from "lucide-react";
 import { Pagination } from "@/components/admin/data-table-controls";
 import { isNewStatus, orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
 
@@ -128,6 +128,11 @@ interface OrderRow {
   addr_delivery: string | null;
   type: string | null;
   phone: string | null;
+  // The account's own phone (users.phone via login) — the actual client's
+  // number, as opposed to `phone` which is only ever the shipping
+  // recipient's. Only used for the callme badge/link below.
+  clientPhone: string | null;
+  callme: boolean | number | null;
   date: string;
   ttn: string | null;
   welcome_email_sent_at: string | null;
@@ -320,7 +325,17 @@ function OrdersPageInner() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
                     {order.original_client_name || order.person || order.login || "—"}
                   </div>
-                  {order.phone && (
+                  {order.callme && order.clientPhone ? (
+                    <a
+                      href={`tel:${order.clientPhone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Клієнт просить передзвонити"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "#dc2626", textDecoration: "none", fontFamily: "monospace", fontWeight: 600 }}
+                    >
+                      <Phone size={13} />
+                      {order.clientPhone}
+                    </a>
+                  ) : order.phone ? (
                     <a
                       href={`tel:${order.phone}`}
                       onClick={(e) => e.stopPropagation()}
@@ -328,7 +343,7 @@ function OrdersPageInner() {
                     >
                       {order.phone}
                     </a>
-                  )}
+                  ) : null}
                   {order.addr_delivery && (
                     <div
                       style={{
@@ -435,7 +450,20 @@ function OrdersPageInner() {
                       <td className="text-center">{(order.items || []).length}</td>
                       <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
                       <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
-                      <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
+                      <td style={{ color: "var(--text-muted)" }}>
+                        {order.callme && order.clientPhone ? (
+                          <a
+                            href={`tel:${order.clientPhone}`}
+                            title="Клієнт просить передзвонити"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#dc2626", fontWeight: 600, textDecoration: "none" }}
+                          >
+                            <Phone size={13} />
+                            {order.clientPhone}
+                          </a>
+                        ) : (
+                          order.phone ?? "—"
+                        )}
+                      </td>
                     </tr>
                   );
                 })
