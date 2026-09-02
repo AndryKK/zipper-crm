@@ -609,7 +609,6 @@ function InventoryContent() {
                     <SortableTh label="Склад" sortKey="warehouse" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
                     <SortableTh label="Поч. залишок" sortKey="initial_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
-                    <SortableTh label="Резерв" sortKey="reserved" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Доступний" sortKey="available" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Мінімум" sortKey="min_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <th style={{ textAlign: "right" }}>Дії</th>
@@ -665,11 +664,6 @@ function InventoryContent() {
                               </button>
                             )}
                           </InventoryHistoryDialog>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>
-                            {Number(row.reserved).toFixed(0)}
-                          </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <span
@@ -735,7 +729,7 @@ function InventoryContent() {
                       </div>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
                       <InventoryHistoryDialog productId={row.product_id} warehouseId={row.warehouse_id}>
                         {(openHistory) => (
                           <StatTile
@@ -746,7 +740,6 @@ function InventoryContent() {
                           />
                         )}
                       </InventoryHistoryDialog>
-                      <StatTile label="Резерв" value={Number(row.reserved)} />
                       <StatTile
                         label="Доступний" value={available}
                         color={available < 0 ? "var(--danger)" : available === 0 ? "var(--warning)" : "var(--success)"}
