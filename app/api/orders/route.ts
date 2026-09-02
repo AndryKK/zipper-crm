@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     // of the existing fuzzy matches so a numeric query still finds it in a
     // phone/ttn field too.
     const idClause = /^\d+$/.test(q.trim()) ? `id.eq.${q.trim()},` : "";
-    query = query.or(`${idClause}person.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*,ttn.ilike.*${q}*`);
+    query = query.or(`${idClause}person.ilike.*${q}*,original_client_name.ilike.*${q}*,phone.ilike.*${q}*,login.ilike.*${q}*,ttn.ilike.*${q}*`);
   }
 
   const { data: orderRows, count } = await query;
