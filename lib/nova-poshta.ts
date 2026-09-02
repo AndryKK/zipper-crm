@@ -145,6 +145,11 @@ export interface NpTtnParams {
   weight: number;
   cost: number;
   description: string;
+  // Recipient counterparty type. Organization needs its own Counterparty/save
+  // shape (EDRPOU, no inline ContactPerson — see npCreateTtn) — omitted or
+  // "individual" keeps the original PrivatePerson behavior.
+  recipientType?: "individual" | "organization";
+  edrpou?: string;
   // Накладений платіж: adds BackwardDeliveryData so the recipient pays this
   // amount in cash on pickup instead of it being collected upfront. Nova
   // Poshta does not support this for postomat deliveries (parcel lockers
@@ -202,20 +207,55 @@ function kyivDateString(): string {
 
 export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { error: string }> {
   const date = kyivDateString();
+  const nameParts = p.recipientName.trim().split(/\s+/);
+  const recipientPhoneDigits = p.recipientPhone.replace(/\D/g, "");
 
-  const parts = p.recipientName.trim().split(/\s+/);
-  const recRes = await npCall(p.apiKey, "Counterparty", "save", {
-    FirstName: parts[1] ?? parts[0] ?? "",
-    MiddleName: parts[2] ?? "",
-    LastName: parts[0] ?? "",
-    Phone: p.recipientPhone.replace(/\D/g, ""),
-    CounterpartyType: "PrivatePerson",
-    CounterpartyProperty: "Recipient",
-  });
-  if (!recRes.success) return { error: recRes.errors?.join(", ") ?? "Counterparty error" };
+  let recipientRef: string | undefined;
+  let contactRef: string | undefined;
 
-  const recipientRef = recRes.data?.[0]?.Ref;
-  const contactRef = recRes.data?.[0]?.ContactPerson?.data?.[0]?.Ref;
+  if (p.recipientType === "organization") {
+    if (!p.edrpou?.trim()) return { error: "Не вказано код ЄДРПОУ" };
+    // Organization counterparties are resolved by Nova Poshta itself from
+    // the EDRPOU (no company name/address fields accepted here — NP looks
+    // the entity up in the state registry) — an unknown/invalid code makes
+    // this call fail outright, which is the "не підтягне" case surfaced to
+    // the manager as-is so they can double-check the code with the client.
+    const orgRes = await npCall(p.apiKey, "Counterparty", "save", {
+      CounterpartyType: "Organization",
+      CounterpartyProperty: "Recipient",
+      EDRPOU: p.edrpou.trim(),
+    });
+    if (!orgRes.success) {
+      return { error: orgRes.errors?.join(", ") || "Не вдалося знайти організацію за цим ЄДРПОУ в Новій Пошті" };
+    }
+    recipientRef = orgRes.data?.[0]?.Ref;
+    if (!recipientRef) return { error: "Не отримано ref організації-отримувача" };
+
+    // Unlike PrivatePerson, Organization/save does not create a contact
+    // person inline — a separate call is required to attach who at the
+    // company actually picks the parcel up.
+    const contactRes = await npCall(p.apiKey, "ContactPerson", "save", {
+      CounterpartyRef: recipientRef,
+      FirstName: nameParts[1] ?? nameParts[0] ?? "",
+      MiddleName: nameParts[2] ?? "",
+      LastName: nameParts[0] ?? "",
+      Phone: recipientPhoneDigits,
+    });
+    if (!contactRes.success) return { error: contactRes.errors?.join(", ") ?? "Не вдалося створити контактну особу організації" };
+    contactRef = contactRes.data?.[0]?.Ref;
+  } else {
+    const recRes = await npCall(p.apiKey, "Counterparty", "save", {
+      FirstName: nameParts[1] ?? nameParts[0] ?? "",
+      MiddleName: nameParts[2] ?? "",
+      LastName: nameParts[0] ?? "",
+      Phone: recipientPhoneDigits,
+      CounterpartyType: "PrivatePerson",
+      CounterpartyProperty: "Recipient",
+    });
+    if (!recRes.success) return { error: recRes.errors?.join(", ") ?? "Counterparty error" };
+    recipientRef = recRes.data?.[0]?.Ref;
+    contactRef = recRes.data?.[0]?.ContactPerson?.data?.[0]?.Ref;
+  }
   if (!recipientRef || !contactRef) return { error: "Не отримано ref отримувача" };
 
   const docProps: Record<string, unknown> = {

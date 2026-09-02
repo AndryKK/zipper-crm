@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const orderId = parseInt(id);
   const body = await req.json().catch(() => ({}));
 
-  const { cityRef, warehouseRef, isPostomat, seat, codAmount } = body;
+  const { cityRef, warehouseRef, isPostomat, seat, codAmount, isOrganization, edrpou } = body;
   if (!cityRef || !warehouseRef) {
     return NextResponse.json({ error: "Оберіть місто і відділення/поштомат" }, { status: 400 });
   }
@@ -26,6 +26,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Вкажіть коректні габарити для поштомату" }, { status: 400 });
     }
   }
+  if (isOrganization && !String(edrpou ?? "").trim()) {
+    return NextResponse.json({ error: "Вкажіть код ЄДРПОУ для організації" }, { status: 400 });
+  }
 
   const result = await createOrderTtnManual(orderId, {
     cityRef,
@@ -33,6 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     isPostomat: !!isPostomat,
     seat: isPostomat ? seat : undefined,
     codAmount: isPostomat ? undefined : codAmount,
+    isOrganization: !!isOrganization,
+    edrpou: isOrganization ? String(edrpou).trim() : undefined,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });

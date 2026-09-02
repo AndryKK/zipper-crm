@@ -179,6 +179,12 @@ export default function OrderDetailPage() {
   const [npManualSeat, setNpManualSeat] = useState({ weight: "1", length: "20", width: "15", height: "10" });
   const [npManualSubmitting, setNpManualSubmitting] = useState(false);
   const [npManualError, setNpManualError] = useState("");
+  // Pre-filled from order.is_organization/order.edrpou when the dialog
+  // opens (see openNpManualDialog) but always manager-editable — the order
+  // may not carry these at all (older order / storefront hasn't been
+  // updated to send them yet), in which case it just starts unchecked.
+  const [npManualIsOrg, setNpManualIsOrg] = useState(false);
+  const [npManualEdrpou, setNpManualEdrpou] = useState("");
 
   useEffect(() => {
     if (!showNpManualDialog || npCityQuery.trim().length < 2) return;
@@ -519,11 +525,14 @@ export default function OrderDetailPage() {
     setNpWhQuery(""); setNpWhResults([]); setNpWhSelected(null);
     setNpManualSeat({ weight: "1", length: "20", width: "15", height: "10" });
     setNpManualError("");
+    setNpManualIsOrg(!!order?.is_organization);
+    setNpManualEdrpou(order?.edrpou ?? "");
     setShowNpManualDialog(true);
   }
 
   async function submitNpManual() {
     if (!npCitySelected || !npWhSelected) { setNpManualError("Оберіть місто і відділення/поштомат"); return; }
+    if (npManualIsOrg && !npManualEdrpou.trim()) { setNpManualError("Вкажіть код ЄДРПОУ для організації"); return; }
     setNpManualSubmitting(true);
     setNpManualError("");
     try {
@@ -531,6 +540,8 @@ export default function OrderDetailPage() {
         cityRef: npCitySelected.ref,
         warehouseRef: npWhSelected.ref,
         isPostomat: npWhSelected.isPostomat,
+        isOrganization: npManualIsOrg,
+        edrpou: npManualIsOrg ? npManualEdrpou.trim() : undefined,
       };
       if (npWhSelected.isPostomat) {
         body.seat = {
@@ -1892,6 +1903,25 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={npManualIsOrg}
+                  onChange={(e) => setNpManualIsOrg(e.target.checked)}
+                  style={{ width: 15, height: 15, cursor: "pointer" }}
+                />
+                Формувати для організації (юридичної особи)
+              </label>
+              {npManualIsOrg && (
+                <Input
+                  value={npManualEdrpou}
+                  onChange={(e) => setNpManualEdrpou(e.target.value)}
+                  placeholder="Код ЄДРПОУ"
+                />
+              )}
+            </div>
 
             {npManualError && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.1)" }}>

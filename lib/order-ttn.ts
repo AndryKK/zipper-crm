@@ -71,6 +71,13 @@ export type CreateTtnOptions = {
   // aren't an error there, they just need the dedicated postomat button —
   // report it as skipped rather than failed.
   skipPostomat?: boolean;
+  // Recipient-is-a-legal-entity override for the manual TTN dialog — a
+  // manager can tick this (and supply/edit the ЄДРПОУ) regardless of what
+  // the order itself carries. Every automatic path (confirm-payment, cod,
+  // generate) never sets these, so finishTtnCreation falls back to the
+  // order's own is_organization/edrpou columns for them.
+  isOrganization?: boolean;
+  edrpou?: string;
 };
 
 export type CreateTtnResult =
@@ -85,11 +92,19 @@ export type CreateTtnResult =
 // one place.
 async function finishTtnCreation(
   orderId: number,
-  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean },
+  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
-  opts: Pick<CreateTtnOptions, "codAmount" | "seat">
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou">
 ): Promise<CreateTtnResult> {
+  // Manual dialog's checkbox/field wins if a manager set it; every
+  // automatic path (confirm-payment/cod/generate) leaves opts.isOrganization
+  // undefined and gets whatever the order itself carries.
+  const isOrganization = opts.isOrganization ?? !!order.is_organization;
+  const edrpou = (opts.edrpou ?? order.edrpou ?? "").trim();
+  if (isOrganization && !edrpou) {
+    return { ok: false, kind: "error", error: "Вкажіть код ЄДРПОУ для формування накладної на організацію" };
+  }
   const { data: allSettings } = await supabaseServer.from("settings").select("value, text");
   const settings = allSettings ?? [];
 
@@ -150,6 +165,8 @@ async function finishTtnCreation(
       // must always be the full order total, never a discounted/net figure.
       cost:        orderTotal,
       description: "Швейна фурнітура",
+      recipientType: isOrganization ? "organization" : "individual",
+      edrpou:      isOrganization ? edrpou : undefined,
       codAmount:   opts.codAmount,
       seat,
     });
@@ -231,7 +248,13 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
 // refs a manager picked.
 export async function createOrderTtnManual(
   orderId: number,
-  params: { cityRef: string; warehouseRef: string; isPostomat: boolean; seat?: { weight: number; length: number; width: number; height: number }; codAmount?: number }
+  params: {
+    cityRef: string; warehouseRef: string; isPostomat: boolean;
+    seat?: { weight: number; length: number; width: number; height: number };
+    codAmount?: number;
+    isOrganization?: boolean;
+    edrpou?: string;
+  }
 ): Promise<CreateTtnResult> {
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
   if (!order) return { ok: false, kind: "error", error: "Замовлення не знайдено" };
@@ -258,7 +281,7 @@ export async function createOrderTtnManual(
   return finishTtnCreation(
     orderId, order, orderTotal,
     { cityRef: params.cityRef, warehouseRef: params.warehouseRef, isPostomat: params.isPostomat },
-    { seat: params.seat, codAmount: params.codAmount }
+    { seat: params.seat, codAmount: params.codAmount, isOrganization: params.isOrganization, edrpou: params.edrpou }
   );
 }
 
