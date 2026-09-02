@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
+import { getImgUrl } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
@@ -28,13 +29,34 @@ interface InventoryRow {
   reserved: number;
   initial_quantity: number;
   min_quantity: number;
-  product?: { id: number; title: string; pcode?: string; lang: string };
+  product?: { id: number; title: string; pcode?: string; lang: string; img?: string | null };
   product_uk?: { id: number; title: string } | null;
   warehouse?: { id: number; title: string };
 }
 
 function rowTitle(row: InventoryRow) {
   return row.product_uk?.title ?? row.product?.title ?? `#${row.product_id}`;
+}
+
+// Inventory is keyed by the ru side of a ru/uk pair (see rowTitle's own
+// title-source split above and lib/inventory.ts) — img lives on that same
+// row.product record, never on product_uk (which only ever carries a title
+// override), so there's nothing to reconcile between the two here.
+function ProductThumb({ row, size }: { row: InventoryRow; size: number }) {
+  const url = getImgUrl(row.product?.img, "products");
+  if (url) {
+    return (
+      <img
+        src={url} alt=""
+        style={{ width: size, height: size, objectFit: "cover", borderRadius: 6, flexShrink: 0, background: "var(--bg-secondary)" }}
+      />
+    );
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: 6, flexShrink: 0, background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Package size={size * 0.45} color="var(--text-muted)" />
+    </div>
+  );
 }
 
 // type="text" + inputMode="numeric" instead of type="number": lets a 0 be
@@ -577,13 +599,16 @@ function InventoryContent() {
                     return (
                       <tr key={row.id}>
                         <td>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{rowTitle(row)}</div>
-                            {row.product?.pcode && (
-                              <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                                {row.product.pcode}
-                              </div>
-                            )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <ProductThumb row={row} size={36} />
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{rowTitle(row)}</div>
+                              {row.product?.pcode && (
+                                <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                                  {row.product.pcode}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
@@ -674,12 +699,15 @@ function InventoryContent() {
 
                 return (
                   <div key={row.id} className="crm-card" style={{ padding: 14 }}>
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{rowTitle(row)}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
-                        {row.product?.pcode && <span style={{ fontFamily: "monospace" }}>{row.product.pcode}</span>}
-                        {row.product?.pcode && " · "}
-                        {row.warehouse?.title ?? `#${row.warehouse_id}`}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                      <ProductThumb row={row} size={40} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{rowTitle(row)}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
+                          {row.product?.pcode && <span style={{ fontFamily: "monospace" }}>{row.product.pcode}</span>}
+                          {row.product?.pcode && " · "}
+                          {row.warehouse?.title ?? `#${row.warehouse_id}`}
+                        </div>
                       </div>
                     </div>
 

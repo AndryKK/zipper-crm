@@ -5,7 +5,7 @@ import { resolveInventoryProductId } from "@/lib/inventory";
 
 const SELECT = `
   *,
-  product:products!inventory_product_id_fkey(id, title, pcode, lang),
+  product:products!inventory_product_id_fkey(id, title, pcode, lang, img),
   warehouse:warehouses!inventory_warehouse_id_fkey(id, title)
 `;
 
