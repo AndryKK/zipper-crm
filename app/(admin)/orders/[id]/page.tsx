@@ -24,7 +24,7 @@ import {
   AlertTriangle, MinusCircle, FileText, Package, CreditCard,
   Truck, MapPin, Star, Pencil, Plus, X, Search, ClipboardList,
   Mail, Banknote, PackageSearch, SlidersHorizontal, RotateCcw,
-  MessageCircle,
+  MessageCircle, Building2,
 } from "lucide-react";
 
 // "Отримано" used to be its own pipeline step with a separate manual/14-day
@@ -194,6 +194,14 @@ export default function OrderDetailPage() {
   // updated to send them yet), in which case it just starts unchecked.
   const [npManualIsOrg, setNpManualIsOrg] = useState(false);
   const [npManualEdrpou, setNpManualEdrpou] = useState("");
+  // Revealed only after a failed organization attempt (see submitNpManual)
+  // — the "якщо не підтягне, проси заповнити інші дані" retry path: an
+  // org's real pickup contact often isn't order.person/order.phone, and
+  // this is also the fix if NP's ContactPerson/save rejects the order's own
+  // phone format.
+  const [npManualOrgContactFailed, setNpManualOrgContactFailed] = useState(false);
+  const [npManualOrgContactName, setNpManualOrgContactName] = useState("");
+  const [npManualOrgContactPhone, setNpManualOrgContactPhone] = useState("");
 
   useEffect(() => {
     if (!showNpManualDialog || npCityQuery.trim().length < 2) return;
@@ -548,6 +556,9 @@ export default function OrderDetailPage() {
     setNpManualError("");
     setNpManualIsOrg(!!order?.is_organization);
     setNpManualEdrpou(order?.edrpou ?? "");
+    setNpManualOrgContactFailed(false);
+    setNpManualOrgContactName(order?.person ?? "");
+    setNpManualOrgContactPhone(order?.phone ?? "");
     setShowNpManualDialog(true);
   }
 
@@ -563,6 +574,11 @@ export default function OrderDetailPage() {
         isPostomat: npWhSelected.isPostomat,
         isOrganization: npManualIsOrg,
         edrpou: npManualIsOrg ? npManualEdrpou.trim() : undefined,
+        // Only sent once the manager has actually edited the revealed
+        // retry fields — an empty override would otherwise silently
+        // replace a perfectly good order.person/order.phone with "".
+        orgContactName: npManualIsOrg && npManualOrgContactFailed ? npManualOrgContactName.trim() : undefined,
+        orgContactPhone: npManualIsOrg && npManualOrgContactFailed ? npManualOrgContactPhone.trim() : undefined,
       };
       if (npWhSelected.isPostomat) {
         body.seat = {
@@ -576,7 +592,16 @@ export default function OrderDetailPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setNpManualError(data.error ?? "Помилка"); toast.error(data.error ?? "Помилка"); return; }
+      if (!res.ok) {
+        setNpManualError(data.error ?? "Помилка");
+        toast.error(data.error ?? "Помилка");
+        // The org-Counterparty/ContactPerson step is the only thing that can
+        // fail here once city/warehouse are chosen — reveal the contact
+        // override fields so a manager can retry with different details
+        // instead of just seeing the same NP error again.
+        if (npManualIsOrg) setNpManualOrgContactFailed(true);
+        return;
+      }
       await refreshOrder();
       setShowNpManualDialog(false);
       setTtnGenError("");
@@ -1990,6 +2015,23 @@ export default function OrderDetailPage() {
                   placeholder="Код ЄДРПОУ"
                 />
               )}
+              {npManualIsOrg && npManualOrgContactFailed && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    Не вдалося створити накладну на організацію за цими даними — перевірте код ЄДРПОУ вище, або вкажіть іншу контактну особу для отримання:
+                  </span>
+                  <Input
+                    value={npManualOrgContactName}
+                    onChange={(e) => setNpManualOrgContactName(e.target.value)}
+                    placeholder="Контактна особа (ПІБ)"
+                  />
+                  <Input
+                    value={npManualOrgContactPhone}
+                    onChange={(e) => setNpManualOrgContactPhone(e.target.value)}
+                    placeholder="Телефон контактної особи"
+                  />
+                </div>
+              )}
             </div>
 
             {npManualError && (
@@ -2524,6 +2566,20 @@ export default function OrderDetailPage() {
                   >
                     <Truck size={11} /> Відстежити
                   </a>
+                </div>
+              )}
+              {order.is_organization && order.np_org_details && (
+                <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Building2 size={13} /> Дані організації (Нова Пошта, за ЄДРПОУ {order.edrpou})
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12.5 }}>
+                    {Object.entries(order.np_org_details as Record<string, unknown>)
+                      .filter(([, v]) => v !== null && v !== "" && typeof v !== "object")
+                      .map(([key, value]) => (
+                        <div key={key}><span className="text-gray-500">{key}:</span> {String(value)}</div>
+                      ))}
+                  </div>
                 </div>
               )}
               {order.pay_method && <div><span className="text-gray-500">Оплата:</span> {order.pay_method}</div>}

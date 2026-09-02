@@ -78,10 +78,16 @@ export type CreateTtnOptions = {
   // order's own is_organization/edrpou columns for them.
   isOrganization?: boolean;
   edrpou?: string;
+  // Organization-only: overrides the pickup contact's name/phone for JUST
+  // Nova Poshta's ContactPerson/save call — see orgContactName/orgContactPhone
+  // in lib/nova-poshta.ts's NpTtnParams for why this exists separately from
+  // the order's own person/phone.
+  orgContactName?: string;
+  orgContactPhone?: string;
 };
 
 export type CreateTtnResult =
-  | { ok: true; ttn: string; demo: boolean }
+  | { ok: true; ttn: string; demo: boolean; organizationDetails?: Record<string, unknown> }
   | { ok: false; kind: "skipped" | "warn" | "error"; error: string };
 
 // Shared tail once we have a resolved recipient city AND warehouse ref
@@ -95,7 +101,7 @@ async function finishTtnCreation(
   order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
-  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou">
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone">
 ): Promise<CreateTtnResult> {
   // Manual dialog's checkbox/field wins if a manager set it; every
   // automatic path (confirm-payment/cod/generate) leaves opts.isOrganization
@@ -167,14 +173,24 @@ async function finishTtnCreation(
       description: "Швейна фурнітура",
       recipientType: isOrganization ? "organization" : "individual",
       edrpou:      isOrganization ? edrpou : undefined,
+      orgContactName:  opts.orgContactName,
+      orgContactPhone: opts.orgContactPhone,
       codAmount:   opts.codAmount,
       seat,
     });
 
     if ("error" in result) return { ok: false, kind: "error", error: result.error };
 
-    await supabaseServer.from("orders").update({ ttn: result.ttn, ttn_auto_created: true }).eq("id", orderId);
-    return { ok: true, ttn: result.ttn, demo: false };
+    // organizationDetails is whatever Nova Poshta actually resolved from
+    // the ЄДРПОУ — saved so it's still visible on the order after this
+    // request, not just in this one response (see np_org_details in
+    // orders/[id]/page.tsx).
+    await supabaseServer.from("orders").update({
+      ttn: result.ttn,
+      ttn_auto_created: true,
+      ...(result.organizationDetails ? { np_org_details: result.organizationDetails } : {}),
+    }).eq("id", orderId);
+    return { ok: true, ttn: result.ttn, demo: false, organizationDetails: result.organizationDetails };
   } catch (e) {
     return { ok: false, kind: "error", error: (e as Error).message };
   }
@@ -254,6 +270,8 @@ export async function createOrderTtnManual(
     codAmount?: number;
     isOrganization?: boolean;
     edrpou?: string;
+    orgContactName?: string;
+    orgContactPhone?: string;
   }
 ): Promise<CreateTtnResult> {
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
@@ -281,7 +299,11 @@ export async function createOrderTtnManual(
   return finishTtnCreation(
     orderId, order, orderTotal,
     { cityRef: params.cityRef, warehouseRef: params.warehouseRef, isPostomat: params.isPostomat },
-    { seat: params.seat, codAmount: params.codAmount, isOrganization: params.isOrganization, edrpou: params.edrpou }
+    {
+      seat: params.seat, codAmount: params.codAmount,
+      isOrganization: params.isOrganization, edrpou: params.edrpou,
+      orgContactName: params.orgContactName, orgContactPhone: params.orgContactPhone,
+    }
   );
 }
 

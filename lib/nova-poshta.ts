@@ -150,6 +150,15 @@ export interface NpTtnParams {
   // "individual" keeps the original PrivatePerson behavior.
   recipientType?: "individual" | "organization";
   edrpou?: string;
+  // Overrides recipientName/recipientPhone for JUST the organization's
+  // ContactPerson/save call — an org's actual pickup contact (e.g. an
+  // office manager) is often not the same person as order.person, and this
+  // is the manager's escape hatch if ContactPerson/save rejects
+  // recipientPhone (a landline, a format NP's validator dislikes, etc.)
+  // without needing to change the order's own client phone. Ignored for
+  // recipientType "individual".
+  orgContactName?: string;
+  orgContactPhone?: string;
   // Накладений платіж: adds BackwardDeliveryData so the recipient pays this
   // amount in cash on pickup instead of it being collected upfront. Nova
   // Poshta does not support this for postomat deliveries (parcel lockers
@@ -205,21 +214,25 @@ function kyivDateString(): string {
   return `${get("day")}.${get("month")}.${get("year")}`;
 }
 
-export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { error: string }> {
+export async function npCreateTtn(
+  p: NpTtnParams
+): Promise<{ ttn: string; organizationDetails?: Record<string, unknown> } | { error: string }> {
   const date = kyivDateString();
   const nameParts = p.recipientName.trim().split(/\s+/);
   const recipientPhoneDigits = p.recipientPhone.replace(/\D/g, "");
 
   let recipientRef: string | undefined;
   let contactRef: string | undefined;
+  let organizationDetails: Record<string, unknown> | undefined;
 
   if (p.recipientType === "organization") {
     if (!p.edrpou?.trim()) return { error: "Не вказано код ЄДРПОУ" };
     // Organization counterparties are resolved by Nova Poshta itself from
     // the EDRPOU (no company name/address fields accepted here — NP looks
     // the entity up in the state registry) — an unknown/invalid code makes
-    // this call fail outright, which is the "не підтягне" case surfaced to
-    // the manager as-is so they can double-check the code with the client.
+    // this call fail outright, which is the "не підтягне" case: the caller
+    // (finishTtnCreation) must treat any error return here as "don't create
+    // the TTN," not just a warning, since nothing past this point ran yet.
     const orgRes = await npCall(p.apiKey, "Counterparty", "save", {
       CounterpartyType: "Organization",
       CounterpartyProperty: "Recipient",
@@ -230,16 +243,27 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
     }
     recipientRef = orgRes.data?.[0]?.Ref;
     if (!recipientRef) return { error: "Не отримано ref організації-отримувача" };
+    // Raw NP response for this counterparty — whatever fields it actually
+    // carries (company name/legal form/etc. resolved from the EDRPOU) get
+    // shown to the manager as proof of what was pulled, see
+    // orders.np_org_details / finishTtnCreation.
+    organizationDetails = orgRes.data?.[0];
 
     // Unlike PrivatePerson, Organization/save does not create a contact
     // person inline — a separate call is required to attach who at the
-    // company actually picks the parcel up.
+    // company actually picks the parcel up. orgContactName/orgContactPhone
+    // let a manager use a different contact than the order's own
+    // recipientName/recipientPhone (an org's actual pickup contact is often
+    // someone else, and this is also the retry path if the order's phone
+    // itself gets rejected by NP's validator here).
+    const contactNameParts = (p.orgContactName ?? p.recipientName).trim().split(/\s+/);
+    const contactPhoneDigits = (p.orgContactPhone ?? p.recipientPhone).replace(/\D/g, "");
     const contactRes = await npCall(p.apiKey, "ContactPerson", "save", {
       CounterpartyRef: recipientRef,
-      FirstName: nameParts[1] ?? nameParts[0] ?? "",
-      MiddleName: nameParts[2] ?? "",
-      LastName: nameParts[0] ?? "",
-      Phone: recipientPhoneDigits,
+      FirstName: contactNameParts[1] ?? contactNameParts[0] ?? "",
+      MiddleName: contactNameParts[2] ?? "",
+      LastName: contactNameParts[0] ?? "",
+      Phone: contactPhoneDigits,
     });
     if (!contactRes.success) return { error: contactRes.errors?.join(", ") ?? "Не вдалося створити контактну особу організації" };
     contactRef = contactRes.data?.[0]?.Ref;
@@ -305,7 +329,7 @@ export async function npCreateTtn(p: NpTtnParams): Promise<{ ttn: string } | { e
   if (!docRes.success) return { error: docRes.errors?.join(", ") ?? "TTN error" };
   const ttn = docRes.data?.[0]?.IntDocNumber;
   if (!ttn) return { error: "Порожня відповідь TTN" };
-  return { ttn };
+  return { ttn, organizationDetails };
 }
 
 // Cancels a TTN. We only ever store the human-readable IntDocNumber, but
