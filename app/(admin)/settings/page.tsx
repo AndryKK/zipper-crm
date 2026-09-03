@@ -49,6 +49,8 @@ const LABELS: Record<string, string> = {
   // Email
   email_sender_name:     "Ім'я відправника",
   email_sender_email:    "Email відправника",
+  // Топ продажів
+  top_sales_excluded_emails: "Емейли, що виключені з підрахунку",
 };
 
 const SECTIONS: Section[] = [
@@ -70,6 +72,11 @@ const SECTIONS: Section[] = [
     title: "Email",
     keys: ["email_sender_name", "email_sender_email"],
     description: "Використовується для листів клієнту (рахунок при опрацюванні замовлення, подяка після оплати) через Brevo. Email відправника має бути підтверджений у Brevo (Settings → Senders), інакше надсилання завершиться помилкою.",
+  },
+  {
+    title: "Топ продажів",
+    keys: ["top_sales_excluded_emails"],
+    description: "Замовлення з цих емейлів (логін користувача) не враховуються у підрахунку «Топ продажів» — по одному емейлу на рядок.",
   },
 ];
 
@@ -248,6 +255,18 @@ export default function SettingsPage() {
                     />
                     <span style={{ fontSize: 13.5 }}>{LABELS[k]} — генерувати випадковий ТТН замість реального</span>
                   </label>
+                ) : k === "top_sales_excluded_emails" ? (
+                  <div key={k} className="space-y-1.5">
+                    <Label>{LABELS[k]}</Label>
+                    <textarea
+                      value={values[k] ?? ""}
+                      onChange={(e) => set(k, e.target.value)}
+                      placeholder={"one.email@example.com\nanother@example.com"}
+                      rows={4}
+                      className="crm-input w-full"
+                      style={{ fontFamily: "monospace", fontSize: 13, resize: "vertical" }}
+                    />
+                  </div>
                 ) : (
                   <div key={k} className="space-y-1.5">
                     <Label>{LABELS[k]}</Label>

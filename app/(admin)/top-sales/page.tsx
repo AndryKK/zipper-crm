@@ -2,29 +2,55 @@ import { Header } from "@/components/admin/header";
 import { supabaseServer } from "@/lib/supabase";
 import { getImgUrl } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { ProductQuickView } from "./product-quick-view";
 import { unstable_cache } from "next/cache";
+
+const PERIODS = ["all", "year", "month", "week"] as const;
+type Period = (typeof PERIODS)[number];
+const PERIOD_LABELS: Record<Period, string> = {
+  all: "Весь час",
+  year: "Рік",
+  month: "Місяць",
+  week: "Тиждень",
+};
 
 // This page used to fetch the ENTIRE orders_item table (every line item ever
 // placed, no WHERE, no LIMIT) on every visit to sum quantities client-side —
 // the single largest full-table scan found in the app (hundreds of
-// thousands of units across the order history). top_selling_products
-// (scripts/create-top-selling-products-view.sql) does the SUM/GROUP BY/LIMIT
-// 30 in Postgres instead, so this only ever transfers 30 rows. Wrapped in
-// unstable_cache on top of that — sales rankings don't need to be
-// second-by-second fresh, so repeat visits within the window reuse the
-// cached result instead of re-querying at all.
+// thousands of units across the order history). top_selling_products_by_period
+// (scripts/create-top-selling-products-function.sql — replaced the earlier
+// plain view once a period filter was needed, since a view can't take
+// parameters) does the date-filtered SUM/GROUP BY/LIMIT 30 in Postgres
+// instead, so this only ever transfers 30 rows. Wrapped in unstable_cache on
+// top of that (keyed per period automatically — see the function's own
+// argument, which Next.js folds into the cache key) — sales rankings don't
+// need to be second-by-second fresh, so repeat visits within the window
+// reuse the cached result instead of re-querying at all.
 const getTopSales = unstable_cache(
-  async () => {
-    const { data: sales } = await supabaseServer
-      .from("top_selling_products")
-      .select("product, total_quantity, total_revenue")
-      .order("total_quantity", { ascending: false })
-      .limit(30);
+  async (period: Period) => {
+    // Emails to exclude from the ranking (test/internal accounts whose
+    // purchases shouldn't count) — superadmin-managed list, see the
+    // "Топ продажів" section on /settings.
+    const { data: settingRow } = await supabaseServer
+      .from("settings")
+      .select("text")
+      .eq("value", "top_sales_excluded_emails")
+      .eq("lang", "uk")
+      .maybeSingle();
+    const excludedLogins = ((settingRow?.text as string | undefined) ?? "")
+      .split(/[\n,]/)
+      .map((s: string) => s.trim())
+      .filter(Boolean);
 
+    const { data: sales, error } = await supabaseServer.rpc("top_selling_products_by_period", {
+      p_period: period,
+      p_excluded_logins: excludedLogins,
+    });
+    if (error) { console.error("[top-sales]", error.message); return []; }
     if (!sales || sales.length === 0) return [];
 
-    const pids = sales.map((s: any) => s.product);
+    const pids = (sales as any[]).map((s) => s.product);
     const { data: products } = await supabaseServer
       .from("products")
       .select("id, title, pcode, img, price, price_sale, active")
@@ -33,7 +59,7 @@ const getTopSales = unstable_cache(
     const prodMap: Record<number, any> = {};
     for (const p of products || []) prodMap[p.id] = p;
 
-    return sales.map((s: any, i: number) => ({
+    return (sales as any[]).map((s, i) => ({
       rank: i + 1,
       pid: s.product,
       quantity: Number(s.total_quantity),
@@ -45,8 +71,15 @@ const getTopSales = unstable_cache(
   { revalidate: 300 }
 );
 
-export default async function TopSalesPage() {
-  const items = await getTopSales();
+export default async function TopSalesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const { period: periodParam } = await searchParams;
+  const period: Period = PERIODS.includes(periodParam as Period) ? (periodParam as Period) : "all";
+
+  const items = await getTopSales(period);
   const maxQty = items[0]?.quantity ?? 1;
 
   return (
@@ -63,6 +96,30 @@ export default async function TopSalesPage() {
           className here, not inline style, since an inline style property
           always wins over any class regardless of breakpoint. */}
       <div className="page-content p-6 md:p-[24px_28px]" style={{ flex: 1 }}>
+        {/* Period selector — plain links (no client JS needed) so the page
+            stays a server component and each period gets its own cached
+            entry (see getTopSales' unstable_cache above). */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          {PERIODS.map((p) => (
+            <Link
+              key={p}
+              href={p === "all" ? "/top-sales" : `/top-sales?period=${p}`}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                border: `1.5px solid ${period === p ? "#6366f1" : "var(--border)"}`,
+                background: period === p ? "#6366f1" : "var(--bg)",
+                color: period === p ? "#fff" : "var(--text)",
+              }}
+            >
+              {PERIOD_LABELS[p]}
+            </Link>
+          ))}
+        </div>
+
         {items.length === 0 ? (
           <div className="crm-card" style={{ padding: "64px 24px", textAlign: "center" }}>
             <TrendingUp size={48} style={{ color: "var(--text-muted)", margin: "0 auto 16px" }} />
