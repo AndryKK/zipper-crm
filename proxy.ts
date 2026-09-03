@@ -13,6 +13,12 @@ const { auth } = NextAuth(authConfig);
 // ever runs.
 const DOC_ROUTE = /^\/api\/orders\/(\d+)\/(receipt|invoice|waybill)$/;
 
+// Storefront "Забули пароль?" button — public by explicit request (see
+// app/api/users/forgot-password/route.ts, which is its own defense: never
+// reveals whether an email exists, rate-limited, only ever emails a freshly
+// generated password to the account's own address).
+const FORGOT_PASSWORD_ROUTE = "/api/users/forgot-password";
+
 export default auth(async (req) => {
   const isLoggedIn = !!req.auth;
   const isLoginPage = req.nextUrl.pathname === "/login";
@@ -20,6 +26,7 @@ export default auth(async (req) => {
   const isWebhook = req.nextUrl.pathname.startsWith("/api/webhooks/");
   const isCron = req.nextUrl.pathname.startsWith("/api/cron/");
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
+  const isForgotPassword = req.nextUrl.pathname === FORGOT_PASSWORD_ROUTE;
 
   const docMatch = req.nextUrl.pathname.match(DOC_ROUTE);
   const isPublicDocLink = !isLoggedIn && !!docMatch &&
@@ -28,7 +35,7 @@ export default auth(async (req) => {
   // Webhooks (e.g. Supabase Database Webhooks) and Vercel Cron invocations
   // never carry an admin session cookie — they authenticate via their own
   // shared-secret/Bearer header instead, checked inside the route handler.
-  if (isApiAuth || isWebhook || isCron || isPublicDocLink) return NextResponse.next();
+  if (isApiAuth || isWebhook || isCron || isPublicDocLink || isForgotPassword) return NextResponse.next();
   if (isApiRoute && !isLoggedIn) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

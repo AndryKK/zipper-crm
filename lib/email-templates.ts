@@ -3,7 +3,11 @@ import type { OrderDocumentData } from "@/lib/order-documents";
 const LOGO_URL = "https://zipper.in.ua/img/logo.jpg";
 const ACCENT = "#6366f1";
 
-function layout(previewText: string, bodyHtml: string): string {
+// Exported — app/api/users/forgot-password/route.ts reuses this same
+// order-agnostic wrapper (it only needs previewText/bodyHtml) so the
+// "new password" email matches the branding of every other customer email
+// instead of inventing its own layout.
+export function layout(previewText: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="uk">
 <head>
@@ -197,5 +201,36 @@ export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string 
   return {
     subject: opts.subject?.trim() || `Оплату отримано — замовлення №${order.id} готується до відправки`,
     html: layout(`Оплату за замовлення №${order.id} отримано`, body),
+  };
+}
+
+// "Забули пароль" — see app/api/users/forgot-password/route.ts. Sends the
+// FRESH password just generated there (the account's real one is bcrypt-
+// hashed and can't be recovered) — mirrors the legacy PHP site's own
+// email_recover2 copy in spirit ("Пароль успішно відновлено. Логін: %s
+// Пароль: %s"), just single-step instead of its two-step link flow.
+export function renderNewPasswordEmail(login: string, newPassword: string): { subject: string; html: string } {
+  const body = `
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Пароль відновлено</h1>
+    <p style="margin:0 0 20px; font-size:14px; color:#64748b; line-height:1.6;">
+      Ви (або хтось від вашого імені) запросили відновлення пароля на сайті Zipper. Ось ваш новий пароль для входу:
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4ff; border-radius:10px; margin:0 0 20px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 4px; font-size:12px; color:${ACCENT}; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">Логін</p>
+          <p style="margin:0 0 14px; font-size:15px; font-weight:600; color:#0f172a;">${login}</p>
+          <p style="margin:0 0 4px; font-size:12px; color:${ACCENT}; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;">Новий пароль</p>
+          <p style="margin:0; font-size:20px; font-weight:700; color:#0f172a; font-family:monospace; letter-spacing:0.05em;">${newPassword}</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0; font-size:13px; color:#94a3b8; line-height:1.6;">
+      Якщо ви не запитували відновлення пароля — просто проігноруйте цей лист, доступ до вашого акаунту цим не надається нікому, хто не має доступу до цієї поштової скриньки.
+    </p>`;
+
+  return {
+    subject: "Zipper — новий пароль до вашого акаунту",
+    html: layout("Ваш новий пароль для входу на Zipper", body),
   };
 }
