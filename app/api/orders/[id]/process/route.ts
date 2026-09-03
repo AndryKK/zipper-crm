@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { checkOrderStock } from "@/lib/order-stock";
 import { sendPaymentRequestEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 import type { EmailRenderOptions } from "@/lib/email-templates";
 
@@ -130,7 +131,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
      STEP 3 — лист клієнту з рахунком (файлом) та видатковою накладною
      (файлом), з реквізитами оплати та відділенням Нової Пошти
   ══════════════════════════════════════════════════════════════════════ */
-  if (!isValidEmail(order.login)) {
+  if (isGuestCheckoutEmail(order.login)) {
+    log.push({ step: "Email клієнту", status: "skipped", msg: "Замовлення без реєстрації (спільний email сайту) — лист не надсилається, зв'яжіться з клієнтом за телефоном" });
+  } else if (!isValidEmail(order.login)) {
     log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
   } else {
     try {

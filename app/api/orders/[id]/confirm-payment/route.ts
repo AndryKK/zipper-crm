@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
@@ -61,6 +62,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   ══════════════════════════════════════════════════════════════════════ */
   if (!ttnResult.ok) {
     log.push({ step: "Email клієнту", status: "skipped", msg: "ТТН не створено — лист не надіслано автоматично; скористайтесь кнопкою «Надіслати без ТТН»" });
+  } else if (isGuestCheckoutEmail(order.login)) {
+    log.push({ step: "Email клієнту", status: "skipped", msg: "Замовлення без реєстрації (спільний email сайту) — лист не надсилається, зв'яжіться з клієнтом за телефоном" });
   } else if (!isValidEmail(order.login)) {
     log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
   } else {

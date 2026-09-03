@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { RETURN_STATUS, RETURN_STATUS_COLOR } from "@/lib/returns";
 import { orderStatusLabel } from "@/lib/order-status";
+import { isGuestCheckoutEmail, GUEST_CHECKOUT_EMAIL } from "@/lib/guest-checkout";
 import { checkEmailForMistakes } from "@/lib/email-typo-check";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { NpAddressPicker } from "@/components/admin/np-address-picker";
@@ -111,6 +112,16 @@ export default function OrderDetailPage() {
   // so a warehouse worker visually confirms every item is physically in
   // stock before the invoice/email pipeline fires.
   const [showStockConfirm, setShowStockConfirm] = useState(false);
+  // Guest-checkout warning — shown INSTEAD of the stock-confirm popup above
+  // when this order's login is the storefront's shared placeholder (see
+  // lib/guest-checkout.ts): no automated email will ever reach this
+  // address, so a manager needs to check the customer's real phone/name
+  // and call them before processing normally. "Все одно опрацювати"
+  // proceeds straight to openStockConfirm exactly as if this check hadn't
+  // fired at all — the email-skip itself is enforced server-side
+  // regardless (see /api/orders/[id]/process), so overriding here only
+  // ever skips the warning, never the "don't email the fake address" rule.
+  const [showGuestCheckoutWarning, setShowGuestCheckoutWarning] = useState(false);
   const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
   // Decides which Nova Poshta sender warehouse a later TTN creation step
   // uses (see lib/order-ttn.ts) — asked here because this is the one place
@@ -407,6 +418,17 @@ export default function OrderDetailPage() {
     setOrgCheckbox(!!order.is_organization);
     setEdrpouInput(order.edrpou ?? "");
     setShowStockConfirm(true);
+  }
+
+  // Entry point for the "Опрацювати замовлення" button — routes through
+  // the guest-checkout warning first when this order has no real customer
+  // email on file (see showGuestCheckoutWarning above).
+  function handleProcessClick() {
+    if (isGuestCheckoutEmail(order.login)) {
+      setShowGuestCheckoutWarning(true);
+    } else {
+      openStockConfirm();
+    }
   }
 
   async function confirmStockAndProcess() {
@@ -1174,11 +1196,13 @@ export default function OrderDetailPage() {
               {step === -1 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
-                    Натисніть «Опрацювати» — сформується рахунок та клієнту надійде email з рахунком і накладною.
+                    {isGuestCheckoutEmail(order.login)
+                      ? "Замовлення без реєстрації — email клієнта відсутній, автоматичний лист надіслано не буде. Зателефонуйте клієнту."
+                      : "Натисніть «Опрацювати» — сформується рахунок та клієнту надійде email з рахунком і накладною."}
                   </p>
                   <div>
                     <Button
-                      onClick={openStockConfirm} disabled={processing}
+                      onClick={handleProcessClick} disabled={processing}
                       style={{ background: "linear-gradient(135deg,#f59e0b,#d97706)", border: "none", color: "#fff", gap: 8, height: 44, fontSize: 15 }}
                     >
                       {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap size={17} />}
@@ -3179,6 +3203,16 @@ export default function OrderDetailPage() {
           confirmLabel="Прибрати"
           onConfirm={() => toggleItemActive(removeItemConfirm.id, false)}
           onCancel={() => setRemoveItemConfirm(null)}
+        />
+      )}
+
+      {showGuestCheckoutWarning && (
+        <ConfirmDialog
+          message="Замовлення без реєстрації — email клієнта відсутній"
+          subMessage={`Це замовлення оформлене без реєстрації: адреса ${GUEST_CHECKOUT_EMAIL} — спільна технічна адреса сайту, а не адреса клієнта, тож автоматичний лист із рахунком надіслано НЕ буде. Перевірте ім'я/телефон клієнта нижче і зателефонуйте, перш ніж опрацьовувати замовлення.`}
+          confirmLabel="Все одно опрацювати"
+          onConfirm={openStockConfirm}
+          onCancel={() => setShowGuestCheckoutWarning(false)}
         />
       )}
     </>

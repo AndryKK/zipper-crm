@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
@@ -46,7 +47,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   log.push({ step: "Склад", status: "ok", msg: "Товар вже зарезервовано під це замовлення при його появі" });
 
-  if (!isValidEmail(order.login)) {
+  if (isGuestCheckoutEmail(order.login)) {
+    log.push({ step: "Email клієнту", status: "skipped", msg: "Замовлення без реєстрації (спільний email сайту) — лист не надсилається, зв'яжіться з клієнтом за телефоном" });
+  } else if (!isValidEmail(order.login)) {
     log.push({ step: "Email клієнту", status: "skipped", msg: "Email клієнта відсутній або некоректний" });
   } else {
     try {

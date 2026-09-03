@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/order-emails";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 
 // SAFETY NET, not the primary send path — the real-time send happens
 // immediately via the Supabase Database Webhook on `orders` INSERT (see
@@ -45,6 +46,19 @@ export async function GET(req: NextRequest) {
 
   for (const order of orders ?? []) {
     try {
+      // Same guest-checkout skip as the primary webhook send path — see
+      // its own comment in app/api/webhooks/inventory-sync/route.ts.
+      // Without this, an order under the shared placeholder login would
+      // never succeed and this "safety net" would keep re-selecting it
+      // (welcome_email_sent stuck false) on every single daily run.
+      if (isGuestCheckoutEmail(order.login)) {
+        await supabaseServer
+          .from("orders")
+          .update({ welcome_email_sent: true, welcome_email_sent_at: new Date().toISOString() })
+          .eq("id", order.id);
+        log.push({ orderId: order.id, ok: true });
+        continue;
+      }
       const result = await sendWelcomeEmail(order.id);
       if (result.ok) {
         await supabaseServer

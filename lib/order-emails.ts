@@ -2,6 +2,9 @@ import { getOrderDocumentData, renderOrderConfirmationHtml } from "@/lib/order-d
 import { renderInvoicePdf, renderWaybillPdf } from "@/lib/order-pdf";
 import { renderPaymentRequestEmail, renderPaymentConfirmedEmail, type EmailRenderOptions } from "@/lib/email-templates";
 import { sendEmail, isValidEmail, type EmailResult } from "@/lib/email";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
+
+const GUEST_CHECKOUT_EMAIL_ERROR = "Це технічна адреса сайту для замовлень без реєстрації, не адреса клієнта — лист не надсилається";
 
 // Shared by the automatic sends (process / confirm-payment routes), the
 // preview endpoint, and the manual "resend" endpoint, so every path builds
@@ -12,6 +15,7 @@ export async function sendPaymentRequestEmail(orderId: number, overrideEmail?: s
   if (!doc) return { ok: false, error: "Не вдалося сформувати дані документів" };
 
   const to = (overrideEmail || doc.order.login || "").trim();
+  if (isGuestCheckoutEmail(to)) return { ok: false, error: GUEST_CHECKOUT_EMAIL_ERROR };
   if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to || "—"}` };
 
   const { subject, html } = renderPaymentRequestEmail(doc, opts);
@@ -36,6 +40,7 @@ export async function sendWelcomeEmail(orderId: number, overrideEmail?: string, 
   if (!doc) return { ok: false, error: "Не вдалося сформувати дані замовлення" };
 
   const to = (overrideEmail || doc.order.login || "").trim();
+  if (isGuestCheckoutEmail(to)) return { ok: false, error: GUEST_CHECKOUT_EMAIL_ERROR };
   if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to || "—"}` };
 
   const html = renderOrderConfirmationHtml(doc, { greeting: true });
@@ -48,6 +53,7 @@ export async function sendPaymentConfirmedEmail(orderId: number, overrideEmail?:
   if (!doc) return { ok: false, error: "Не вдалося сформувати дані замовлення" };
 
   const to = (overrideEmail || doc.order.login || "").trim();
+  if (isGuestCheckoutEmail(to)) return { ok: false, error: GUEST_CHECKOUT_EMAIL_ERROR };
   if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to || "—"}` };
 
   const { subject, html } = renderPaymentConfirmedEmail(doc, doc.order.ttn ?? null, opts);

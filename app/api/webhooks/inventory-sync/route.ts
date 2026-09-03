@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, deductOrderItems } from "@/lib/inventory";
 import { supabaseServer } from "@/lib/supabase";
 import { sendWelcomeEmail } from "@/lib/order-emails";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 
 const CANCELLED_STATUS = "Скасовано";
@@ -13,7 +14,7 @@ const PRE_SHIPMENT_STATUSES = new Set(["Новий", "В роботі", "Опл�
 const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSES.has(status);
 
 type OrdersItemRow = { oid: number; product: number; quantity: number; active: boolean };
-type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean };
+type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean; login: string | null };
 type OrdersReturnRow = { id: number; status: string | null };
 
 type WebhookPayload =
@@ -71,12 +72,27 @@ export async function POST(req: NextRequest) {
     // those are mirrors of orders the customer already completed on the
     // legacy site, not fresh ones, and must never get this email.
     if (!payload.record.welcome_email_sent) {
-      const result = await sendWelcomeEmail(payload.record.id);
-      if (result.ok) {
+      // The storefront's guest-checkout flow shares ONE placeholder login
+      // (see lib/guest-checkout.ts) across 10,000+ orders — that's the
+      // site's own mailbox, not a real customer address, so there's
+      // nothing to send here. Marked handled immediately (no send attempt,
+      // no retry) rather than relying on sendWelcomeEmail's own guard to
+      // fail it, which would otherwise leave welcome_email_sent=false
+      // forever and have the daily cron (send-welcome-emails) re-attempt
+      // this same no-op order indefinitely.
+      if (isGuestCheckoutEmail(payload.record.login)) {
         await supabaseServer
           .from("orders")
           .update({ welcome_email_sent: true, welcome_email_sent_at: new Date().toISOString() })
           .eq("id", payload.record.id);
+      } else {
+        const result = await sendWelcomeEmail(payload.record.id);
+        if (result.ok) {
+          await supabaseServer
+            .from("orders")
+            .update({ welcome_email_sent: true, welcome_email_sent_at: new Date().toISOString() })
+            .eq("id", payload.record.id);
+        }
       }
     }
     return NextResponse.json({ success: true });
