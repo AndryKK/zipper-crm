@@ -6,7 +6,7 @@ import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/produ
 
 const SELECT = `
   *,
-  product:products!inventory_product_id_fkey(id, title, pcode, lang, img, uri, translation_id),
+  product:products!inventory_product_id_fkey(id, title, pcode, lang, img, uri, translation_id, factory_id, factory:factories(id, title)),
   warehouse:warehouses!inventory_warehouse_id_fkey(id, title)
 `;
 

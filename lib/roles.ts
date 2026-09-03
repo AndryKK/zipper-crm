@@ -26,7 +26,12 @@ export const ROLE_LABELS: Record<Role, string> = {
 // role — see isPathAllowed below.
 const ROLE_ALLOWED_PREFIXES: Record<string, string[]> = {
   [ROLES.WAREHOUSE_ADMIN]: ["/orders", "/api/orders", "/returns", "/api/returns", "/products", "/api/products"],
-  [ROLES.INVENTORY_ADMIN]: ["/warehouses", "/api/warehouses", "/inventory", "/api/inventory", "/products", "/api/products"],
+  // /api/factories (not /factories — there's no standalone page, it's a
+  // section on /settings which stays superadmin-only) is here so the
+  // inventory table can load the options list to assign a product's
+  // factory the first time; POST/PUT/DELETE on it are still superadmin-only,
+  // enforced inside the route handlers themselves — see app/api/factories.
+  [ROLES.INVENTORY_ADMIN]: ["/warehouses", "/api/warehouses", "/inventory", "/api/inventory", "/products", "/api/products", "/api/factories"],
 };
 
 // Login that can never have its own role changed by anyone (including

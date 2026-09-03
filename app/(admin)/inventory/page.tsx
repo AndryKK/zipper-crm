@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Header } from "@/components/admin/header";
 import {
-  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History,
+  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History, Factory,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,6 +13,7 @@ import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dia
 import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
 import { getImgUrl } from "@/lib/utils";
 import { Toggle, HIDE_UNENTERED_KEY } from "@/components/admin/toggle";
+import { ROLES } from "@/lib/roles";
 
 const PAGE_SIZE = 50;
 
@@ -30,7 +32,10 @@ interface InventoryRow {
   reserved: number;
   initial_quantity: number;
   min_quantity: number;
-  product?: { id: number; title: string; pcode?: string; lang: string; img?: string | null };
+  product?: {
+    id: number; title: string; pcode?: string; lang: string; img?: string | null;
+    factory_id?: number | null; factory?: { id: number; title: string } | null;
+  };
   product_uk?: { id: number; title: string } | null;
   warehouse?: { id: number; title: string };
   productUrl?: string | null;
@@ -81,6 +86,41 @@ function ProductTitleLink({ row, fontSize }: { row: InventoryRow; fontSize: numb
     >
       {title}
     </a>
+  );
+}
+
+// Фабрика — set once by anyone (any role that can reach this page), then
+// locked to superadmin-only changes (see app/api/products/[id]/factory).
+// Unassigned rows always show an editable select regardless of role;
+// assigned rows show a plain label unless the viewer is a superadmin, who
+// gets an editable select instead — matches the server-side rule exactly,
+// so nobody sees a control that would just 403 on submit.
+function FactoryCell({
+  row, factories, isSuperadmin, onChange, compact,
+}: {
+  row: InventoryRow; factories: { id: number; title: string }[]; isSuperadmin: boolean;
+  onChange: (row: InventoryRow, factoryId: number) => void; compact?: boolean;
+}) {
+  const assigned = row.product?.factory;
+  const editable = !assigned || isSuperadmin;
+
+  if (!editable) {
+    return <span style={{ fontSize: compact ? 12.5 : 13 }}>{assigned!.title}</span>;
+  }
+
+  return (
+    <select
+      value={assigned?.id ?? ""}
+      onChange={(e) => e.target.value && onChange(row, Number(e.target.value))}
+      className="crm-input"
+      style={{ fontSize: compact ? 12.5 : 13, padding: compact ? "4px 8px" : "5px 8px", maxWidth: compact ? "100%" : 160 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <option value="">Не призначено</option>
+      {factories.map((f) => (
+        <option key={f.id} value={f.id}>{f.title}</option>
+      ))}
+    </select>
   );
 }
 
@@ -169,7 +209,10 @@ function InventoryContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const warehouseIdParam = searchParams.get("warehouse_id");
+  const { data: session } = useSession();
+  const isSuperadmin = (session?.user as { role?: string } | undefined)?.role === ROLES.SUPERADMIN;
 
+  const [factories, setFactories] = useState<{ id: number; title: string }[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>(warehouseIdParam || "");
   const [stats, setStats] = useState<WarehouseStat[]>([]);
@@ -222,6 +265,32 @@ function InventoryContent() {
     if (res.ok) setStats(await res.json());
   }
 
+  async function loadFactories() {
+    const res = await fetch("/api/factories");
+    if (res.ok) setFactories(await res.json());
+  }
+
+  // Applies to every row sharing this product_id (the same physical product
+  // can appear in several warehouses — see app/api/products/[id]/factory,
+  // which updates the whole ru/uk translation group server-side too) so the
+  // whole table stays consistent without a full reload.
+  async function assignFactory(row: InventoryRow, factoryId: number) {
+    const res = await fetch(`/api/products/${row.product_id}/factory`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ factory_id: factoryId }),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast.error(data.error ?? "Помилка збереження"); return; }
+    const factory = factories.find((f) => f.id === factoryId) ?? null;
+    setRows((prev) => prev.map((r) => (
+      r.product_id === row.product_id && r.product
+        ? { ...r, product: { ...r.product, factory_id: factoryId, factory } }
+        : r
+    )));
+    toast.success("Фабрику призначено");
+  }
+
   const loadInventory = useCallback(async () => {
     if (!selectedWarehouse) return;
     setLoading(true);
@@ -237,7 +306,7 @@ function InventoryContent() {
     setLoading(false);
   }, [selectedWarehouse, page, q, sortBy, sortDir, hideUnentered]);
 
-  useEffect(() => { loadWarehouses(); loadStats(); }, []);
+  useEffect(() => { loadWarehouses(); loadStats(); loadFactories(); }, []);
   useEffect(() => { loadInventory(); }, [loadInventory]);
   useEffect(() => { setPage(1); }, [selectedWarehouse, q, sortBy, sortDir, hideUnentered]);
 
@@ -582,6 +651,7 @@ function InventoryContent() {
                   <tr>
                     <SortableTh label="Товар" sortKey="title" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
                     <SortableTh label="Склад" sortKey="warehouse" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} />
+                    <th>Фабрика</th>
                     <SortableTh label="Поч. залишок" sortKey="initial_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Доступний" sortKey="available" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
@@ -611,6 +681,9 @@ function InventoryContent() {
                         </td>
                         <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
                           {row.warehouse?.title ?? `#${row.warehouse_id}`}
+                        </td>
+                        <td>
+                          <FactoryCell row={row} factories={factories} isSuperadmin={isSuperadmin} onChange={assignFactory} />
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <span
@@ -702,6 +775,11 @@ function InventoryContent() {
                           {row.warehouse?.title ?? `#${row.warehouse_id}`}
                         </div>
                       </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <Factory size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                      <FactoryCell row={row} factories={factories} isSuperadmin={isSuperadmin} onChange={assignFactory} compact />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>

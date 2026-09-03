@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 type Section = {
@@ -74,6 +74,106 @@ const SECTIONS: Section[] = [
 ];
 
 const ALL_KNOWN_KEYS = new Set(SECTIONS.flatMap((s) => s.keys));
+
+// Постачальники фабрик — used to fill the "Фабрика" field on /inventory
+// (assigned once per product there, then locked to superadmin-only edits —
+// see app/api/products/[id]/factory/route.ts). This section itself is
+// already superadmin-only, same as the rest of /settings — see
+// lib/roles.ts's isPathAllowed (no non-superadmin role has "/settings" in
+// its allowed prefixes).
+function FactoriesSection() {
+  const [factories, setFactories] = useState<{ id: number; title: string }[]>([]);
+  const [newTitle, setNewTitle] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ id: number; title: string }[]>("/api/factories").then((data) => { if (data) setFactories(data); });
+  }, []);
+
+  async function add() {
+    if (!newTitle.trim()) return;
+    setAdding(true);
+    const res = await fetch("/api/factories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle.trim() }),
+    });
+    const data = await res.json();
+    setAdding(false);
+    if (!res.ok) { toast.error(data.error ?? "Помилка додавання"); return; }
+    setFactories((prev) => [...prev, data].sort((a, b) => a.title.localeCompare(b.title, "uk")));
+    setNewTitle("");
+    toast.success("Фабрику додано!");
+  }
+
+  async function rename(id: number, title: string) {
+    if (!title.trim()) return;
+    const res = await fetch(`/api/factories/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) { const data = await res.json(); toast.error(data.error ?? "Помилка збереження"); return; }
+    setFactories((prev) => prev.map((f) => (f.id === id ? { ...f, title: title.trim() } : f)));
+    toast.success("Збережено!");
+  }
+
+  async function remove(id: number) {
+    if (!confirm("Видалити цю фабрику? Товари, що на неї посилаються, лишаться без призначеної фабрики.")) return;
+    const res = await fetch(`/api/factories/${id}`, { method: "DELETE" });
+    if (!res.ok) { const data = await res.json(); toast.error(data.error ?? "Помилка видалення"); return; }
+    setFactories((prev) => prev.filter((f) => f.id !== id));
+    toast.success("Видалено");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Фабрики (постачальники)</CardTitle>
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
+          Список фабрик для поля «Фабрика» на сторінці «Залишки на складі» — там воно призначається товару
+          один раз (будь-якою роллю), а надалі змінити може лише суперадмін.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex gap-2">
+          <Input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="Назва фабрики"
+          />
+          <Button onClick={add} disabled={adding || !newTitle.trim()} className="shrink-0">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+        {factories.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Фабрик ще немає</p>
+        ) : (
+          <div className="space-y-1.5">
+            {factories.map((f) => (
+              <div key={f.id} className="flex items-center gap-2">
+                <Input
+                  defaultValue={f.title}
+                  onBlur={(e) => e.target.value !== f.title && rename(f.id, e.target.value)}
+                  className="flex-1"
+                />
+                <button
+                  onClick={() => remove(f.id)}
+                  className="text-red-400 hover:text-red-600 shrink-0"
+                  style={{ padding: 6 }}
+                  title="Видалити"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   // values map: key → text
@@ -163,6 +263,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         ))}
+
+        <FactoriesSection />
 
         {other.length > 0 && (
           <Card>
