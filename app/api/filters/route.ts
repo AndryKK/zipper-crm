@@ -30,7 +30,12 @@ export async function GET(req: NextRequest) {
       .select("*, translationId:translation_id")
       .in("pid", filterTranslationIds)
       .eq("lang", "uk")
-      .order("priority", { ascending: true });
+      .order("priority", { ascending: true })
+      // Tiebreak for values that still share a priority (nothing's been
+      // dragged in the UI yet) — kept identical to the storefronts' own
+      // ORDER BY (catalog.php/sale.php) on purpose, so what this list
+      // shows already matches what's live, not some different fallback.
+      .order("title", { ascending: true });
     for (const fi of filterItems || []) {
       if (!filtersMap[fi.pid]) filtersMap[fi.pid] = [];
       filtersMap[fi.pid].push(fi);
