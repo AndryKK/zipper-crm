@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronRight, FolderTree, Loader2 } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, FolderTree, Loader2, GripVertical } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 type Category = { id: number; translationId: number; pid: number; title: string; lang: string; priority?: number };
@@ -51,6 +51,45 @@ export default function FiltersPage() {
   const [groupCategoryIds, setGroupCategoryIds] = useState<Record<number, number[]>>({});
   const [loadingGroupCategories, setLoadingGroupCategories] = useState(false);
   const [savingCategories, setSavingCategories] = useState(false);
+
+  // Drag-and-drop reordering of one filter group's values — native HTML5
+  // DnD (no library dependency for a plain linear-list reorder). The
+  // dragged value's own id travels in the drop event itself
+  // (dataTransfer), not React state, so a drop is self-contained even if
+  // this component re-rendered mid-drag.
+  const [dragOverValueId, setDragOverValueId] = useState<number | null>(null);
+
+  function reorderValues(filterId: number, draggedId: number, targetId: number) {
+    if (draggedId === targetId) return;
+    setFilters((prev) =>
+      prev.map((f) => {
+        if (f.id !== filterId) return f;
+        const list = [...f.filters];
+        const fromIndex = list.findIndex((v: { id: number }) => v.id === draggedId);
+        const toIndex = list.findIndex((v: { id: number }) => v.id === targetId);
+        if (fromIndex === -1 || toIndex === -1) return f;
+        const [moved] = list.splice(fromIndex, 1);
+        list.splice(toIndex, 0, moved);
+        persistValueOrder(list.map((v: { id: number }) => v.id));
+        return { ...f, filters: list };
+      })
+    );
+  }
+
+  // Fire-and-forget (optimistic UI already reflects the new order) — a
+  // failure here just means the next page load reverts to the last
+  // successfully saved order, not a broken/stuck list.
+  async function persistValueOrder(orderedIds: number[]) {
+    try {
+      await fetch(`/api/filters/values/reorder`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      });
+    } catch {
+      toast.error("Не вдалося зберегти порядок");
+    }
+  }
 
   useEffect(() => {
     apiFetch<any[]>("/api/filters").then((data) => { if (data) setFilters(data); });
@@ -192,7 +231,30 @@ export default function FiltersPage() {
               <CardContent className="pt-0">
                 <div className="pl-6 space-y-1 mb-3">
                   {filter.filters?.map((val: { id: number; title: string }) => (
-                    <div key={val.id} className="flex items-center gap-2 py-1">
+                    <div
+                      key={val.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", String(val.id));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (dragOverValueId !== val.id) setDragOverValueId(val.id);
+                      }}
+                      onDragLeave={() => setDragOverValueId((p) => (p === val.id ? null : p))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOverValueId(null);
+                        const draggedId = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                        if (!Number.isNaN(draggedId)) reorderValues(filter.id, draggedId, val.id);
+                      }}
+                      onDragEnd={() => setDragOverValueId(null)}
+                      className={`flex items-center gap-2 py-1 rounded ${dragOverValueId === val.id ? "bg-violet-500/10 outline-1 outline-dashed outline-violet-400" : ""}`}
+                    >
+                      <span className="text-gray-500 cursor-grab active:cursor-grabbing shrink-0" title="Перетягніть, щоб змінити порядок">
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </span>
                       <span className="text-sm flex-1 min-w-0 truncate">{val.title}</span>
                       <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
