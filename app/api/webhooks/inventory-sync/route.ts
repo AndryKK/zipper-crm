@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, deductOrderItems } from "@/lib/inventory";
 import { supabaseServer } from "@/lib/supabase";
-import { sendWelcomeEmail } from "@/lib/order-emails";
+import { sendWelcomeEmail, sendNewOrderNotification } from "@/lib/order-emails";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 
@@ -93,6 +93,22 @@ export async function POST(req: NextRequest) {
             .update({ welcome_email_sent: true, welcome_email_sent_at: new Date().toISOString() })
             .eq("id", payload.record.id);
         }
+      }
+
+      // Staff-facing "нове замовлення" ping (see lib/order-emails.ts's
+      // sendNewOrderNotification) — independent of the customer email
+      // above (fires even for guest-checkout/invalid-email orders, since
+      // it's about the order existing, not the customer's contact info)
+      // and gated by the SAME welcome_email_sent flag so a historical
+      // backfill (scripts/sync-legacy-mysql.js) never floods the inbox —
+      // this whole block only runs for genuinely fresh orders to begin
+      // with. Never let a failure here affect the webhook's own response;
+      // just log it.
+      try {
+        const result = await sendNewOrderNotification(payload.record.id);
+        if (!result.ok) console.error(`[new-order-notify] order ${payload.record.id}:`, result.error);
+      } catch (e) {
+        console.error(`[new-order-notify] order ${payload.record.id}:`, (e as Error).message);
       }
     }
     return NextResponse.json({ success: true });

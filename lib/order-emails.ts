@@ -1,8 +1,9 @@
 import { getOrderDocumentData, renderOrderConfirmationHtml } from "@/lib/order-documents";
 import { renderInvoicePdf, renderWaybillPdf } from "@/lib/order-pdf";
-import { renderPaymentRequestEmail, renderPaymentConfirmedEmail, type EmailRenderOptions } from "@/lib/email-templates";
+import { renderPaymentRequestEmail, renderPaymentConfirmedEmail, renderNewOrderNotificationEmail, type EmailRenderOptions } from "@/lib/email-templates";
 import { sendEmail, isValidEmail, type EmailResult } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
+import { supabaseServer } from "@/lib/supabase";
 
 const GUEST_CHECKOUT_EMAIL_ERROR = "Це технічна адреса сайту для замовлень без реєстрації, не адреса клієнта — лист не надсилається";
 
@@ -58,4 +59,28 @@ export async function sendPaymentConfirmedEmail(orderId: number, overrideEmail?:
 
   const { subject, html } = renderPaymentConfirmedEmail(doc, doc.order.ttn ?? null, opts);
   return sendEmail({ to, toName: doc.order.person ?? undefined, subject, html });
+}
+
+// Internal "нове замовлення" ping — see app/api/webhooks/inventory-sync's
+// "orders"+"INSERT" branch, the only caller. Deliberately independent of
+// the customer-facing sends above: fires regardless of whether the
+// customer's own login is a guest-checkout placeholder or an invalid
+// email, since this is a staff notification about the order existing at
+// all, not about the customer's contact info.
+const DEFAULT_NEW_ORDER_NOTIFY_EMAIL = "zipper.in.ua@gmail.com";
+const DEFAULT_CRM_URL = "https://zipper-crm.vercel.app";
+
+export async function sendNewOrderNotification(orderId: number): Promise<EmailResult> {
+  const { data: settingRow } = await supabaseServer
+    .from("settings")
+    .select("text")
+    .eq("value", "internal_new_order_email")
+    .eq("lang", "uk")
+    .maybeSingle();
+  const to = ((settingRow?.text as string | undefined) ?? "").trim() || DEFAULT_NEW_ORDER_NOTIFY_EMAIL;
+  if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to}` };
+
+  const crmUrl = (process.env.CRM_URL || DEFAULT_CRM_URL).replace(/\/$/, "");
+  const { subject, html } = renderNewOrderNotificationEmail(orderId, crmUrl);
+  return sendEmail({ to, subject, html });
 }

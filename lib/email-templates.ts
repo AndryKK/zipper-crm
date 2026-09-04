@@ -204,6 +204,36 @@ export function renderPaymentConfirmedEmail(doc: OrderDocumentData, ttn: string 
   };
 }
 
+// Internal "нове замовлення" ping to the shop's own inbox — see
+// lib/order-emails.ts's sendNewOrderNotification and the webhook that
+// calls it (app/api/webhooks/inventory-sync's "orders"+"INSERT" branch).
+// Deliberately minimal: just the order number and a link straight into
+// this CRM, per the exact request that introduced this (2026-09-04) — not
+// the customer-facing confirmation email, this is staff-facing.
+export function renderNewOrderNotificationEmail(orderId: number, crmUrl: string): { subject: string; html: string } {
+  const orderUrl = `${crmUrl}/orders/${orderId}`;
+  const body = `
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Є нове замовлення №${orderId}</h1>
+    <p style="margin:0 0 24px; font-size:14px; color:#64748b; line-height:1.6;">
+      Щойно надійшло нове замовлення на сайті.
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:8px; background:${ACCENT};">
+          <a href="${orderUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block; padding:12px 24px; font-size:14px; font-weight:600; color:#ffffff; text-decoration:none;">
+            Відкрити замовлення →
+          </a>
+        </td>
+      </tr>
+    </table>`;
+
+  return {
+    subject: `Є нове замовлення №${orderId}`,
+    html: layout(`Нове замовлення №${orderId}`, body),
+  };
+}
+
 // "Забули пароль" — see app/api/users/forgot-password/route.ts. Sends the
 // FRESH password just generated there (the account's real one is bcrypt-
 // hashed and can't be recovered) — mirrors the legacy PHP site's own

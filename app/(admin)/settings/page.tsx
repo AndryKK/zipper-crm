@@ -49,6 +49,7 @@ const LABELS: Record<string, string> = {
   // Email
   email_sender_name:     "Ім'я відправника",
   email_sender_email:    "Email відправника",
+  internal_new_order_email: "Email для сповіщень про нові замовлення",
   // Топ продажів
   top_sales_excluded_emails: "Емейли, що виключені з підрахунку",
 };
@@ -70,8 +71,8 @@ const SECTIONS: Section[] = [
   { title: "Viber", keys: ["viber_token"] },
   {
     title: "Email",
-    keys: ["email_sender_name", "email_sender_email"],
-    description: "Використовується для листів клієнту (рахунок при опрацюванні замовлення, подяка після оплати) через Brevo. Email відправника має бути підтверджений у Brevo (Settings → Senders), інакше надсилання завершиться помилкою.",
+    keys: ["email_sender_name", "email_sender_email", "internal_new_order_email"],
+    description: "Email відправника використовується для листів клієнту (рахунок при опрацюванні замовлення, подяка після оплати) через Brevo — має бути підтверджений у Brevo (Settings → Senders), інакше надсилання завершиться помилкою. «Email для сповіщень про нові замовлення» — куди CRM надсилає внутрішнє сповіщення про кожне щойно оформлене замовлення (з посиланням на нього); порожнє поле — за замовчуванням zipper.in.ua@gmail.com.",
   },
   {
     title: "Топ продажів",
