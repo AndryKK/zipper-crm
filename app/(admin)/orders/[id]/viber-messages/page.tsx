@@ -1,11 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Header } from "@/components/admin/header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw, CheckCircle2 } from "lucide-react";
 
 type ViberMessage = { key: string; title: string; hint: string; text: string; action?: "confirm-payment" };
 type ViberData = {
@@ -219,7 +219,6 @@ function MessageCard({
 
 export default function ViberMessagesPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [data, setData] = useState<ViberData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -266,6 +265,8 @@ export default function ViberMessagesPage() {
       <Header
         title="Viber"
         subtitle={data ? `Замовлення #${data.orderId}` : undefined}
+        backHref={`/orders/${params.id}`}
+        backLabel="Назад до замовлення"
         actions={
           <Button
             variant="outline"
@@ -280,13 +281,6 @@ export default function ViberMessagesPage() {
         }
       />
       <div className="p-4 md:p-6 space-y-4" style={{ maxWidth: 640, margin: "0 auto" }}>
-        <button
-          onClick={() => router.push(`/orders/${params.id}`)}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />Назад до замовлення
-        </button>
-
         {loading ? (
           <div style={{ padding: 48, textAlign: "center", color: "var(--text-muted)" }}>
             <Loader2 className="h-5 w-5 animate-spin" style={{ margin: "0 auto 8px" }} />

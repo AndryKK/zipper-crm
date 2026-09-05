@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { User, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { User, ChevronRight, ArrowLeft } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 interface HeaderProps {
@@ -12,9 +13,16 @@ interface HeaderProps {
   subtitle?: string;
   actions?: React.ReactNode;
   breadcrumbs?: { label: string; href?: string }[];
+  // Renders a "← Назад..." link to the left of the title, in the header bar
+  // itself — for a page reached from exactly one place (e.g. an order's
+  // Viber-messages page, only ever opened from that order), rather than a
+  // whole breadcrumb trail. Was previously its own row below the header on
+  // that page; moved up here on request so it sits next to the title.
+  backHref?: string;
+  backLabel?: string;
 }
 
-export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
+export function Header({ title, subtitle, actions, breadcrumbs, backHref, backLabel = "Назад" }: HeaderProps) {
   const { data: session } = useSession();
 
   return (
@@ -41,7 +49,18 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
         flexShrink: 0,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
+        {backHref && (
+          <Link
+            href={backHref}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+            style={{ cursor: "pointer", flexShrink: 0 }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">{backLabel}</span>
+          </Link>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
         {breadcrumbs && breadcrumbs.length > 0 && (
           <div
             style={{
@@ -93,6 +112,7 @@ export function Header({ title, subtitle, actions, breadcrumbs }: HeaderProps) {
             {subtitle}
           </p>
         )}
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
