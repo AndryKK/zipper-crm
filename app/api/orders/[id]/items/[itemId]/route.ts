@@ -81,6 +81,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     update.active = !!body.active;
   }
 
+  // Nothing actually changed (e.g. a price re-submitted identical to what's
+  // already stored, with no quantity/active change either) — PostgREST
+  // returns 0 rows for a genuinely empty UPDATE, which .single() then
+  // rejects with a 406 ("Cannot coerce the result to a single JSON
+  // object"), surfacing as a spurious 500 here. Just echo the row back
+  // unchanged instead of issuing a no-op write.
+  if (Object.keys(update).length === 0) {
+    const { data: unchanged, error: fetchError } = await supabaseServer
+      .from("orders_item").select("*").eq("id", parsedItemId).eq("oid", orderId).single();
+    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    return NextResponse.json(unchanged);
+  }
+
   const { data: item, error } = await supabaseServer
     .from("orders_item")
     .update(update)

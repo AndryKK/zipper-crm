@@ -2889,10 +2889,18 @@ export default function OrderDetailPage() {
             </button>
           </CardHeader>
           <CardContent style={{ padding: editingItems ? "0 16px 16px" : 0 }}>
-            {editingItems && step >= 1 && (
+            {/* step 0="В роботі", 1="Оплачено" are still pre-shipment — the
+                inventory webhook DOES adjust warehouse stock for a
+                quantity edit there (correct: the goods are still
+                physically on the shelf). Only once it's actually shipped
+                (step>=2, Відправлено/Завершено) does the webhook skip the
+                adjustment (fixed 2026-09-05 — it previously adjusted
+                unconditionally at every step, which this same warning
+                incorrectly claimed never happened even at step 1). */}
+            {editingItems && step >= 2 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 12, borderRadius: 8, background: "rgba(245,158,11,0.1)", fontSize: 12.5, color: "#92400e" }}>
                 <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-                Замовлення вже оплачено — зміна кількості тут не перерахує автоматично залишки на складі (списання відбулось один раз при підтвердженні оплати).
+                Замовлення вже відправлено — зміна кількості тут не перерахує автоматично залишки на складі (товар уже фізично покинув склад; списання/повернення діють лише до відправки).
               </div>
             )}
             {/* ── Mobile cards (< md) — replaces the table entirely rather

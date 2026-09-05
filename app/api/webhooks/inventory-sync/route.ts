@@ -150,8 +150,24 @@ export async function POST(req: NextRequest) {
         const productChanged = payload.old_record.product !== payload.record.product;
         const quantityChanged = payload.old_record.quantity !== payload.record.quantity;
         if (productChanged || quantityChanged) {
-          await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
-          await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+          // Only while the order is still pre-shipment (Новий/В роботі/
+          // Оплачено — same set cancellation already uses below) — once
+          // it's Відправлено/Завершено the goods have physically left the
+          // warehouse, so editing the recorded quantity here afterward
+          // (a bookkeeping correction) must NOT pretend units just
+          // reappeared on/vanished from the shelf. Found and fixed
+          // 2026-09-05: this branch previously adjusted stock
+          // unconditionally regardless of order status, contradicting the
+          // order page's own "вже оплачено" warning AND, worse, silently
+          // still doing it past that into Відправлено/Завершено too. See
+          // the order page's editingItems warning banner, which only
+          // shows (accurately, now) once the order is actually shipped.
+          const { data: parentOrder } = await supabaseServer
+            .from("orders").select("status").eq("id", payload.record.oid).maybeSingle();
+          if (isPreShipment(parentOrder?.status ?? null)) {
+            await restockStock(payload.old_record.product, payload.old_record.quantity, warehouseId, { source: "order_item_updated", note: "попередня кількість" });
+            await deductStock(payload.record.product, payload.record.quantity, warehouseId, { source: "order_item_updated", note: "нова кількість" });
+          }
         }
       }
       // wasActive === false && isActive === false: still removed, e.g. a
