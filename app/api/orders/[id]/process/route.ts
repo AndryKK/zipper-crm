@@ -7,7 +7,7 @@ import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 import type { EmailRenderOptions } from "@/lib/email-templates";
-import { getUahRate, computeItemPricingForProduct } from "@/lib/pricing";
+import { getUahRate, computeItemPricingForProduct, computeFlatItemPricing } from "@/lib/pricing";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -79,17 +79,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
      product_price_prod_simple_in_cart()) and skips any item flagged
      price_manual — see app/api/orders/[id]/items/[itemId]/route.ts's PUT,
      which sets that flag only when a manager's edit actually changes the
-     stored price. ─────────────────────────────────────────────────────── */
+     stored price.
+
+     forceDiscountPercent (true only when a manager actually typed into
+     "Знижка клієнта, %" themselves — see discountTouched in
+     orders/[id]/page.tsx, and always true for the dedicated "змінити
+     знижку і надіслати повторно" action) makes this an explicit,
+     deliberate override that wins even over a category/tier bulk
+     discount — computeFlatItemPricing applies newDiscountPercent straight
+     to the product's own price, ignoring category/tier entirely, the
+     same way a manually-typed item price already overrides everything at
+     the single-line level. Omitted/false keeps the default behavior
+     above intact (category/tier always wins when it applies). ─────────── */
   let discountPercent: number | null = null;
   if (typeof body.discountPercent === "number" && Number.isFinite(body.discountPercent)) {
     const newDiscountPercent = body.discountPercent;
+    const forceDiscountPercent = body.forceDiscountPercent === true;
     discountPercent = newDiscountPercent;
     await supabaseServer.from("orders").update({ discount_percent: newDiscountPercent }).eq("id", orderId);
 
     const rate = await getUahRate();
     for (const item of items as { id: number; product: number; quantity: number; price: number; price_base: number; price_manual?: boolean }[]) {
       if (item.price_manual) continue;
-      const pricing = await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
+      const pricing = forceDiscountPercent
+        ? await computeFlatItemPricing(item.product, rate, newDiscountPercent)
+        : await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
       if (!pricing) continue; // product since deleted — leave whatever price the line already has
       const { priceBase, price: newPrice } = pricing;
       if (Math.abs(newPrice - item.price) > 0.001 || Math.abs(item.price_base - priceBase) > 0.001) {

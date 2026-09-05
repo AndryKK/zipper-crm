@@ -139,6 +139,21 @@ export default function OrderDetailPage() {
   // via the separate "змінити знижку і надіслати повторно" control once
   // the order is already in progress (see resendWithDiscount below).
   const [discountInput, setDiscountInput] = useState("5");
+  // False until a manager actually types into "Знижка клієнта, %"
+  // themselves — while false, the field auto-refreshes to whatever
+  // resolveEffectiveDiscountForOrder (lib/pricing.ts) says should
+  // currently apply (e.g. jumping to a category's own 20%-at-1000-units
+  // bulk discount the moment a quantity edit in this same popup crosses
+  // that threshold), instead of sitting on a stale flat default. Once
+  // touched, it stops auto-refreshing AND is sent to /process as a
+  // genuine override (forceDiscountPercent) that wins even over a
+  // category/tier discount — see confirmStockAndProcess.
+  const [discountTouched, setDiscountTouched] = useState(false);
+  // Mirrors discountTouched for refreshDiscountPreview's async callback to
+  // read synchronously (a functional setState would work too, but a ref
+  // reads without also having to thread a no-op state update through it —
+  // matches itemSaveGenerationRef's own reasoning elsewhere on this page).
+  const discountTouchedRef = useRef(false);
   const [resendingDiscount, setResendingDiscount] = useState(false);
   // Organization/ЄДРПОУ — prefilled from order.is_organization/order.edrpou
   // (set either by the storefront checkout or a manager here) but always
@@ -429,14 +444,42 @@ export default function OrderDetailPage() {
     await refreshOrder();
   }
 
+  function markDiscountTouched() {
+    discountTouchedRef.current = true;
+    setDiscountTouched(true);
+  }
+
   function openStockConfirm() {
     setStockChecks({});
     setIsOversized(false);
     setSupplierOverride("auto");
+    // Instant value so the popup never opens blank — refreshDiscountPreview
+    // (below) immediately supersedes this with the real category-aware
+    // figure once it resolves.
     setDiscountInput(String(order.discount_percent ?? order.clientDiscountPercent ?? 5));
+    discountTouchedRef.current = false;
+    setDiscountTouched(false);
     setOrgCheckbox(!!order.is_organization);
     setEdrpouInput(order.edrpou ?? "");
     setShowStockConfirm(true);
+    refreshDiscountPreview();
+  }
+
+  // Pulls what "Знижка клієнта, %" SHOULD show right now (category/tier
+  // bulk discount if any active item's quantity qualifies, else the
+  // client's own rank/order-level default — see
+  // resolveEffectiveDiscountForOrder in lib/pricing.ts) and applies it,
+  // UNLESS a manager already typed their own value into that field this
+  // session (see discountTouched) — never clobber a deliberate override.
+  async function refreshDiscountPreview() {
+    try {
+      const res = await fetch(`/api/orders/${params.id}/discount-preview`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!discountTouchedRef.current && typeof data.discountPercent === "number") {
+        setDiscountInput(String(data.discountPercent));
+      }
+    } catch { /* best-effort preview — a failed refresh just leaves the field as-is */ }
   }
 
   // Entry point for the "Опрацювати замовлення" button — routes through
@@ -454,10 +497,10 @@ export default function OrderDetailPage() {
     if (orgCheckbox && !edrpouInput.trim()) { toast.error("Вкажіть код ЄДРПОУ для організації"); return; }
     setShowStockConfirm(false);
     const discountPercent = parseFloat(discountInput);
-    await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined);
+    await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined, discountTouched);
   }
 
-  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2", discountPercent?: number) {
+  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2", discountPercent?: number, forceDiscountPercent?: boolean) {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
@@ -470,7 +513,7 @@ export default function OrderDetailPage() {
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
-          ...(discountPercent !== undefined ? { discountPercent } : {}),
+          ...(discountPercent !== undefined ? { discountPercent, forceDiscountPercent: !!forceDiscountPercent } : {}),
         }),
       });
       const data = await res.json();
@@ -491,6 +534,13 @@ export default function OrderDetailPage() {
   // lib/email-templates.ts's "discountChanged" reason) instead of the
   // normal "Наявність підтверджено" text — then leaves the order at "В
   // роботі" (awaiting payment), same as first-time processing.
+  //
+  // Always forces the typed %% (forceDiscountPercent: true below) — unlike
+  // the stock-confirm popup's own field, this control has no auto-filled
+  // default to send unexamined; every use of it is a manager deliberately
+  // typing a number and clicking "надіслати", so it wins even over a
+  // category/tier bulk discount, same as a manager typing directly into a
+  // line's own price would.
   async function resendWithDiscount() {
     const discountPercent = parseFloat(discountInput);
     if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
@@ -502,6 +552,7 @@ export default function OrderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           discountPercent,
+          forceDiscountPercent: true,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
         }),
@@ -1015,6 +1066,10 @@ export default function OrderDetailPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items: prev.items.map((i: any) => (i.id === itemId ? { ...i, ...updated } : i)),
     }));
+    // This quantity might have just crossed (or dropped back out of) a
+    // category's own bulk-discount threshold — refresh "Знижка клієнта, %"
+    // to match (a no-op once a manager has typed their own value there).
+    refreshDiscountPreview();
   }
 
   // Soft-remove/restore a line item — see
@@ -1769,7 +1824,7 @@ export default function OrderDetailPage() {
                       key={`${item.id}-${item.quantity}`}
                       onBlur={(e) => { if (e.target.value !== String(item.quantity)) saveItemQuantity(item.id, e.target.value); }}
                       disabled={savingItemId === item.id}
-                      style={{ width: 80, flexShrink: 0, textAlign: "right", height: 32 }}
+                      style={{ width: 110, flexShrink: 0, textAlign: "right", height: 32 }}
                       title="Кількість"
                     />
                     <span style={{ flexShrink: 0, fontSize: 11.5, color: "var(--text-muted)" }}>шт</span>
@@ -1879,11 +1934,13 @@ export default function OrderDetailPage() {
               <Input
                 type="number" min={0} max={100} step="0.1"
                 value={discountInput}
-                onChange={(e) => setDiscountInput(e.target.value)}
+                onChange={(e) => { markDiscountTouched(); setDiscountInput(e.target.value); }}
                 style={{ width: 100 }}
               />
               <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                За замовчуванням — знижка групи клієнта ({order.clientDiscountPercent ?? 5}%, за рангом клієнта). Тут можна вказати іншу для цього замовлення — застосується до ціни кожного товару, крім тих, для яких категорія/кількість дають власну оптову знижку (вона має пріоритет) або чия ціна вже змінена вручну.
+                {discountTouched
+                  ? "Вказано вручну — застосується до ціни кожного товару, навіть якщо категорія/кількість дають власну оптову знижку (крім товарів, чия ціна вже змінена вручну)."
+                  : `Автоматично: знижка категорії/кількості, якщо вона діє для товару в цьому замовленні, інакше знижка групи клієнта (${order.clientDiscountPercent ?? 5}%, за рангом клієнта). Впишіть своє значення, щоб призначити його примусово для всього замовлення.`}
               </div>
             </div>
             <label
@@ -3049,7 +3106,7 @@ export default function OrderDetailPage() {
                             type="number" step="1" value={item.quantity}
                             onChange={(e) => updateItemField(item.id, "quantity", e.target.value)}
                             onBlur={() => autoSaveItemOnBlur(item.id)}
-                            style={{ width: 70, textAlign: "right", marginLeft: "auto" }}
+                            style={{ width: 110, textAlign: "right", marginLeft: "auto" }}
                           />
                         </td>
                       </>

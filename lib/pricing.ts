@@ -112,3 +112,55 @@ export async function computeItemPricingForProduct(
 
   return computeItemPricing(price, rate, clientDiscountPercent);
 }
+
+// Ignores any category/quantity bulk-discount rule entirely and applies
+// discountPercent straight to the product's own raw price — the explicit,
+// deliberate override for app/api/orders/[id]/process/route.ts's
+// forceDiscountPercent, used ONLY when a manager actually typed a value
+// into "Знижка клієнта, %" themselves (see discountTouched in
+// orders/[id]/page.tsx). Mirrors how a manually-typed item price
+// (price_manual) already overrides everything at the single-line level —
+// this is the same idea at the whole-order-field level. Never used for
+// the default/automatic recompute path; that one stays on
+// computeItemPricingForProduct so a real category discount is never
+// silently thrown away just because the field happened to have some
+// value in it (see that function's own history in the comment above).
+export async function computeFlatItemPricing(
+  productId: number,
+  rate: number,
+  discountPercent: number
+): Promise<{ priceBase: number; price: number } | null> {
+  const { data: product } = await supabaseServer.from("products").select("price").eq("id", productId).maybeSingle();
+  if (!product) return null;
+  return computeItemPricing(Number(product.price) || 0, rate, discountPercent);
+}
+
+// What the "Знижка клієнта, %" field on the stock-confirmation popup
+// SHOULD show right now — not just the client's rank default, which used
+// to leave that field showing a stale flat number (e.g. 5%) even after a
+// manager raised an item's quantity into a category's own bulk-discount
+// bracket (e.g. 20% at 1000+ units for "Бігунки"), silently contradicting
+// what the invoice was actually about to charge. Mirrors
+// computeItemPricingForProduct's own category lookup, but only needs the
+// resulting percentage. An order whose active items span several
+// categories with different bulk discounts is a real limitation here —
+// one field can't show two numbers — so this just returns the first
+// qualifying one found; same simplification the popup's single flat
+// field already had to make.
+export async function resolveEffectiveDiscountForOrder(orderId: number): Promise<number> {
+  const { data: order } = await supabaseServer
+    .from("orders").select("login, discount_percent").eq("id", orderId).maybeSingle();
+  const clientDefault = order ? await resolveOrderDiscountPercent(order) : DEFAULT_DISCOUNT_PERCENT;
+
+  const { data: items } = await supabaseServer
+    .from("orders_item").select("product, quantity").eq("oid", orderId).eq("active", true);
+  for (const item of items ?? []) {
+    const { data: product } = await supabaseServer.from("products").select("pid").eq("id", item.product).maybeSingle();
+    if (!product) continue;
+    const { data: category } = await supabaseServer
+      .from("categories").select("discount, ndiscount").eq("translation_id", product.pid).eq("lang", "uk")
+      .gt("discount", 0).gt("ndiscount", 0).maybeSingle();
+    if (category && item.quantity >= category.ndiscount) return category.discount;
+  }
+  return clientDefault;
+}
