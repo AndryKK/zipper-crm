@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
-import { getUahRate, resolveOrderDiscountPercent, computeItemPricing } from "@/lib/pricing";
+import { getUahRate, resolveOrderDiscountPercent, computeItemPricingForProduct } from "@/lib/pricing";
 import { isPastPayment } from "@/lib/order-status";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -21,14 +21,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Price is always recomputed server-side — never trusted from the
   // client. products.price is raw USD-equivalent (same as the legacy
-  // storefront); convert via the грн currency rate, then apply this
-  // client's own discount (rank-based, or the order's manager override —
-  // see lib/pricing.ts) the same way the storefront's own checkout does.
-  const [{ data: productRow }, { data: order }] = await Promise.all([
-    supabaseServer.from("products").select("price").eq("id", product).single(),
-    supabaseServer.from("orders").select("login, discount_percent, status").eq("id", orderId).single(),
-  ]);
-  if (!productRow) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
+  // storefront); convert via the грн currency rate, then apply the same
+  // category → quantity-tier → client-discount priority the storefront's
+  // own checkout uses (see computeItemPricingForProduct in lib/pricing.ts)
+  // — a manually-added line for a category/tier-qualifying quantity used
+  // to always get just the flat client discount instead.
+  const { data: order } = await supabaseServer
+    .from("orders").select("login, discount_percent, status").eq("id", orderId).single();
   if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
 
   // Mirrors the order detail page's own "Додати товар до замовлення" gate
@@ -42,7 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const rate = await getUahRate();
   const discountPercent = await resolveOrderDiscountPercent(order);
-  const { priceBase, price } = computeItemPricing(productRow.price, rate, discountPercent);
+  const pricing = await computeItemPricingForProduct(product, quantity, rate, discountPercent);
+  if (!pricing) return NextResponse.json({ error: "Товар не знайдено" }, { status: 404 });
+  const { priceBase, price } = pricing;
 
   // Manager-added item (as opposed to the customer's own checkout
   // submission) — flagged so the process route can tell items actually

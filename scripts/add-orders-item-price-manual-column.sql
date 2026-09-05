@@ -1,0 +1,14 @@
+-- Tracks whether an order line's price was deliberately typed by a manager
+-- (app/api/orders/[id]/items/[itemId]/route.ts's PUT, only when the
+-- incoming price actually differs from what's stored) rather than computed
+-- from the product/quantity at checkout or by a later re-price. The
+-- "Підтвердити і опрацювати"/"Змінити знижку і надіслати повторно" flow
+-- (app/api/orders/[id]/process/route.ts) recomputes every active item's
+-- price from its product+quantity on every run — this flag is how that
+-- recompute knows to leave a manually-typed price alone instead of
+-- silently overwriting it with whatever the automatic formula would give.
+--
+-- Defaults false so every existing row (and every future plain INSERT,
+-- i.e. the customer's own checkout and the manager "add item" endpoint)
+-- is still subject to the normal automatic pricing.
+ALTER TABLE orders_item ADD COLUMN IF NOT EXISTS price_manual BOOLEAN NOT NULL DEFAULT false;

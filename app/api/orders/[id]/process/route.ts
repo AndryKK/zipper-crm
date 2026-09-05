@@ -7,6 +7,7 @@ import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 import type { EmailRenderOptions } from "@/lib/email-templates";
+import { getUahRate, computeItemPricingForProduct } from "@/lib/pricing";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -61,25 +62,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const items = (allItems ?? []).filter((i) => i.active !== false);
   if (!items.length) return NextResponse.json({ error: "Замовлення без товарів" }, { status: 400 });
 
-  /* ── Client discount — recompute active items' price from price_base
-     whenever a manager explicitly passes a new %% (the "змінити знижку і
-     надіслати повторно" action). Without an explicit value, existing
-     prices are left exactly as they were (this route runs on every normal
-     "Підтвердити і опрацювати" too, and must not silently re-price an
-     order nobody asked to re-price). ─────────────────────────────────── */
+  /* ── Client discount — recompute active items' price whenever a manager
+     explicitly passes a new %% (the "змінити знижку і надіслати повторно"
+     action). Without an explicit value, existing prices are left exactly
+     as they were (this route runs on every normal "Підтвердити і
+     опрацювати" too, and must not silently re-price an order nobody asked
+     to re-price).
+
+     Recomputing used to mean a flat price_base*(1-newDiscountPercent/100)
+     for EVERY item — which silently threw away a category/quantity bulk
+     discount the storefront had correctly applied at checkout (e.g. a
+     -20%-at-1000-units category rule replaced by whatever flat %% this
+     popup defaults to) and clobbered a manager's own manually-typed price
+     just the same. Now goes through computeItemPricingForProduct() (same
+     category → tier → flat priority as cart.php's
+     product_price_prod_simple_in_cart()) and skips any item flagged
+     price_manual — see app/api/orders/[id]/items/[itemId]/route.ts's PUT,
+     which sets that flag only when a manager's edit actually changes the
+     stored price. ─────────────────────────────────────────────────────── */
   let discountPercent: number | null = null;
   if (typeof body.discountPercent === "number" && Number.isFinite(body.discountPercent)) {
     const newDiscountPercent = body.discountPercent;
     discountPercent = newDiscountPercent;
     await supabaseServer.from("orders").update({ discount_percent: newDiscountPercent }).eq("id", orderId);
 
-    for (const item of items as { id: number; price: number; price_base: number }[]) {
-      const basis = item.price_base > 0 ? item.price_base : item.price;
-      const newPrice = Math.round(basis * (1 - newDiscountPercent / 100) * 100) / 100;
-      if (Math.abs(newPrice - item.price) > 0.001 || item.price_base !== basis) {
-        await supabaseServer.from("orders_item").update({ price: newPrice, price_base: basis }).eq("id", item.id);
+    const rate = await getUahRate();
+    for (const item of items as { id: number; product: number; quantity: number; price: number; price_base: number; price_manual?: boolean }[]) {
+      if (item.price_manual) continue;
+      const pricing = await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
+      if (!pricing) continue; // product since deleted — leave whatever price the line already has
+      const { priceBase, price: newPrice } = pricing;
+      if (Math.abs(newPrice - item.price) > 0.001 || Math.abs(item.price_base - priceBase) > 0.001) {
+        await supabaseServer.from("orders_item").update({ price: newPrice, price_base: priceBase }).eq("id", item.id);
         item.price = newPrice;
-        item.price_base = basis;
+        item.price_base = priceBase;
       }
     }
   }

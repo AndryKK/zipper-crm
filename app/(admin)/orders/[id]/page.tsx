@@ -906,11 +906,16 @@ export default function OrderDetailPage() {
     });
     setSavingItemId(null);
     if (!res.ok) { toast.error("Не вдалося зберегти товар"); return; }
+    // Merge the server's response rather than just {price, quantity} — it
+    // carries price_manual (set server-side only when price actually
+    // changed, see the PUT route), which the badge below reads to show
+    // this line is now exempt from the automatic discount recompute.
+    const updated = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrder((prev: any) => ({
       ...prev,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, price, quantity } : i)),
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, ...updated } : i)),
     }));
     toast.success("Товар оновлено");
   }
@@ -2840,7 +2845,14 @@ export default function OrderDetailPage() {
                     {editingItems && !isRemoved ? (
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>Ціна, грн</div>
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3, display: "flex", alignItems: "center", gap: 5 }}>
+                            Ціна, грн
+                            {item.price_manual && (
+                              <span title="Ціну змінено вручну — не перераховується автоматично при обробці/зміні знижки" style={{ fontSize: 9.5, padding: "1px 5px", borderRadius: 4, background: "rgba(217,119,6,0.12)", color: "#b45309" }}>
+                                вручну
+                              </span>
+                            )}
+                          </div>
                           <Input
                             type="number" step="0.01" value={item.price}
                             onChange={(e) => updateItemField(item.id, "price", e.target.value)}
@@ -2938,6 +2950,11 @@ export default function OrderDetailPage() {
                     {editingItems && !isRemoved ? (
                       <>
                         <td style={{ textAlign: "right" }}>
+                          {item.price_manual && (
+                            <div title="Ціну змінено вручну — не перераховується автоматично при обробці/зміні знижки" style={{ fontSize: 9.5, marginBottom: 2, padding: "1px 5px", borderRadius: 4, background: "rgba(217,119,6,0.12)", color: "#b45309", display: "inline-block" }}>
+                              вручну
+                            </div>
+                          )}
                           <Input
                             type="number" step="0.01" value={item.price}
                             onChange={(e) => updateItemField(item.id, "price", e.target.value)}

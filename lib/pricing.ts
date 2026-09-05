@@ -51,3 +51,64 @@ export function computeItemPricing(rawPrice: number, rate: number, discountPerce
   const price = Math.round(priceBase * (1 - discountPercent / 100) * 100) / 100;
   return { priceBase, price };
 }
+
+// Full storefront-equivalent pricing: mirrors cart.php's
+// product_price_prod_simple_in_cart() priority exactly —
+//   1. the product's category has its own bulk discount
+//      (categories.discount/ndiscount, see check_discount_category_rate()
+//      in includes/functions.php) and this quantity qualifies → that
+//      discount REPLACES the client's own discount entirely;
+//   2. otherwise, if this quantity reaches price3n or price2n, that
+//      tier's OWN price (price3/price2) is used as the base, with the
+//      client's normal discount still stacked on top of it;
+//   3. otherwise, the plain price with the client's normal discount.
+// Used wherever an order line's price needs computing/recomputing from a
+// product+quantity — both were previously done with computeItemPricing()
+// above, which only ever knew about the flat client discount, silently
+// dropping a category/tier discount back to the flat rate the moment an
+// order got processed or a manager added a line by hand.
+export async function computeItemPricingForProduct(
+  productId: number,
+  quantity: number,
+  rate: number,
+  clientDiscountPercent: number
+): Promise<{ priceBase: number; price: number } | null> {
+  const { data: product } = await supabaseServer
+    .from("products")
+    .select("price, price2, price2n, price3, price3n, pid")
+    .eq("id", productId)
+    .maybeSingle();
+  if (!product) return null;
+
+  const price = Number(product.price) || 0;
+  const price2 = Number(product.price2) || 0;
+  const price2n = Number(product.price2n) || 0;
+  const price3 = Number(product.price3) || 0;
+  const price3n = Number(product.price3n) || 0;
+
+  const { data: category } = await supabaseServer
+    .from("categories")
+    .select("discount, ndiscount")
+    .eq("translation_id", product.pid)
+    .eq("lang", "uk")
+    .gt("discount", 0)
+    .gt("ndiscount", 0)
+    .maybeSingle();
+
+  if (category && quantity >= category.ndiscount) {
+    const priceBase = Math.round(price * rate * 100) / 100;
+    const discounted = Math.round(priceBase * (1 - category.discount / 100) * 100) / 100;
+    return { priceBase, price: discounted };
+  }
+
+  if (quantity >= price2n) {
+    if (price3 > 0 && quantity >= price3n) {
+      return computeItemPricing(price3, rate, clientDiscountPercent);
+    }
+    if (price2 > 0 && quantity >= price2n) {
+      return computeItemPricing(price2, rate, clientDiscountPercent);
+    }
+  }
+
+  return computeItemPricing(price, rate, clientDiscountPercent);
+}
