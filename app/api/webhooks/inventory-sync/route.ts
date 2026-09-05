@@ -4,14 +4,23 @@ import { supabaseServer } from "@/lib/supabase";
 import { sendWelcomeEmail, sendNewOrderNotification } from "@/lib/order-emails";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
+import { isShippedOrLater } from "@/lib/order-status";
 
 const CANCELLED_STATUS = "Скасовано";
-// Statuses reached before the order physically leaves the warehouse — an
-// order cancelled while still in one of these auto-restocks. Once it's
-// "Відправлено" (or later), the goods are already out; restocking only
-// happens when a return is confirmed received back (see the returns flow).
-const PRE_SHIPMENT_STATUSES = new Set(["Новий", "В роботі", "Оплачено"]);
-const isPreShipment = (status: string | null) => !status || PRE_SHIPMENT_STATUSES.has(status);
+// Whether the order is still in a state where its goods are physically on
+// the shelf — an order cancelled (or edited) while still here auto-
+// restocks/deducts; once isShippedOrLater is true the goods are already
+// out, so restocking only happens when a return is confirmed received back
+// (see the returns flow). Deliberately delegates to isShippedOrLater
+// (lib/order-status.ts) rather than allowlisting "pre-shipment" statuses
+// directly — a raw/legacy pre-processing status (literal "new",
+// "Отримано"/"Получен", "В работе", ...) would silently fall outside a
+// Ukrainian-only allowlist and get treated as already-shipped, exactly the
+// bug isNewStatus in that file already had to fix twice for other pages.
+// Found live 2026-09-05: this bug bit a brand-new order's very first
+// quantity edit (still on its raw storefront status) right after the
+// isPreShipment gate below was first added.
+const isPreShipment = (status: string | null) => !isShippedOrLater(status);
 
 type OrdersItemRow = { oid: number; product: number; quantity: number; active: boolean };
 type OrdersRow = { id: number; status: string | null; welcome_email_sent: boolean; login: string | null };

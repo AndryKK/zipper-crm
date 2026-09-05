@@ -60,6 +60,25 @@ export function isPastPayment(status: string | null): boolean {
   return s.includes("оплач") || s.includes("відправлен") || s.includes("отправлен") || s.includes("завершен");
 }
 
+// True once the order's goods have actually left the warehouse — shipped
+// (Відправлено/Отправлен) or completed (Завершено/Завершен). Used by the
+// inventory-sync webhook to decide whether a quantity/product edit (or a
+// cancellation) should still adjust live warehouse stock: everything
+// BEFORE this point (including raw/legacy pre-processing statuses like
+// "new"/"Отримано"/"Получен"/"В работе" — see isNewStatus above) must
+// still be treated as pre-shipment, since the goods are still physically
+// on the shelf. Deliberately a narrow "has it shipped" allowlist rather
+// than an "is it pre-shipment" one — enumerating every raw/legacy
+// not-yet-shipped status string is exactly the trap isNewStatus above
+// already had to fix twice; there are only two ways for stock to have
+// truly left the building, so checking for those directly is robust to
+// any never-touched order landing here with an unexpected literal it never
+// occurred to anyone to add to an allowlist.
+export function isShippedOrLater(status: string | null): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s.includes("відправлен") || s.includes("отправлен") || s.includes("завершен");
+}
+
 export function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";
