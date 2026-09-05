@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const doc = await getOrderDocumentData(orderId);
   if (!doc) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
-  const { order, orderTotal, docNumber } = doc;
+  const { order, orderTotal, docNumber, supplierName, supplierAccount, supplierBank, supplierEdrpou } = doc;
 
   // The account's own phone (users.phone, via order.login) is the actual
   // CLIENT's number — order.phone is only ever the shipping recipient's
@@ -93,6 +93,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       title: "Рахунок та накладна",
       hint: reason === "itemsChanged" ? "Склад замовлення було змінено — надіслано оновлений рахунок" : "Наявність підтверджено — надіслано рахунок і накладну",
       text: `${emoji} *${intro.title}*\n\n${intro.text}\n\n💰 Сума до сплати: *${orderTotal.toFixed(2)} грн*\n\n📄 Рахунок-фактура: ${link("invoice")}\n📦 Видаткова накладна: ${link("waybill")}`,
+    });
+
+    // Same supplier requisites the invoice/waybill documents themselves
+    // show (getOrderDocumentData already picks supplier 1 vs 2 per the
+    // order's own total-vs-threshold/override — see lib/order-documents.ts)
+    // — sent as three separate messages right after the invoice, matching
+    // how a manager was already sending these by hand: the full block for
+    // the client to read, the bare IBAN again on its own so it's a single
+    // tap-and-hold to copy on mobile (mixed in with the rest of the text
+    // it's easy to select the wrong span), then the packing question.
+    messages.push({
+      key: "requisites",
+      title: "Реквізити для оплати",
+      hint: "Надсилається разом з рахунком — реквізити отримувача",
+      text: `Найменування отримувача: ${supplierName}\nКод отримувача: ${supplierEdrpou}\nРахунок отримувача: ${supplierAccount}\nНазва банку: ${supplierBank}`,
+    });
+    messages.push({
+      key: "requisites-account",
+      title: "IBAN окремим повідомленням",
+      hint: "Той самий рахунок ще раз окремо — щоб клієнту було зручно скопіювати",
+      text: supplierAccount,
+    });
+    messages.push({
+      key: "pack-today-question",
+      title: "Питання про збірку",
+      hint: "Запитати клієнта, чи збирати замовлення на відправку сьогодні",
+      text: "Збирати на відправку сьогодні?",
     });
   }
 
