@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft, Copy, Phone, Send, Loader2, ExternalLink, Check, RefreshCw, CheckCircle2 } from "lucide-react";
 
-type ViberMessage = { key: string; title: string; hint: string; text: string };
+type ViberMessage = { key: string; title: string; hint: string; text: string; action?: "confirm-payment" };
 type ViberData = {
   orderId: number;
   docNumber: string;
@@ -80,12 +80,14 @@ function writeSentAt(orderId: number, msgKey: string) {
 }
 
 function MessageCard({
-  orderId, msg, clientPhoneViber,
+  orderId, msg, clientPhoneViber, onPaymentConfirmed,
 }: {
   orderId: number; msg: ViberMessage; clientPhoneViber: string | null;
+  onPaymentConfirmed?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [sentAt, setSentAt] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => { setSentAt(readSentAt(orderId, msg.key)); }, [orderId, msg.key]);
 
@@ -102,6 +104,36 @@ function MessageCard({
 
   async function onSend() {
     if (!clientPhoneViber) return;
+
+    // This one template also does the exact same thing the order page's
+    // own "Підтвердити оплату" button does (see confirmPayment there) —
+    // status → "Оплачено", TTN creation, customer thank-you email, AND the
+    // internal payment-notification email — so sending it in Viber is a
+    // real "mark this order as paid" action, not just a text template.
+    // Only proceed to the Viber hand-off once that's genuinely confirmed;
+    // a failed API call means nothing was actually marked paid, so sending
+    // the "Дякуємо за оплату" text anyway would lie to the client.
+    if (msg.action === "confirm-payment") {
+      setConfirming(true);
+      try {
+        const res = await fetch(`/api/orders/${orderId}/confirm-payment`, { method: "POST" });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          toast.error(data?.error ?? "Не вдалося підтвердити оплату");
+          return;
+        }
+        const hasError = (data?.log ?? []).some((l: { status: string }) => l.status === "error");
+        if (hasError) toast.warning("Оплату підтверджено з помилками — перевірте деталі замовлення");
+        else toast.success("Оплату підтверджено!");
+        onPaymentConfirmed?.();
+      } catch {
+        toast.error("Помилка з'єднання під час підтвердження оплати");
+        return;
+      } finally {
+        setConfirming(false);
+      }
+    }
+
     await sendViaViber(msg.text, clientPhoneViber);
     writeSentAt(orderId, msg.key);
     setSentAt(new Date().toISOString());
@@ -164,17 +196,20 @@ function MessageCard({
         {clientPhoneViber && (
           <a
             href={`viber://chat?number=${clientPhoneViber}`}
-            onClick={(e) => { e.preventDefault(); onSend(); }}
+            onClick={(e) => { e.preventDefault(); if (!confirming) onSend(); }}
+            aria-disabled={confirming}
             style={{
               flex: "1 1 140px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
               padding: "0 12px", height: 32, borderRadius: 8,
               background: "linear-gradient(135deg,#7360f2,#8f5db7)",
               color: "#fff", fontSize: 12.5, fontWeight: 600,
               textDecoration: "none",
+              opacity: confirming ? 0.6 : 1,
+              pointerEvents: confirming ? "none" : "auto",
             }}
           >
-            <Send size={13} />
-            Надіслати
+            {confirming ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            {confirming ? "Підтверджую оплату…" : "Надіслати"}
           </a>
         )}
       </div>
@@ -303,7 +338,13 @@ export default function ViberMessagesPage() {
             </div>
 
             {data.messages.map((m) => (
-              <MessageCard key={m.key} orderId={data.orderId} msg={m} clientPhoneViber={data.clientPhoneViber} />
+              <MessageCard
+                key={m.key}
+                orderId={data.orderId}
+                msg={m}
+                clientPhoneViber={data.clientPhoneViber}
+                onPaymentConfirmed={load}
+              />
             ))}
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>

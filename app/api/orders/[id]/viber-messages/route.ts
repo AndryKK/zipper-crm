@@ -75,7 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // text can never say something different from what was actually
   // emailed). A later stage never replaces an earlier one — all stages
   // reached so far stay visible.
-  const messages: { key: string; title: string; hint: string; text: string }[] = [];
+  const messages: { key: string; title: string; hint: string; text: string; action?: "confirm-payment" }[] = [];
 
   messages.push({
     key: "welcome",
@@ -120,6 +120,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       title: "Питання про збірку",
       hint: "Запитати клієнта, чи збирати замовлення на відправку сьогодні",
       text: "Збирати на відправку сьогодні?",
+    });
+
+    // A ready-made "thank you for paying" template, sent the moment a
+    // manager sees proof of payment come in — its own "Надіслати" button
+    // (see the page's onSend for action="confirm-payment") calls the exact
+    // same POST /confirm-payment the order page's own "Підтвердити оплату"
+    // button does, so status flips to "Оплачено", the TTN gets created,
+    // and the internal payment-notification email (sendPaymentReceivedNotification,
+    // see lib/order-emails.ts) fires from this page too — not a separate,
+    // parallel "mark paid" path that could silently skip it.
+    messages.push({
+      key: "payment-thanks",
+      title: "Подяка за оплату",
+      hint: "Надсилання підтверджує оплату в CRM (статус «Оплачено», ТТН, сповіщення) так само, як кнопка «Підтвердити оплату» в замовленні",
+      text: "Дякуємо за оплату!\nВаше замовлення сьогодні відправимо.\nНомер ТТН надішлемо.\nГарного дня!",
+      action: "confirm-payment",
     });
   }
 
