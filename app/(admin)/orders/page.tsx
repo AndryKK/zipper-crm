@@ -144,10 +144,10 @@ function OrdersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Deep link from the dashboard's "Статуси замовлень" pie chart
-  // (/orders?status=Завершено&days=7) — an exact-status filter distinct
+  // (/orders?status=Завершено&days=10) — an exact-status filter distinct
   // from the filter= quick-filter pills below (see STATUS_FILTER_CLAUSES
   // in app/api/orders/route.ts for why it can't just reuse them). days
-  // matches that chart's own "last 7 days" window — without it, clicking
+  // matches that chart's own "last 10 days" window — without it, clicking
   // a slice that says "9" landed on every order of that status ever
   // (20,000+), not the 9 the chart actually counted.
   // Read directly from the initial URL via lazy useState initializers

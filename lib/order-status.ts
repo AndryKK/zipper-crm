@@ -79,6 +79,15 @@ export function isShippedOrLater(status: string | null): boolean {
   return s.includes("відправлен") || s.includes("отправлен") || s.includes("завершен");
 }
 
+// True for an already-cancelled order (Скасовано/Отменен). Used by the
+// auto-cancel-unpaid-orders cron (app/api/cron/auto-cancel-unpaid-orders)
+// alongside isPastPayment to find orders that are neither paid-or-later
+// NOR already cancelled — the actual "still needs to pay" set.
+export function isCancelledStatus(status: string | null): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s.includes("скасован") || s.includes("отмен");
+}
+
 export function orderRowClass(status: string | null): string {
   const s = (status ?? "").toLowerCase();
   if (s.includes("в работ") || s.includes("в робот")) return "order-row--progress";

@@ -163,12 +163,12 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
   const router = useRouter();
   // /orders' own STATUS_FILTER_CLAUSES (app/api/orders/route.ts) matches
   // this chart's exact grouping (STATUS_DISPLAY in app/(admin)/page.tsx),
-  // and days=7 matches the "Розподіл за останні 7 днів" window this chart
+  // and days=10 matches the "Розподіл за останні 10 днів" window this chart
   // itself counts within — together they land on precisely the orders
   // this slice/legend row counted, not a differently-drawn subset (e.g.
   // every order of that status ever, which without days= was 20,000+
   // instead of the single-digit count shown here).
-  const goToStatus = (name: string) => router.push(`/orders?status=${encodeURIComponent(name)}&days=7`);
+  const goToStatus = (name: string) => router.push(`/orders?status=${encodeURIComponent(name)}&days=10`);
 
   const [period, setPeriod] = useState("month");
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
@@ -288,7 +288,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
             Статуси замовлень
           </h3>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
-            Розподіл за останні 7 днів
+            Розподіл за останні 10 днів
           </p>
         </div>
         {/* statusData always has all six statuses now (some can be 0) so

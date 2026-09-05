@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/send-welcome-emails",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/auto-cancel-unpaid-orders",
+      "schedule": "0 7 * * *"
     }
   ]
 }

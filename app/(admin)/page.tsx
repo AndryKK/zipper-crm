@@ -123,12 +123,12 @@ async function getRecentOrders() {
 }
 
 // Deliberately NOT wrapped in unstable_cache — see getStats' own comment.
-// Queries only the last 7 days' status column directly (not the 30-day
+// Queries only the last 10 days' status column directly (not the 30-day
 // order set the revenue card needs), so it's a small, cheap query on its
 // own even run live on every visit.
 async function getStatusData() {
   const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  weekAgo.setDate(weekAgo.getDate() - 10);
 
   const { data: weekOrderRows } = await supabaseServer
     .from("orders")

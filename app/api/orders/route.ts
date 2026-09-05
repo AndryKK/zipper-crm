@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const filter = (searchParams.get("filter") ?? "all") as QuickFilter;
   const status = searchParams.get("status") ?? "";
   // Only meaningful together with status= — the dashboard pie chart counts
-  // a fixed trailing window (currently 7 days), so a click-through link
+  // a fixed trailing window (currently 10 days), so a click-through link
   // that only carried status= would land on every order of that status
   // ever (tens of thousands), not the handful the chart actually counted.
   const days = parseInt(searchParams.get("days") ?? "");
