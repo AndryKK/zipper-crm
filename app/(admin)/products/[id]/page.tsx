@@ -157,6 +157,36 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     .eq("pid", baseTrId);
   const productFilters = [...new Set((productFilterLinks || []).map((l: any) => l.fid))];
 
+  const productCategoryIds = [...new Set((productCats || []).map((c: any) => c.cid))];
+
+  // A category can carry its own bulk-discount rule (categories.discount/
+  // ndiscount — see category-form.tsx's "Знижка (%)"/"Від скількох штук"),
+  // applied by the storefront (includes/functions.php's
+  // check_discount_category_rate()) on top of / instead of this product's
+  // own price2/price2n/price3/price3n. That's a completely separate
+  // mechanism the product page never surfaced, which made a product with
+  // empty "Оптові ціни" look like it truly had no bulk pricing when the
+  // site was in fact showing one, inherited from its category — fetched
+  // here (scoped to just this product's own categories, not the whole
+  // tree, to keep this off the egress-sensitive `categories` query above)
+  // so ProductForm can show what the storefront actually charges.
+  const { data: categoryDiscountRows } = productCategoryIds.length
+    ? await supabaseServer
+        .from("categories")
+        .select("translationId:translation_id, title, discount, ndiscount")
+        .eq("lang", "uk")
+        .in("translation_id", productCategoryIds)
+        .gt("discount", 0)
+        .gt("ndiscount", 0)
+    : { data: [] };
+
+  const { data: currencyRow } = await supabaseServer
+    .from("currency")
+    .select("rate")
+    .eq("title", "грн")
+    .eq("lang", "uk")
+    .maybeSingle();
+
   return (
     <>
       <Header title={`Редагувати: ${ukVariant?.title || (product as any).title}`} />
@@ -166,8 +196,10 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         mainPhotos={dedupeByImg(mainPhotos || [])}
         mainPhotos2={dedupeByImg(mainPhotos2 || [])}
         mainChars={mainChars || []}
-        productCategories={[...new Set((productCats || []).map((c: any) => c.cid))]}
+        productCategories={productCategoryIds}
         categories={(categories || []) as any[]}
+        categoryDiscounts={(categoryDiscountRows || []) as any[]}
+        currencyRate={(currencyRow as any)?.rate ?? 0}
         measures={(measures || []) as any[]}
         filters={filtersWithChildren}
         productFilters={productFilters}

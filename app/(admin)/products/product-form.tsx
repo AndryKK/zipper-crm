@@ -179,6 +179,11 @@ interface Props {
   productFilters?: number[];
   product?: any;
   categories: any[];
+  // Bulk-discount rule(s) inherited from this product's own categories
+  // (categories.discount/ndiscount) — see products/[id]/page.tsx. Distinct
+  // from this product's own price2/price3 "Оптові ціни" fields below.
+  categoryDiscounts?: { translationId: number; title: string; discount: number; ndiscount: number }[];
+  currencyRate?: number;
   measures: any[];
   filters: any[];
   langs: any[];
@@ -303,6 +308,8 @@ function EditForm({
   productCategories = [],
   productFilters = [],
   categories,
+  categoryDiscounts = [],
+  currencyRate = 0,
   measures,
   filters,
   langs,
@@ -435,6 +442,19 @@ function EditForm({
   // ── Categories ────────────────────────────────────────────────────
   const [selectedCategories, setSelectedCategories] = useState<number[]>(productCategories);
   const [selectedFilters, setSelectedFilters] = useState<number[]>(productFilters);
+
+  // First bulk-discount rule (if any) from one of this product's currently
+  // selected categories — see categoryDiscounts' own comment in
+  // products/[id]/page.tsx. Recomputed off selectedCategories (not the
+  // initial productCategories prop) so it stays right if a category is
+  // added/removed before saving. A product could technically sit in more
+  // than one discounted category; showing just the first keeps this in
+  // line with the storefront, which also only ever surfaces one
+  // (check_discount_category_rate() has no ORDER BY, so it's whichever
+  // Postgres returns first — same ambiguity, not introduced here).
+  const activeCategoryDiscount = selectedCategories
+    .map((cid) => categoryDiscounts.find((c) => c.translationId === cid))
+    .find((c): c is NonNullable<typeof c> => !!c);
 
   // ── Color dropdown + add modal ────────────────────────────────────
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
@@ -1296,15 +1316,37 @@ function EditForm({
               <Input type="number" step="0.01" value={common.price_sale} onChange={(e) => setC("price_sale", e.target.value)} placeholder="Залишити порожнім" />
             </div>
           </div>
-          <div className="border rounded-md p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-700">Оптові ціни</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Ціна 2</Label><Input type="number" step="0.01" value={common.price2} onChange={(e) => setC("price2", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Від (кількість)</Label><Input type="number" value={common.price2n} onChange={(e) => setC("price2n", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Ціна 3</Label><Input type="number" step="0.01" value={common.price3} onChange={(e) => setC("price3", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Від (кількість)</Label><Input type="number" value={common.price3n} onChange={(e) => setC("price3n", e.target.value)} /></div>
+          {(Number(common.price2) > 0 && Number(common.price2n) > 0) || !activeCategoryDiscount ? (
+            <div className="border rounded-md p-4 space-y-3">
+              <p className="text-sm font-medium text-gray-700">Оптові ціни</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label>Ціна 2</Label><Input type="number" step="0.01" value={common.price2} onChange={(e) => setC("price2", e.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Від (кількість)</Label><Input type="number" value={common.price2n} onChange={(e) => setC("price2n", e.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Ціна 3</Label><Input type="number" step="0.01" value={common.price3} onChange={(e) => setC("price3", e.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Від (кількість)</Label><Input type="number" value={common.price3n} onChange={(e) => setC("price3n", e.target.value)} /></div>
+              </div>
+              {activeCategoryDiscount && (
+                <p className="text-xs text-amber-600">
+                  Категорія «{activeCategoryDiscount.title}» також має власну знижку (нижче) — сайт бере МЕНШУ з двох цін для кількості, що підпадає під обидві.
+                </p>
+              )}
             </div>
-          </div>
+          ) : null}
+          {activeCategoryDiscount && (
+            <div className="border rounded-md p-4 space-y-2 bg-gray-50">
+              <p className="text-sm font-medium text-gray-700">Знижка категорії «{activeCategoryDiscount.title}»</p>
+              <p className="text-sm text-gray-600">
+                -{activeCategoryDiscount.discount}% від {activeCategoryDiscount.ndiscount} шт →{" "}
+                <span className="font-semibold text-gray-900">
+                  {(Number(common.price || 0) * currencyRate * (1 - activeCategoryDiscount.discount / 100)).toFixed(2)} грн/шт
+                </span>{" "}
+                (це і є ціна «від {activeCategoryDiscount.ndiscount} шт.» на сайті)
+              </p>
+              <p className="text-xs text-gray-400">
+                Рахується автоматично від «Ціна $» вище — не поле цього товару, а правило категорії. Змінити відсоток/кількість: розділ «Категорії» → {activeCategoryDiscount.title}.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
