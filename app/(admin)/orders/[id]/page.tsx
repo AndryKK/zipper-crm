@@ -301,6 +301,25 @@ export default function OrderDetailPage() {
   // Items edit
   const [editingItems, setEditingItems] = useState(false);
   const [savingItemId, setSavingItemId] = useState<number | null>(null);
+  // Ids with a local price/quantity edit not yet confirmed saved —
+  // updateItemField only ever touched client state, so a manager who
+  // edited a row and clicked "Завершити редагування" without also
+  // clicking that row's own checkmark lost the edit silently (nothing
+  // was ever sent to the server, so invoices/накладні built from
+  // orders_item never changed). Tracked so both the per-field onBlur
+  // auto-save and the "Завершити редагування" flush below know what
+  // still needs saving. See updateItemField/saveItem/finishEditingItems.
+  const [dirtyItemIds, setDirtyItemIds] = useState<Set<number>>(new Set());
+  const [finishingEdit, setFinishingEdit] = useState(false);
+  // Guards against a slow/earlier saveItem() call for the same row
+  // clobbering local state with its (now stale) result after a NEWER edit
+  // already started saving — e.g. tab out of quantity (fires a save),
+  // then immediately retype price before that first request returns: its
+  // response landing after the price edit's own save would otherwise
+  // overwrite the just-saved manual price back to the quantity-only
+  // recompute. Bumped at the start of every saveItem() call for an item;
+  // a response is only applied if its call is still the latest one.
+  const itemSaveGenerationRef = useRef<Map<number, number>>(new Map());
   const [itemSearch, setItemSearch] = useState("");
   const [itemSearching, setItemSearching] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -886,18 +905,27 @@ export default function OrderDetailPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items: prev.items.map((i: any) => (i.id === itemId ? { ...i, [field]: value } : i)),
     }));
+    setDirtyItemIds((prev) => new Set(prev).add(itemId));
   }
 
-  async function saveItem(itemId: number) {
+  // Returns whether the save actually succeeded — finishEditingItems below
+  // needs to know before it's safe to close editing mode (a manager's
+  // pending edit must never be silently dropped just because they clicked
+  // "Завершити редагування" instead of the row's own checkmark).
+  async function saveItem(itemId: number, opts: { silent?: boolean } = {}): Promise<boolean> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const item = order.items.find((i: any) => i.id === itemId);
-    if (!item) return;
+    if (!item) return true; // nothing to save — don't block the caller on it
     const price = parseFloat(item.price);
     const quantity = parseInt(item.quantity);
     if (!Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity < 1) {
       toast.error("Некоректна ціна або кількість");
-      return;
+      return false;
     }
+    // This call's generation — see itemSaveGenerationRef's own comment.
+    const gen = (itemSaveGenerationRef.current.get(itemId) ?? 0) + 1;
+    itemSaveGenerationRef.current.set(itemId, gen);
+
     setSavingItemId(itemId);
     const res = await fetch(`/api/orders/${params.id}/items/${itemId}`, {
       method: "PUT",
@@ -905,19 +933,58 @@ export default function OrderDetailPage() {
       body: JSON.stringify({ price, quantity }),
     });
     setSavingItemId(null);
-    if (!res.ok) { toast.error("Не вдалося зберегти товар"); return; }
+    if (!res.ok) { toast.error("Не вдалося зберегти товар"); return false; }
+    const updated = await res.json();
+
+    // A newer save for this same row already started (and its own response
+    // will merge instead) — applying this stale one would clobber whatever
+    // that later edit set, silently reverting it.
+    if (itemSaveGenerationRef.current.get(itemId) !== gen) return true;
+
     // Merge the server's response rather than just {price, quantity} — it
     // carries price_manual (set server-side only when price actually
-    // changed, see the PUT route), which the badge below reads to show
-    // this line is now exempt from the automatic discount recompute.
-    const updated = await res.json();
+    // changed, see the PUT route) and, on a genuine quantity change, the
+    // recomputed price/price_base for whatever category/tier discount the
+    // new quantity now qualifies for — the badge below reads price_manual
+    // to show this line is exempt from that automatic recompute.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrder((prev: any) => ({
       ...prev,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items: prev.items.map((i: any) => (i.id === itemId ? { ...i, ...updated } : i)),
     }));
-    toast.success("Товар оновлено");
+    setDirtyItemIds((prev) => { const next = new Set(prev); next.delete(itemId); return next; });
+    if (!opts.silent) toast.success("Товар оновлено");
+    return true;
+  }
+
+  // Auto-save on blur (price OR quantity field) — matches the stock-check
+  // popup's own self-saving quantity field, so a manager sees the
+  // recomputed price the moment they tab off a quantity edit instead of
+  // only after an explicit checkmark click. `silent` avoids a toast per
+  // field for what's usually one logical edit (typing a price then
+  // tabbing through quantity fires two blurs).
+  function autoSaveItemOnBlur(itemId: number) {
+    if (dirtyItemIds.has(itemId)) saveItem(itemId, { silent: true });
+  }
+
+  // "Завершити редагування" — flushes any row a manager edited but never
+  // explicitly saved (see dirtyItemIds) before actually closing edit mode,
+  // so invoices/rахунки built from orders_item afterward always reflect
+  // what's on screen. Stays open (returns without toggling) if a save
+  // fails, so nothing is lost silently.
+  async function finishEditingItems() {
+    if (dirtyItemIds.size === 0) { setEditingItems(false); return; }
+    setFinishingEdit(true);
+    let allOk = true;
+    for (const itemId of Array.from(dirtyItemIds)) {
+      const ok = await saveItem(itemId, { silent: true });
+      if (!ok) allOk = false;
+    }
+    setFinishingEdit(false);
+    if (!allOk) { toast.error("Деякі товари не вдалося зберегти — перевірте поля та спробуйте ще раз"); return; }
+    toast.success("Зміни збережено");
+    setEditingItems(false);
   }
 
   // Self-saving quantity field for the stock-check popup — that list has
@@ -936,11 +1003,17 @@ export default function OrderDetailPage() {
     });
     setSavingItemId(null);
     if (!res.ok) { toast.error("Не вдалося оновити кількість"); return; }
+    // Merge the full server response, not just {quantity} — the route may
+    // have just recomputed price/price_base for the new quantity's
+    // category/tier discount (see the PUT route), and the old
+    // quantity-only merge here left the table showing the stale price
+    // until a full page refresh.
+    const updated = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrder((prev: any) => ({
       ...prev,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, quantity } : i)),
+      items: prev.items.map((i: any) => (i.id === itemId ? { ...i, ...updated } : i)),
     }));
   }
 
@@ -1696,7 +1769,7 @@ export default function OrderDetailPage() {
                       key={`${item.id}-${item.quantity}`}
                       onBlur={(e) => { if (e.target.value !== String(item.quantity)) saveItemQuantity(item.id, e.target.value); }}
                       disabled={savingItemId === item.id}
-                      style={{ width: 60, flexShrink: 0, textAlign: "right", height: 32 }}
+                      style={{ width: 80, flexShrink: 0, textAlign: "right", height: 32 }}
                       title="Кількість"
                     />
                     <span style={{ flexShrink: 0, fontSize: 11.5, color: "var(--text-muted)" }}>шт</span>
@@ -1810,7 +1883,7 @@ export default function OrderDetailPage() {
                 style={{ width: 100 }}
               />
               <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                За замовчуванням — знижка групи клієнта ({order.clientDiscountPercent ?? 5}%, за рангом клієнта). Тут можна вказати іншу для цього замовлення — застосується до ціни кожного товару.
+                За замовчуванням — знижка групи клієнта ({order.clientDiscountPercent ?? 5}%, за рангом клієнта). Тут можна вказати іншу для цього замовлення — застосується до ціни кожного товару, крім тих, для яких категорія/кількість дають власну оптову знижку (вона має пріоритет) або чия ціна вже змінена вручну.
               </div>
             </div>
             <label
@@ -2745,10 +2818,17 @@ export default function OrderDetailPage() {
           <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <CardTitle className="text-sm">Товари замовлення</CardTitle>
             <button
-              onClick={() => setEditingItems((v) => !v)}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: editingItems ? "rgba(148,163,184,0.15)" : "rgba(99,102,241,0.1)", color: editingItems ? "#64748b" : "#6366f1", border: "none", cursor: "pointer" }}
+              onClick={() => (editingItems ? finishEditingItems() : setEditingItems(true))}
+              disabled={finishingEdit}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: editingItems ? "rgba(148,163,184,0.15)" : "rgba(99,102,241,0.1)", color: editingItems ? "#64748b" : "#6366f1", border: "none", cursor: finishingEdit ? "default" : "pointer", opacity: finishingEdit ? 0.7 : 1 }}
             >
-              {editingItems ? <><X size={12} /> Завершити редагування</> : <><Pencil size={12} /> Редагувати</>}
+              {finishingEdit ? (
+                <><Loader2 size={12} className="animate-spin" /> Зберігаємо...</>
+              ) : editingItems ? (
+                <><X size={12} /> Завершити редагування</>
+              ) : (
+                <><Pencil size={12} /> Редагувати</>
+              )}
             </button>
           </CardHeader>
           <CardContent style={{ padding: editingItems ? "0 16px 16px" : 0 }}>
@@ -2856,6 +2936,7 @@ export default function OrderDetailPage() {
                           <Input
                             type="number" step="0.01" value={item.price}
                             onChange={(e) => updateItemField(item.id, "price", e.target.value)}
+                            onBlur={() => autoSaveItemOnBlur(item.id)}
                             style={{ width: "100%" }}
                           />
                         </div>
@@ -2864,6 +2945,7 @@ export default function OrderDetailPage() {
                           <Input
                             type="number" step="1" value={item.quantity}
                             onChange={(e) => updateItemField(item.id, "quantity", e.target.value)}
+                            onBlur={() => autoSaveItemOnBlur(item.id)}
                             style={{ width: "100%" }}
                           />
                         </div>
@@ -2958,6 +3040,7 @@ export default function OrderDetailPage() {
                           <Input
                             type="number" step="0.01" value={item.price}
                             onChange={(e) => updateItemField(item.id, "price", e.target.value)}
+                            onBlur={() => autoSaveItemOnBlur(item.id)}
                             style={{ width: 90, textAlign: "right", marginLeft: "auto" }}
                           />
                         </td>
@@ -2965,6 +3048,7 @@ export default function OrderDetailPage() {
                           <Input
                             type="number" step="1" value={item.quantity}
                             onChange={(e) => updateItemField(item.id, "quantity", e.target.value)}
+                            onBlur={() => autoSaveItemOnBlur(item.id)}
                             style={{ width: 70, textAlign: "right", marginLeft: "auto" }}
                           />
                         </td>
