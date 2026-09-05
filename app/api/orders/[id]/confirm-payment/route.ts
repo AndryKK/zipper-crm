@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { createOrderTtn } from "@/lib/order-ttn";
-import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
+import { sendPaymentConfirmedEmail, sendPaymentReceivedNotification } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
@@ -82,6 +82,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   /* ── Оновити статус → "Оплачено" ────────────────────────────────── */
   await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", orderId);
   revalidateTag("sidebar-counts", { expire: 0 });
+
+  /* ── Внутрішнє сповіщення про оплату ───────────────────────────────
+     Independent of the customer email above — must fire regardless of
+     whether that one was skipped/failed, since this is about the payment
+     being marked in the CRM, not about the customer's contact info. Never
+     lets a failure here affect the response; just log it. */
+  try {
+    const amount = (items as { price: number; quantity: number }[]).reduce((s, i) => s + i.price * i.quantity, 0);
+    const notifyResult = await sendPaymentReceivedNotification(orderId, { amount, ttn: ttnResult.ok ? ttnResult.ttn : null });
+    if (!notifyResult.ok) console.error(`[payment-notify] order ${orderId}:`, notifyResult.error);
+  } catch (e) {
+    console.error(`[payment-notify] order ${orderId}:`, (e as Error).message);
+  }
 
   return NextResponse.json({ log, orderId });
 }

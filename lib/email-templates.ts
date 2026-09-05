@@ -234,6 +234,49 @@ export function renderNewOrderNotificationEmail(orderId: number, crmUrl: string)
   };
 }
 
+// Internal "оплату отримано" ping — see sendPaymentReceivedNotification in
+// lib/order-emails.ts, the only caller (fired from the confirm-payment
+// route the moment an order's status flips to "Оплачено"). Mirrors
+// renderNewOrderNotificationEmail's shape/tone exactly; a separate function
+// rather than a shared one because the two pings are conceptually
+// different events (order exists vs. order paid) that could easily need
+// different copy/recipients later.
+export function renderPaymentReceivedNotificationEmail(
+  orderId: number,
+  crmUrl: string,
+  opts: { amount?: number; ttn?: string | null } = {}
+): { subject: string; html: string } {
+  const orderUrl = `${crmUrl}/orders/${orderId}`;
+  const amountLine = typeof opts.amount === "number"
+    ? `<p style="margin:0 0 8px; font-size:14px; color:#0f172a;"><strong>Сума:</strong> ${opts.amount.toFixed(2)} грн</p>`
+    : "";
+  const ttnLine = opts.ttn
+    ? `<p style="margin:0 0 24px; font-size:14px; color:#0f172a;"><strong>ТТН:</strong> ${opts.ttn}</p>`
+    : "";
+  const body = `
+    <h1 style="margin:0 0 8px; font-size:20px; color:#0f172a;">Отримано оплату по замовленню №${orderId}</h1>
+    <p style="margin:0 0 16px; font-size:14px; color:#64748b; line-height:1.6;">
+      Замовлення щойно позначено як оплачене в CRM.
+    </p>
+    ${amountLine}
+    ${ttnLine || `<div style="margin-bottom:24px;"></div>`}
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="border-radius:8px; background:${ACCENT};">
+          <a href="${orderUrl}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block; padding:12px 24px; font-size:14px; font-weight:600; color:#ffffff; text-decoration:none;">
+            Відкрити замовлення →
+          </a>
+        </td>
+      </tr>
+    </table>`;
+
+  return {
+    subject: `Оплата отримана — замовлення №${orderId}`,
+    html: layout(`Оплата отримана — замовлення №${orderId}`, body),
+  };
+}
+
 // "Забули пароль" — see app/api/users/forgot-password/route.ts. Sends the
 // FRESH password just generated there (the account's real one is bcrypt-
 // hashed and can't be recovered) — mirrors the legacy PHP site's own

@@ -203,6 +203,17 @@ function OrdersPageInner() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [filter, statusFilter, q]);
 
+  // Sidebar's "Замовлення" link dispatches this when clicked while already
+  // on this exact page (see components/admin/sidebar.tsx's navigate()) —
+  // a plain re-navigation to the same URL is a no-op for Next's router, so
+  // without this a manager already sitting on /orders had no way to pull in
+  // an order that arrived since the page loaded short of a full reload.
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener("crm:refresh-orders", handler);
+    return () => window.removeEventListener("crm:refresh-orders", handler);
+  }, [load]);
+
   // Debounce search input before it hits the server.
   useEffect(() => {
     const t = setTimeout(() => setQ(qInput), 300);

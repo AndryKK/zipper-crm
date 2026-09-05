@@ -182,7 +182,19 @@ export function Sidebar({ catalogRoots, counts }: { catalogRoots?: CatalogRoot[]
     // to the bare URL was to navigate elsewhere first.
     const currentUrl = searchParams.size ? `${pathname}?${searchParams.toString()}` : pathname;
     maybeCheckTtnStatus();
-    if (href === currentUrl) return;
+    if (href === currentUrl) {
+      // Already here (e.g. clicking "Замовлення" while sitting on the bare
+      // /orders page) — router.push would itself no-op. router.refresh()
+      // alone doesn't help either: /orders is a "use client" page whose
+      // list comes from its own useCallback/useEffect fetch, not server
+      // props, so refresh() (which only re-runs server rendering) has
+      // nothing to re-trigger there. Ping it directly instead so a manager
+      // clicking the link still sees any order that landed since this page
+      // loaded, instead of a silent no-op.
+      if (href === "/orders") window.dispatchEvent(new Event("crm:refresh-orders"));
+      startNavigation(() => { router.refresh(); });
+      return;
+    }
     startNavigation(() => {
       router.push(href);
       router.refresh();

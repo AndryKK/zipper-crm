@@ -1,6 +1,6 @@
 import { getOrderDocumentData, renderOrderConfirmationHtml } from "@/lib/order-documents";
 import { renderInvoicePdf, renderWaybillPdf } from "@/lib/order-pdf";
-import { renderPaymentRequestEmail, renderPaymentConfirmedEmail, renderNewOrderNotificationEmail, type EmailRenderOptions } from "@/lib/email-templates";
+import { renderPaymentRequestEmail, renderPaymentConfirmedEmail, renderNewOrderNotificationEmail, renderPaymentReceivedNotificationEmail, type EmailRenderOptions } from "@/lib/email-templates";
 import { sendEmail, isValidEmail, type EmailResult } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { supabaseServer } from "@/lib/supabase";
@@ -82,5 +82,34 @@ export async function sendNewOrderNotification(orderId: number): Promise<EmailRe
 
   const crmUrl = (process.env.CRM_URL || DEFAULT_CRM_URL).replace(/\/$/, "");
   const { subject, html } = renderNewOrderNotificationEmail(orderId, crmUrl);
+  return sendEmail({ to, subject, html });
+}
+
+// Internal "оплату отримано" ping — see app/api/orders/[id]/confirm-payment
+// (the only caller), fired the moment an order's status flips to
+// "Оплачено". Independent of the customer-facing "Лист-подяка" send right
+// next to it in that route — this must go out regardless of whether the
+// customer email is a guest-checkout placeholder, invalid, or its own send
+// failed, since it's a staff notification about the payment, not about the
+// customer's contact info (same reasoning as sendNewOrderNotification
+// above). Settings-driven with a fallback for the same reason that one is —
+// so the recipient can be changed later without a code deploy.
+const DEFAULT_PAYMENT_NOTIFY_EMAIL = "maksymabramov@gmail.com";
+
+export async function sendPaymentReceivedNotification(
+  orderId: number,
+  opts: { amount?: number; ttn?: string | null } = {}
+): Promise<EmailResult> {
+  const { data: settingRow } = await supabaseServer
+    .from("settings")
+    .select("text")
+    .eq("value", "internal_payment_notify_email")
+    .eq("lang", "uk")
+    .maybeSingle();
+  const to = ((settingRow?.text as string | undefined) ?? "").trim() || DEFAULT_PAYMENT_NOTIFY_EMAIL;
+  if (!isValidEmail(to)) return { ok: false, error: `Некоректний email отримувача: ${to}` };
+
+  const crmUrl = (process.env.CRM_URL || DEFAULT_CRM_URL).replace(/\/$/, "");
+  const { subject, html } = renderPaymentReceivedNotificationEmail(orderId, crmUrl, opts);
   return sendEmail({ to, subject, html });
 }
