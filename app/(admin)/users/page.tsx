@@ -37,6 +37,33 @@ async function fetchAllUsers() {
   return rows.map(({ password, ...u }) => ({ ...u, isPremium: password === "SUPABASE_AUTH" }));
 }
 
+// user_order_counts (scripts/create-user-order-counts-view.sql) now has
+// ~2000 rows — one per distinct customer login with at least one order —
+// and a bare .select() with no range() silently truncates to PostgREST's
+// default row cap (1000). Found live 2026-09-07: every client's order
+// count showed 0 that happened to fall outside whichever arbitrary ~1000
+// rows Postgres returned for a given request (no ORDER BY in the view, so
+// which half came back wasn't even stable across requests) — including
+// the site's own highest-volume login (zipper.in.ua@gmail.com,
+// order_count in the thousands). Paginates the same way fetchAllUsers
+// above already does for the same reason.
+async function fetchAllOrderCounts() {
+  const rows: { login: string; order_count: number }[] = [];
+  let page = 0;
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from("user_order_counts")
+      .select("login, order_count")
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) { console.error("[users] order-counts fetch error:", error.message); break; }
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    page++;
+  }
+  return rows;
+}
+
 // This page previously paginated through the ENTIRE users table (including
 // the password column, unnecessarily — see fetchAllUsers above) on every
 // single force-dynamic visit. Wrapped in unstable_cache — the customer list
@@ -55,7 +82,7 @@ const getUsersPageData = unstable_cache(
        row just to count them client-side. */
     const [allUsers, orderCountRows] = await Promise.all([
       fetchAllUsers(),
-      supabaseServer.from("user_order_counts").select("login, order_count").then((r) => r.data ?? []),
+      fetchAllOrderCounts(),
     ]);
 
     return { totalUsers: totalUsers ?? 0, totalOrders: totalOrders ?? 0, allUsers, orderCountRows };
