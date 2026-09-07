@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import Link from "next/link";
@@ -178,7 +178,16 @@ function OrdersPageInner() {
   const [filter, setFilter] = useState<QuickFilterId>("all");
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
+  // Read the starting page straight off the URL (same lazy-initializer
+  // reasoning as statusFilter/statusDays above) — this is what makes
+  // browser Back land on the right page after clicking into an order: the
+  // sync effect below keeps ?page= current in the URL as a manager pages
+  // through the list, so pushing into /orders/[id] and going Back restores
+  // this exact /orders?page=N rather than always resetting to page 1.
+  const [page, setPage] = useState<number>(() => {
+    const p = parseInt(searchParams.get("page") ?? "1");
+    return Number.isFinite(p) && p > 0 ? p : 1;
+  });
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -201,7 +210,47 @@ function OrdersPageInner() {
   }, [filter, statusFilter, statusDays, page, q]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [filter, statusFilter, q]);
+
+  // Resets to page 1 only on a GENUINE change to filter/statusFilter/q —
+  // compares actual values rather than an "is this the first run" flag,
+  // since effects fire once after every initial render regardless of
+  // whether their deps "changed" from a prior one (harmless before, since
+  // page always started at 1 anyway — but would now stomp the page number
+  // just read from the URL back to 1 the instant a manager landed on e.g.
+  // /orders?page=3, including via React's dev-only Strict Mode double-
+  // mount, which re-runs this same effect against a freshly-initialized
+  // "first run" flag; comparing values instead is immune to that since the
+  // ref's own initializer always captures whatever this render's values
+  // already are).
+  const prevFilterKey = useRef(`${filter}|${statusFilter}|${q}`);
+  useEffect(() => {
+    const key = `${filter}|${statusFilter}|${q}`;
+    if (prevFilterKey.current !== key) {
+      prevFilterKey.current = key;
+      setPage(1);
+    }
+  }, [filter, statusFilter, q]);
+
+  // Keeps ?page= (and the other list state) current in the URL as a
+  // manager pages/filters/searches — replace, not push, so browsing
+  // through results doesn't pile up its own history entries; only
+  // navigating into an order (a real push, done at the row's onClick
+  // below) adds a step Back needs to undo. Omits page/filter/status when
+  // they're just the default so a plain /orders visit stays a plain
+  // /orders URL instead of always carrying ?filter=all&page=1.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter) {
+      params.set("status", statusFilter);
+      if (statusDays) params.set("days", statusDays);
+    } else if (filter !== "all") {
+      params.set("filter", filter);
+    }
+    if (q) params.set("q", q);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `/orders?${qs}` : "/orders", { scroll: false });
+  }, [filter, statusFilter, statusDays, q, page, router]);
 
   // Sidebar's "Замовлення" link dispatches this when clicked while already
   // on this exact page (see components/admin/sidebar.tsx's navigate()) —
