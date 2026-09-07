@@ -2859,7 +2859,7 @@ export default function OrderDetailPage() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label>Нотатки</Label>
+                <Label>Примітка</Label>
                 <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
               <Button onClick={save} disabled={saving} className="w-full">

@@ -298,6 +298,7 @@ export function renderInvoiceHtml(doc: OrderDocumentData): string {
       <tr><td class="req-label">Постачальник:</td><td class="req-value">${supplierLines}</td></tr>
       <tr><td style="padding-top:6pt"></td></tr>
       <tr><td class="req-label">Одержувач:</td><td class="req-value">${recipientLines || "—"}</td></tr>
+      ${order.notes ? `<tr><td class="req-label">Примітка:</td><td class="req-value">${order.notes}</td></tr>` : ""}
       <tr><td class="req-label">Платник:</td><td class="req-value"><b>той самий</b></td></tr>
       <tr><td class="req-label">Замовлення:</td><td class="req-value">Замовлення №${order.id}</td></tr>
     </tbody>
@@ -338,7 +339,7 @@ export function renderInvoiceHtml(doc: OrderDocumentData): string {
 }
 
 export function renderWaybillHtml(doc: OrderDocumentData): string {
-  const { items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
+  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
   return `<!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="UTF-8"/><title>Видаткова накладна ${docNumber}</title><style>${DOC_STYLE}</style></head>
@@ -351,6 +352,7 @@ export function renderWaybillHtml(doc: OrderDocumentData): string {
       <tr><td class="req-label">Постачальник:</td><td class="req-value">${supplierLines}</td></tr>
       <tr><td style="padding-top:6pt"></td></tr>
       <tr><td class="req-label">Покупець:</td><td class="req-value">${recipientLines || "—"}</td></tr>
+      ${order.notes ? `<tr><td class="req-label">Примітка:</td><td class="req-value">${order.notes}</td></tr>` : ""}
     </tbody>
   </table>
 
