@@ -208,6 +208,15 @@ export default function OrderDetailPage() {
   // transient Nova Poshta error.
   const [generatingTtn, setGeneratingTtn] = useState(false);
   const [ttnGenError, setTtnGenError] = useState("");
+  // Quick "just the weight was too high for the sender/recipient branch"
+  // retry (see translateNpError in lib/nova-poshta.ts) — a manager types a
+  // smaller kg and regenerates without going through the full "Вручну"
+  // city/warehouse picker, which would otherwise be the only way to
+  // override weight even when the parsed city/warehouse were already
+  // correct. Shown only once a TTN attempt has actually failed; cleared on
+  // every fresh attempt so a stale number never lingers into an unrelated
+  // later failure.
+  const [ttnWeightOverride, setTtnWeightOverride] = useState("");
 
   // Manual Nova Poshta city/warehouse picker — the escape hatch offered
   // whenever automatic TTN creation can't parse the order's free-text
@@ -640,13 +649,18 @@ export default function OrderDetailPage() {
     finally { setStockChecking(false); }
   }
 
-  async function generateTtnManually() {
+  async function generateTtnManually(weightOverride?: number) {
     setGeneratingTtn(true);
     setTtnGenError("");
     try {
-      const res = await fetch(`/api/orders/${params.id}/ttn/generate`, { method: "POST" });
+      const res = await fetch(`/api/orders/${params.id}/ttn/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(weightOverride ? { weight: weightOverride } : {}),
+      });
       const data = await res.json();
       if (!res.ok) { setTtnGenError(data.error ?? "Помилка"); toast.error(data.error ?? "Помилка"); return; }
+      setTtnWeightOverride("");
       await refreshOrder();
       toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
     } catch { setTtnGenError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
@@ -1555,7 +1569,7 @@ export default function OrderDetailPage() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <Button
-                            onClick={generateTtnManually} disabled={generatingTtn}
+                            onClick={() => generateTtnManually()} disabled={generatingTtn}
                             style={{ background: NP_RED, border: "none", color: "#fff", gap: 8 }}
                           >
                             {generatingTtn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck size={15} />}
@@ -1578,6 +1592,29 @@ export default function OrderDetailPage() {
                             <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
                               <XCircle size={12} /> {ttnGenError}
                             </span>
+                            {/* Weight-only retry — city/warehouse stay exactly what
+                                automatic parsing already resolved; only the kg sent
+                                to Nova Poshta changes. Separate from "Обрати вручну"
+                                above, which re-picks city/warehouse too — overkill
+                                when those were already correct and only the
+                                auto-estimated weight got rejected (see
+                                translateNpError's "max allowed volumeweight" case). */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <Input
+                                type="number" min="0.1" step="0.1"
+                                placeholder="Вага, кг"
+                                value={ttnWeightOverride}
+                                onChange={(e) => setTtnWeightOverride(e.target.value)}
+                                style={{ width: 100, height: 32 }}
+                              />
+                              <Button
+                                size="sm" variant="outline"
+                                disabled={generatingTtn || !ttnWeightOverride || parseFloat(ttnWeightOverride) <= 0}
+                                onClick={() => generateTtnManually(parseFloat(ttnWeightOverride))}
+                              >
+                                Змінити вагу і перегенерувати
+                              </Button>
+                            </div>
                             {/* ТТН не вдалось створити автоматично — лист-подяка з
                                 номером ТТН теж не пішов (див. confirm-payment/route.ts).
                                 Поки клієнт не отримав жодного листа, дозволяємо
@@ -2396,7 +2433,7 @@ export default function OrderDetailPage() {
                   </Button>
                 ) : (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <Button size="sm" onClick={generateTtnManually} disabled={generatingTtn} style={{ background: NP_RED, border: "none", color: "#fff" }}>
+                    <Button size="sm" onClick={() => generateTtnManually()} disabled={generatingTtn} style={{ background: NP_RED, border: "none", color: "#fff" }}>
                       {ttnGenError ? "Перегенерувати" : "Згенерувати"}
                     </Button>
                     {ttnGenError && (

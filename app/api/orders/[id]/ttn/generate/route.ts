@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { createOrderTtn } from "@/lib/order-ttn";
+import { createOrderTtn, estimateDimensionsCm } from "@/lib/order-ttn";
 
 // Standalone TTN (re)generation, independent of the process/confirm-payment
 // pipeline — no email, no status change. Used by the Manual Control panel
 // to retry after a failure (e.g. the "DateTime cannot be less then now"
 // timezone bug) without re-running everything else.
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+//
+// Optional body.weight (kg) overrides the auto-estimated weight without
+// touching city/warehouse resolution at all — the "Sender/Recipient
+// Warehouse max allowed volumeweight" error (see translateNpError in
+// lib/nova-poshta.ts) means the branch itself rejected the auto-estimated
+// weight/dimensions, not that the parsed address was wrong, so retrying
+// through the full manual city/warehouse picker was more than this needed.
+// Dimensions are re-derived from the new weight the same way the
+// automatic estimate already does (createOrderTtn's own seat fallback),
+// not left at whatever the too-large original guess was.
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const result = await createOrderTtn(parseInt(id), { skipPostomat: true });
+  const body = await req.json().catch(() => ({}));
+  const weight = typeof body.weight === "number" && Number.isFinite(body.weight) && body.weight > 0 ? body.weight : undefined;
+  const seat = weight != null ? { weight, ...estimateDimensionsCm(weight) } : undefined;
+
+  const result = await createOrderTtn(parseInt(id), { skipPostomat: true, seat });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
   return NextResponse.json({ ok: true, ttn: result.ttn, demo: result.demo });
 }

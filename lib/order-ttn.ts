@@ -66,7 +66,11 @@ const NP_BOX_BRACKETS: { maxKg: number; l: number; w: number; h: number }[] = [
   { maxKg: 30,   l: 70, w: 40, h: 42 },
 ];
 
-function estimateDimensionsCm(weightKg: number): { length: number; width: number; height: number } {
+// Exported — app/api/orders/[id]/ttn/generate/route.ts reuses this same
+// weight->box mapping for a manual weight-only override, so a manager's
+// smaller number still gets a plausible box instead of keeping whatever
+// (too-large) dimensions the original auto-estimate produced.
+export function estimateDimensionsCm(weightKg: number): { length: number; width: number; height: number } {
   const bracket = NP_BOX_BRACKETS.find((b) => weightKg <= b.maxKg) ?? NP_BOX_BRACKETS[NP_BOX_BRACKETS.length - 1];
   return { length: bracket.l, width: bracket.w, height: bracket.h };
 }
