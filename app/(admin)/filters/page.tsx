@@ -37,7 +37,9 @@ export default function FiltersPage() {
   const [filters, setFilters] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number[]>([]);
   const [newFilter, setNewFilter] = useState("");
+  const [newFilterRu, setNewFilterRu] = useState("");
   const [newValues, setNewValues] = useState<Record<number, string>>({});
+  const [newValuesRu, setNewValuesRu] = useState<Record<number, string>>({});
 
   // Category tree is fetched once, lazily — only the first time any
   // "На яких категоріях" popup is actually opened, not on page load.
@@ -215,20 +217,29 @@ export default function FiltersPage() {
 
   async function addFilter() {
     if (!newFilter.trim()) return;
-    const res = await fetch("/api/filters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: newFilter, lang: "uk" }) });
+    const res = await fetch("/api/filters", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newFilter, lang: "uk", titleRu: newFilterRu.trim() || undefined }),
+    });
     const created = await res.json();
     setFilters((prev) => [...prev, { ...created, filters: [] }]);
     setNewFilter("");
+    setNewFilterRu("");
     toast.success("Фільтр додано!");
   }
 
   async function addValue(filterId: number) {
     const title = newValues[filterId];
     if (!title?.trim()) return;
-    const res = await fetch(`/api/filters/${filterId}/values`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, lang: "uk" }) });
+    const titleRu = newValuesRu[filterId]?.trim();
+    const res = await fetch(`/api/filters/${filterId}/values`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, lang: "uk", titleRu: titleRu || undefined }),
+    });
     const created = await res.json();
     setFilters((prev) => prev.map((f) => f.id === filterId ? { ...f, filters: [...f.filters, created] } : f));
     setNewValues((prev) => ({ ...prev, [filterId]: "" }));
+    setNewValuesRu((prev) => ({ ...prev, [filterId]: "" }));
     toast.success("Значення додано!");
   }
 
@@ -254,8 +265,15 @@ export default function FiltersPage() {
         <Card>
           <CardHeader><CardTitle className="text-sm">Новий фільтр</CardTitle></CardHeader>
           <CardContent>
-            <div className="flex gap-2">
-              <Input value={newFilter} onChange={(e) => setNewFilter(e.target.value)} placeholder="Назва фільтру (напр: Матеріал, Колір...)" onKeyDown={(e) => e.key === "Enter" && addFilter()} />
+            <div className="flex gap-2 items-end flex-wrap">
+              <div className="space-y-1 flex-1 min-w-[160px]">
+                <label className="text-xs text-gray-400">Назва (UK)</label>
+                <Input value={newFilter} onChange={(e) => setNewFilter(e.target.value)} placeholder="напр: Матеріал, Колір..." onKeyDown={(e) => e.key === "Enter" && addFilter()} />
+              </div>
+              <div className="space-y-1 flex-1 min-w-[160px]">
+                <label className="text-xs text-gray-400">Назва (RU) — необов&apos;язково</label>
+                <Input value={newFilterRu} onChange={(e) => setNewFilterRu(e.target.value)} placeholder="напр: Материал, Цвет..." onKeyDown={(e) => e.key === "Enter" && addFilter()} />
+              </div>
               <Button onClick={addFilter} className="cursor-pointer"><Plus className="h-4 w-4" /></Button>
             </div>
           </CardContent>
@@ -327,14 +345,27 @@ export default function FiltersPage() {
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-2 pl-6">
-                  <Input
-                    value={newValues[filter.id] ?? ""}
-                    onChange={(e) => setNewValues((p) => ({ ...p, [filter.id]: e.target.value }))}
-                    placeholder="Нове значення..."
-                    className="text-sm min-w-0"
-                    onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
-                  />
+                <div className="flex gap-2 pl-6 items-end flex-wrap">
+                  <div className="space-y-0.5 flex-1 min-w-[120px]">
+                    <label className="text-[11px] text-gray-400">Нове значення (UK)</label>
+                    <Input
+                      value={newValues[filter.id] ?? ""}
+                      onChange={(e) => setNewValues((p) => ({ ...p, [filter.id]: e.target.value }))}
+                      placeholder="напр: Червоний"
+                      className="text-sm min-w-0"
+                      onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
+                    />
+                  </div>
+                  <div className="space-y-0.5 flex-1 min-w-[120px]">
+                    <label className="text-[11px] text-gray-400">RU — необов&apos;язково</label>
+                    <Input
+                      value={newValuesRu[filter.id] ?? ""}
+                      onChange={(e) => setNewValuesRu((p) => ({ ...p, [filter.id]: e.target.value }))}
+                      placeholder="напр: Красный"
+                      className="text-sm min-w-0"
+                      onKeyDown={(e) => e.key === "Enter" && addValue(filter.id)}
+                    />
+                  </div>
                   <Button size="sm" onClick={() => addValue(filter.id)} className="cursor-pointer shrink-0"><Plus className="h-3.5 w-3.5" /></Button>
                 </div>
               </CardContent>

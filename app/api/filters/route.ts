@@ -62,11 +62,20 @@ export async function POST(req: NextRequest) {
   const { data: langs } = await supabaseServer.from("langs").select("*").eq("active", 1);
   const activeLangs = langs || [];
 
+  // body.titleRu — explicit ru translation typed alongside the uk one in
+  // the "add filter" form. Without it, the ru row used to get a raw
+  // "[ru] {title}" placeholder nobody ever went back to fix (same gap the
+  // rename endpoint's own titleRu now covers for existing rows — see
+  // app/api/filters/[id]/route.ts).
+  const titleRu = (body.titleRu ?? "").trim();
   const items = await Promise.all(activeLangs.map(async (l: any) => {
+    const title = l.code === body.lang ? body.title
+      : l.code === "ru" && titleRu ? titleRu
+      : `[${l.code}] ${body.title}`;
     const { data } = await supabaseServer.from("all_filters").insert({
       translation_id: translationId,
       lang: l.code,
-      title: l.code === body.lang ? body.title : `[${l.code}] ${body.title}`,
+      title,
     }).select("*").single();
     return data;
   }));
