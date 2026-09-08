@@ -54,16 +54,27 @@ function estimateWeightKg(orderTotal: number, settings: { value: string; text: s
 // stand-in for a real measured parcel so a TTN never goes out with
 // "0×0×0" dimensions. This is explicitly an approximation (no one measures
 // the actual box here), picked as "smallest NP box that fits this weight."
+//
+// Every bracket's L×W×H/4000 (NP's own volumetric-weight formula) must
+// stay comfortably under its own maxKg — found live 2026-09: the old
+// 10kg bracket (40×35×29) computed to 10.15kg volumetric weight, so a
+// perfectly normal 6-10kg order got rejected by a small sender branch's
+// "max allowed volumeweight: 10" cap even though its ACTUAL weight was
+// under 10 — the auto-picked BOX was what pushed it over, not the parcel.
+// The 2kg bracket had the same problem (2.30 computed vs 2 maxKg). Every
+// entry below now keeps volumetric weight under maxKg with margin to
+// spare, sized for what this catalog actually ships — dense metal/plastic
+// hardware, not bulky-but-light goods.
 const NP_BOX_BRACKETS: { maxKg: number; l: number; w: number; h: number }[] = [
   { maxKg: 0.5,  l: 17, w: 12, h: 9 },
-  { maxKg: 1,    l: 24, w: 17, h: 9 },
-  { maxKg: 2,    l: 24, w: 24, h: 16 },
-  { maxKg: 3,    l: 24, w: 24, h: 20 },
-  { maxKg: 5,    l: 40, w: 24, h: 20 },
-  { maxKg: 10,   l: 40, w: 35, h: 29 },
-  { maxKg: 15,   l: 60, w: 35, h: 28 },
-  { maxKg: 20,   l: 47, w: 40, h: 42 },
-  { maxKg: 30,   l: 70, w: 40, h: 42 },
+  { maxKg: 1,    l: 22, w: 16, h: 9 },
+  { maxKg: 2,    l: 22, w: 22, h: 15 },
+  { maxKg: 3,    l: 24, w: 22, h: 18 },
+  { maxKg: 5,    l: 36, w: 24, h: 18 },
+  { maxKg: 10,   l: 40, w: 33, h: 27 },
+  { maxKg: 15,   l: 52, w: 35, h: 28 },
+  { maxKg: 20,   l: 47, w: 38, h: 38 },
+  { maxKg: 30,   l: 64, w: 40, h: 40 },
 ];
 
 // Exported — app/api/orders/[id]/ttn/generate/route.ts reuses this same
@@ -111,6 +122,15 @@ export type CreateTtnOptions = {
   // the order's own person/phone.
   orgContactName?: string;
   orgContactPhone?: string;
+  // Skips the order's own is_oversized flag for sender-warehouse selection
+  // and always uses np_sender_warehouse_ref (Відділення №100) — an escape
+  // hatch for the quick TTN-retry UI when the normally-selected sender
+  // branch itself is what's rejecting the shipment (e.g. a small branch's
+  // "max allowed volumeweight" cap, or — found live 2026-09 — the
+  // configured np_sender_warehouse_ref_oversized pointing at a Ref Nova
+  // Poshta no longer recognizes at all). A no-op when the order wasn't
+  // routing through the oversized branch to begin with.
+  forceMainSenderWarehouse?: boolean;
 };
 
 export type CreateTtnResult =
@@ -125,10 +145,10 @@ export type CreateTtnResult =
 // one place.
 async function finishTtnCreation(
   orderId: number,
-  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null },
+  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null; notes?: string | null },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
-  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone">
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone" | "forceMainSenderWarehouse">
 ): Promise<CreateTtnResult> {
   // Manual dialog's checkbox/field wins if a manager set it; every
   // automatic path (confirm-payment/cod/generate) leaves opts.isOrganization
@@ -156,9 +176,12 @@ async function finishTtnCreation(
   // (orders.is_oversized), відправляються з окремого відділення (Відділення
   // №18 — витримує великі/важкі посилки), решта — з основного (Відділення
   // №100). Якщо оверсайз-реф не налаштовано, тихо падаємо назад на основний,
-  // а не вимагаємо його для КОЖНОГО замовлення.
+  // а не вимагаємо його для КОЖНОГО замовлення. forceMainSenderWarehouse
+  // (see CreateTtnOptions' own comment) skips this entirely and always
+  // uses the main ref.
+  const routedThroughOversized = !opts.forceMainSenderWarehouse && !!order.is_oversized;
   const npSenderWhRef =
-    (order.is_oversized && getSetting(settings, "np_sender_warehouse_ref_oversized")) ||
+    (routedThroughOversized && getSetting(settings, "np_sender_warehouse_ref_oversized")) ||
     getSetting(settings, "np_sender_warehouse_ref");
   const npSenderPhone      = getSetting(settings, "np_sender_phone");
 
@@ -212,10 +235,19 @@ async function finishTtnCreation(
     // the ЄДРПОУ — saved so it's still visible on the order after this
     // request, not just in this one response (see np_org_details in
     // orders/[id]/page.tsx).
+    // Only worth recording when the override actually changed which
+    // branch got used — forcing it on an order that wasn't marked
+    // is_oversized to begin with would already have gone through the main
+    // branch anyway, so a note here would be noise, not information.
+    const forcedMainOverOversized = !!opts.forceMainSenderWarehouse && !!order.is_oversized;
+    const noteLine = forcedMainOverOversized
+      ? `[Автоматично ${new Date().toLocaleDateString("uk-UA")}]: ТТН сформовано через Відділення №100 (примусово, а не через відділення для габаритних товарів)`
+      : null;
     await supabaseServer.from("orders").update({
       ttn: result.ttn,
       ttn_auto_created: true,
       ...(result.organizationDetails ? { np_org_details: result.organizationDetails } : {}),
+      ...(noteLine ? { notes: order.notes ? `${order.notes}\n${noteLine}` : noteLine } : {}),
     }).eq("id", orderId);
     return { ok: true, ttn: result.ttn, demo: false, organizationDetails: result.organizationDetails };
   } catch (e) {

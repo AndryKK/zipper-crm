@@ -649,14 +649,17 @@ export default function OrderDetailPage() {
     finally { setStockChecking(false); }
   }
 
-  async function generateTtnManually(weightOverride?: number) {
+  async function generateTtnManually(opts: { weight?: number; forceMainSenderWarehouse?: boolean } = {}) {
     setGeneratingTtn(true);
     setTtnGenError("");
     try {
+      const body: Record<string, unknown> = {};
+      if (opts.weight) body.weight = opts.weight;
+      if (opts.forceMainSenderWarehouse) body.forceMainSenderWarehouse = true;
       const res = await fetch(`/api/orders/${params.id}/ttn/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(weightOverride ? { weight: weightOverride } : {}),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setTtnGenError(data.error ?? "Помилка"); toast.error(data.error ?? "Помилка"); return; }
@@ -1610,11 +1613,30 @@ export default function OrderDetailPage() {
                               <Button
                                 size="sm" variant="outline"
                                 disabled={generatingTtn || !ttnWeightOverride || parseFloat(ttnWeightOverride) <= 0}
-                                onClick={() => generateTtnManually(parseFloat(ttnWeightOverride))}
+                                onClick={() => generateTtnManually({ weight: parseFloat(ttnWeightOverride) })}
                               >
                                 Змінити вагу і перегенерувати
                               </Button>
                             </div>
+                            {/* Alternative to changing weight — bypasses is_oversized
+                                and always sends through the main sender branch
+                                (Відділення №100). Only shown when it would actually
+                                change anything: an order not marked oversized already
+                                goes through №100. finishTtnCreation records a note on
+                                the order (see createOrderTtn's own comment) whenever
+                                this override is what actually got used, so it's clear
+                                later why a "габаритний" order shipped from the regular
+                                branch instead of the oversized one. */}
+                            {order.is_oversized && (
+                              <Button
+                                size="sm" variant="outline"
+                                disabled={generatingTtn}
+                                onClick={() => generateTtnManually({ forceMainSenderWarehouse: true })}
+                                style={{ alignSelf: "flex-start" }}
+                              >
+                                Відправити з Відділення №100 (замість габаритного)
+                              </Button>
+                            )}
                             {/* ТТН не вдалось створити автоматично — лист-подяка з
                                 номером ТТН теж не пішов (див. confirm-payment/route.ts).
                                 Поки клієнт не отримав жодного листа, дозволяємо
