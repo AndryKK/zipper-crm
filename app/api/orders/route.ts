@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   // reflects real creation order, for both sources.
   let query = supabaseServer
     .from("orders")
-    .select("id, status, person, login, original_client_name, addr_delivery, type, phone, callme, date, ttn, welcome_email_sent_at", { count: "exact" })
+    .select("id, status, person, login, original_client_name, addr_delivery, type, phone, callme, date, ttn, notes, welcome_email_sent_at", { count: "exact" })
     .order("id", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 

@@ -135,6 +135,7 @@ interface OrderRow {
   callme: boolean | number | null;
   date: string;
   ttn: string | null;
+  notes: string | null;
   welcome_email_sent_at: string | null;
   items: { price: number; quantity: number }[];
   isPremiumUser: boolean;
@@ -420,6 +421,19 @@ function OrdersPageInner() {
                       ТТН: {order.ttn}
                     </div>
                   )}
+                  {order.notes && (
+                    <div
+                      style={{
+                        marginTop: 6, padding: "4px 8px", borderRadius: 6,
+                        background: "rgba(245,158,11,0.14)", color: "#92400e",
+                        fontSize: 12, fontWeight: 600,
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      📝 {order.notes}
+                    </div>
+                  )}
 
                   <div
                     style={{
@@ -501,6 +515,20 @@ function OrdersPageInner() {
                         {order.ttn && (
                           <div className="font-mono" style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
                             ТТН: {order.ttn}
+                          </div>
+                        )}
+                        {order.notes && (
+                          <div
+                            title={order.notes}
+                            style={{
+                              marginTop: 4, padding: "2px 6px", borderRadius: 5,
+                              background: "rgba(245,158,11,0.14)", color: "#92400e",
+                              fontSize: 11, fontWeight: 600, whiteSpace: "normal",
+                              overflow: "hidden", textOverflow: "ellipsis",
+                              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                            }}
+                          >
+                            📝 {order.notes}
                           </div>
                         )}
                       </td>
