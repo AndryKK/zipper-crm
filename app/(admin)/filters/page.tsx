@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronRight, FolderTree, Loader2, GripVertical } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, FolderTree, Loader2, GripVertical, Pencil } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 type Category = { id: number; translationId: number; pid: number; title: string; lang: string; priority?: number };
@@ -58,6 +58,69 @@ export default function FiltersPage() {
   // (dataTransfer), not React state, so a drop is self-contained even if
   // this component re-rendered mid-drag.
   const [dragOverValueId, setDragOverValueId] = useState<number | null>(null);
+
+  // Rename popup — shared by both filter groups and their values (same
+  // shape: a title to edit, an optional RU translation, save via PUT).
+  // titleRu is never pre-filled: GET /api/filters only ever returns the uk
+  // row (see that route's own .eq("lang","uk")), so the CRM has no idea
+  // what the sibling ru row's title currently is without a second fetch
+  // this popup doesn't need — leaving it blank and only writing it when a
+  // manager actually types something keeps the common "just fix the uk
+  // typo" case a single field, per app/api/filters/[id]/route.ts's PUT.
+  type RenameTarget = { kind: "filter"; id: number } | { kind: "value"; filterId: number; id: number };
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameTitleRu, setRenameTitleRu] = useState("");
+  const [renaming, setRenaming] = useState(false);
+
+  function openRenameFilter(filter: { id: number; title: string }) {
+    setRenameTarget({ kind: "filter", id: filter.id });
+    setRenameTitle(filter.title);
+    setRenameTitleRu("");
+  }
+
+  function openRenameValue(filterId: number, value: { id: number; title: string }) {
+    setRenameTarget({ kind: "value", filterId, id: value.id });
+    setRenameTitle(value.title);
+    setRenameTitleRu("");
+  }
+
+  async function saveRename() {
+    if (!renameTarget || !renameTitle.trim()) return;
+    setRenaming(true);
+    try {
+      const url = renameTarget.kind === "filter"
+        ? `/api/filters/${renameTarget.id}`
+        : `/api/filters/${renameTarget.filterId}/values/${renameTarget.id}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: renameTitle.trim(), titleRu: renameTitleRu.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error ?? "Не вдалося перейменувати");
+        return;
+      }
+      const updated = await res.json();
+      if (renameTarget.kind === "filter") {
+        setFilters((prev) => prev.map((f) => (f.id === renameTarget.id ? { ...f, title: updated.title } : f)));
+      } else {
+        const { filterId, id } = renameTarget;
+        setFilters((prev) =>
+          prev.map((f) =>
+            f.id === filterId
+              ? { ...f, filters: f.filters.map((v: { id: number }) => (v.id === id ? { ...v, title: updated.title } : v)) }
+              : f
+          )
+        );
+      }
+      toast.success("Перейменовано!");
+      setRenameTarget(null);
+    } finally {
+      setRenaming(false);
+    }
+  }
 
   function reorderValues(filterId: number, draggedId: number, targetId: number) {
     if (draggedId === targetId) return;
@@ -222,6 +285,9 @@ export default function FiltersPage() {
                 >
                   <FolderTree className="h-3.5 w-3.5" /> Категорії
                 </Button>
+                <button onClick={() => openRenameFilter(filter)} className="text-gray-400 hover:text-violet-500 cursor-pointer" title="Перейменувати">
+                  <Pencil className="h-4 w-4" />
+                </button>
                 <button onClick={() => deleteFilter(filter.id)} className="text-red-400 hover:text-red-600 cursor-pointer">
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -256,6 +322,7 @@ export default function FiltersPage() {
                         <GripVertical className="h-3.5 w-3.5" />
                       </span>
                       <span className="text-sm flex-1 min-w-0 truncate">{val.title}</span>
+                      <button onClick={() => openRenameValue(filter.id, val)} className="text-gray-300 hover:text-violet-500 cursor-pointer shrink-0" title="Перейменувати"><Pencil className="h-3.5 w-3.5" /></button>
                       <button onClick={() => deleteValue(filter.id, val.id)} className="text-gray-300 hover:text-red-500 cursor-pointer shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
@@ -314,6 +381,43 @@ export default function FiltersPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent style={{ maxWidth: 420 }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" /> {renameTarget?.kind === "filter" ? "Перейменувати фільтр" : "Перейменувати значення"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400">Назва (UK)</label>
+              <Input
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveRename()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400">Назва (RU) — необов&apos;язково</label>
+              <Input
+                value={renameTitleRu}
+                onChange={(e) => setRenameTitleRu(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveRename()}
+                placeholder="Залиште порожнім, щоб не змінювати"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Скасувати</Button>
+            <Button disabled={renaming || !renameTitle.trim()} onClick={saveRename} className="cursor-pointer disabled:cursor-default">
+              {renaming && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Зберегти
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
