@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
+// { title, titleRu } for the rename popup — see the matching GET on
+// app/api/filters/[id]/route.ts for why this is needed.
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string; valueId: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { valueId } = await params;
+  const { data: row } = await supabaseServer.from("all_filters_filters").select("translation_id, title").eq("id", parseInt(valueId)).maybeSingle();
+  if (!row) return NextResponse.json({ error: "Значення не знайдено" }, { status: 404 });
+  const { data: ruRow } = await supabaseServer
+    .from("all_filters_filters").select("title").eq("translation_id", row.translation_id).eq("lang", "ru").maybeSingle();
+  return NextResponse.json({ title: row.title, titleRu: ruRow?.title ?? "" });
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string; valueId: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

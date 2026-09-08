@@ -74,17 +74,38 @@ export default function FiltersPage() {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameTitleRu, setRenameTitleRu] = useState("");
   const [renaming, setRenaming] = useState(false);
+  // The RU title isn't in local state at all (the list only ever fetched
+  // uk rows), so opening the popup fetches it fresh each time — see the
+  // GET handlers added to app/api/filters/[id]/route.ts and
+  // .../values/[valueId]/route.ts specifically for this. Loading state so
+  // the field visibly says so instead of just sitting blank for a moment,
+  // which read as "there's no RU translation yet" even when there was one.
+  const [loadingRenameRu, setLoadingRenameRu] = useState(false);
 
-  function openRenameFilter(filter: { id: number; title: string }) {
+  async function openRenameFilter(filter: { id: number; title: string }) {
     setRenameTarget({ kind: "filter", id: filter.id });
     setRenameTitle(filter.title);
     setRenameTitleRu("");
+    setLoadingRenameRu(true);
+    try {
+      const data = await apiFetch<{ title: string; titleRu: string }>(`/api/filters/${filter.id}`);
+      if (data) { setRenameTitle(data.title); setRenameTitleRu(data.titleRu); }
+    } finally {
+      setLoadingRenameRu(false);
+    }
   }
 
-  function openRenameValue(filterId: number, value: { id: number; title: string }) {
+  async function openRenameValue(filterId: number, value: { id: number; title: string }) {
     setRenameTarget({ kind: "value", filterId, id: value.id });
     setRenameTitle(value.title);
     setRenameTitleRu("");
+    setLoadingRenameRu(true);
+    try {
+      const data = await apiFetch<{ title: string; titleRu: string }>(`/api/filters/${filterId}/values/${value.id}`);
+      if (data) { setRenameTitle(data.title); setRenameTitleRu(data.titleRu); }
+    } finally {
+      setLoadingRenameRu(false);
+    }
   }
 
   async function saveRename() {
@@ -433,12 +454,16 @@ export default function FiltersPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-gray-400">Назва (RU) — необов&apos;язково</label>
+              <label className="text-xs text-gray-400 flex items-center gap-1.5">
+                Назва (RU)
+                {loadingRenameRu && <Loader2 className="h-3 w-3 animate-spin" />}
+              </label>
               <Input
                 value={renameTitleRu}
                 onChange={(e) => setRenameTitleRu(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && saveRename()}
-                placeholder="Залиште порожнім, щоб не змінювати"
+                disabled={loadingRenameRu}
+                placeholder={loadingRenameRu ? "Завантаження поточної назви…" : "Немає перекладу — залиште порожнім, щоб не змінювати"}
               />
             </div>
           </div>

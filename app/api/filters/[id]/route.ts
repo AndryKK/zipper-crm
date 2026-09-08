@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 
+// { title, titleRu } for the rename popup — the main list (GET /api/filters)
+// only ever fetches lang=uk rows, so the CRM otherwise has no way to know
+// what the sibling ru row's title currently is before overwriting it.
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const { data: row } = await supabaseServer.from("all_filters").select("translation_id, title").eq("id", parseInt(id)).maybeSingle();
+  if (!row) return NextResponse.json({ error: "Фільтр не знайдено" }, { status: 404 });
+  const { data: ruRow } = await supabaseServer
+    .from("all_filters").select("title").eq("translation_id", row.translation_id).eq("lang", "ru").maybeSingle();
+  return NextResponse.json({ title: row.title, titleRu: ruRow?.title ?? "" });
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
