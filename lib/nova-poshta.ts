@@ -248,6 +248,32 @@ function kyivDateString(): string {
   return `${get("day")}.${get("month")}.${get("year")}`;
 }
 
+// Nova Poshta's InternetDocument/save (and Counterparty/save) errors come
+// back as raw English/mixed strings that mean nothing to a manager without
+// NP domain knowledge — this decodes the ones seen live into an
+// actionable Ukrainian explanation. Falls through to the original message
+// for anything unrecognized (never hides an error, just clarifies known
+// ones), so it's safe to run over every NP error string this file returns.
+export function translateNpError(raw: string): string {
+  // "Sender Warehouse max allowed volumeweight: 10" (or the Recipient-side
+  // mirror) — NOT the parcel's actual weight; the branch itself caps the
+  // *volumetric* weight (an L×W×H-derived figure) it can process, common
+  // for small pickup-point branches (see "Пункт приймання-видачі" in
+  // parseNpAddress's own comment) that only handle small parcels. Seen
+  // live: a normal order rejected outright because its estimated
+  // dimensions exceeded the sending branch's own cap.
+  const volW = raw.match(/(Sender|Recipient)\s+Warehouse\s+max\s+allowed\s+volumeweight:\s*(\d+(?:\.\d+)?)/i);
+  if (volW) {
+    const isSender = /sender/i.test(volW[1]);
+    const side = isSender ? "відправника" : "отримувача";
+    const suggestion = isSender
+      ? "Зменшіть вагу/розміри посилки (кнопка «Вручну» дозволяє задати їх вручну) або позначте товар як «габаритний» у попапі підтвердження наявності — тоді ТТН формуватиметься через інше відділення відправника — і сформуйте ТТН ще раз."
+      : "Зменшіть вагу/розміри посилки або оберіть інше відділення отримувача (кнопка «Вручну» дозволяє це) і сформуйте ТТН ще раз.";
+    return `Відділення ${side} не приймає посилки з об'ємною вагою більше ${volW[2]} кг. ${suggestion}`;
+  }
+  return raw;
+}
+
 export async function npCreateTtn(
   p: NpTtnParams
 ): Promise<{ ttn: string; organizationDetails?: Record<string, unknown> } | { error: string }> {
@@ -273,7 +299,7 @@ export async function npCreateTtn(
       EDRPOU: p.edrpou.trim(),
     });
     if (!orgRes.success) {
-      return { error: orgRes.errors?.join(", ") || "Не вдалося знайти організацію за цим ЄДРПОУ в Новій Пошті" };
+      return { error: orgRes.errors?.length ? translateNpError(orgRes.errors.join(", ")) : "Не вдалося знайти організацію за цим ЄДРПОУ в Новій Пошті" };
     }
     recipientRef = orgRes.data?.[0]?.Ref;
     if (!recipientRef) return { error: "Не отримано ref організації-отримувача" };
@@ -299,7 +325,7 @@ export async function npCreateTtn(
       LastName: contactNameParts[0] ?? "",
       Phone: contactPhoneDigits,
     });
-    if (!contactRes.success) return { error: contactRes.errors?.join(", ") ?? "Не вдалося створити контактну особу організації" };
+    if (!contactRes.success) return { error: contactRes.errors?.length ? translateNpError(contactRes.errors.join(", ")) : "Не вдалося створити контактну особу організації" };
     contactRef = contactRes.data?.[0]?.Ref;
   } else {
     const recRes = await npCall(p.apiKey, "Counterparty", "save", {
@@ -310,7 +336,7 @@ export async function npCreateTtn(
       CounterpartyType: "PrivatePerson",
       CounterpartyProperty: "Recipient",
     });
-    if (!recRes.success) return { error: recRes.errors?.join(", ") ?? "Counterparty error" };
+    if (!recRes.success) return { error: recRes.errors?.length ? translateNpError(recRes.errors.join(", ")) : "Counterparty error" };
     recipientRef = recRes.data?.[0]?.Ref;
     contactRef = recRes.data?.[0]?.ContactPerson?.data?.[0]?.Ref;
   }
@@ -360,7 +386,7 @@ export async function npCreateTtn(
 
   const docRes = await npCall(p.apiKey, "InternetDocument", "save", docProps);
 
-  if (!docRes.success) return { error: docRes.errors?.join(", ") ?? "TTN error" };
+  if (!docRes.success) return { error: docRes.errors?.length ? translateNpError(docRes.errors.join(", ")) : "TTN error" };
   const ttn = docRes.data?.[0]?.IntDocNumber;
   if (!ttn) return { error: "Порожня відповідь TTN" };
   return { ttn, organizationDetails };
