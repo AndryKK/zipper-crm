@@ -423,13 +423,8 @@ function OrdersPageInner() {
                   )}
                   {order.notes && (
                     <div
-                      style={{
-                        marginTop: 6, padding: "4px 8px", borderRadius: 6,
-                        background: "rgba(245,158,11,0.14)", color: "#92400e",
-                        fontSize: 12, fontWeight: 600,
-                        overflow: "hidden", textOverflow: "ellipsis",
-                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-                      }}
+                      className="order-note"
+                      style={{ marginTop: 6, padding: "4px 8px", fontSize: 12 }}
                     >
                       📝 {order.notes}
                     </div>
@@ -520,13 +515,8 @@ function OrdersPageInner() {
                         {order.notes && (
                           <div
                             title={order.notes}
-                            style={{
-                              marginTop: 4, padding: "2px 6px", borderRadius: 5,
-                              background: "rgba(245,158,11,0.14)", color: "#92400e",
-                              fontSize: 11, fontWeight: 600, whiteSpace: "normal",
-                              overflow: "hidden", textOverflow: "ellipsis",
-                              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-                            }}
+                            className="order-note"
+                            style={{ marginTop: 4, padding: "2px 6px", fontSize: 11, whiteSpace: "normal" }}
                           >
                             📝 {order.notes}
                           </div>

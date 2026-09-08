@@ -225,9 +225,13 @@ function InventoryContent() {
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  // Starts false on the server-rendered pass (matches SSR/CSR markup),
-  // then syncs from localStorage right after mount — see the effect below.
-  const [hideUnentered, setHideUnentered] = useState(false);
+  // Starts true on the server-rendered pass (matches SSR/CSR markup), then
+  // syncs from localStorage right after mount — see the effect below.
+  // Defaults ON since the 2026-09-08 full stock reset: with every position
+  // freshly zeroed, the un-entered ("не введена") bucket is now ~all
+  // 9,684 rows, and showing it by default would swamp the handful of
+  // positions actually re-counted so far under a sea of untouched zeros.
+  const [hideUnentered, setHideUnentered] = useState(true);
 
   /* Edit ("Змінити") — now a popup instead of turning the row into inputs,
      both because that was cramped and because it's unusable on a phone
@@ -313,8 +317,14 @@ function InventoryContent() {
   // Restore the toggle's saved state once mounted (kept out of the
   // initial useState so server-rendered and first-client-render markup
   // still match — reading localStorage during render would break that).
+  // Checks both "1" and "0" explicitly (not just "1") — the default above
+  // changed from false to true, and a manager who'd deliberately turned
+  // this off before must have that respected, not silently flipped back
+  // on just because only the "turn it on" case used to be checked.
   useEffect(() => {
-    if (localStorage.getItem(HIDE_UNENTERED_KEY) === "1") setHideUnentered(true);
+    const saved = localStorage.getItem(HIDE_UNENTERED_KEY);
+    if (saved === "1") setHideUnentered(true);
+    else if (saved === "0") setHideUnentered(false);
   }, []);
 
   function toggleHideUnentered(next: boolean) {

@@ -200,10 +200,11 @@ export default function WarehousesPage() {
   // entered at least once) instead of warehouse_stats (every row,
   // including thousands of never-touched auto-inserted ones) — see
   // scripts/create-warehouse-stats-entered-view.sql for why that split
-  // exists. Starts false on the server-rendered pass (matches SSR/CSR
+  // exists. Starts true on the server-rendered pass (matches SSR/CSR
   // markup), synced from localStorage right after mount, same pattern
-  // /inventory's own toggle already uses.
-  const [hideUnentered, setHideUnentered] = useState(false);
+  // /inventory's own toggle already uses. Defaults ON since the
+  // 2026-09-08 full stock reset — see /inventory's own matching comment.
+  const [hideUnentered, setHideUnentered] = useState(true);
   // Gates the very first load() until the localStorage read below has had
   // a chance to run — without this, the effect below fires once with the
   // default `false` and again right after with the real value once
@@ -216,7 +217,12 @@ export default function WarehousesPage() {
   const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem("inventory-hide-unentered") === "1") setHideUnentered(true);
+    // Checks both "1" and "0" explicitly — the default above changed from
+    // false to true, and a manager who'd deliberately turned this off
+    // before must have that respected, not silently flipped back on.
+    const saved = localStorage.getItem("inventory-hide-unentered");
+    if (saved === "1") setHideUnentered(true);
+    else if (saved === "0") setHideUnentered(false);
     setPrefsReady(true);
   }, []);
 
