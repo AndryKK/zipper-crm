@@ -2266,7 +2266,7 @@ export default function OrderDetailPage() {
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 14px", borderRadius: 10, background: "var(--bg)", fontSize: 13 }}>
                   <div><span style={{ color: "var(--text-muted)" }}>Отримувач:</span> <strong>{String(codPreview.recipientName)}</strong> · {String(codPreview.recipientPhone)}</div>
-                  <div><span style={{ color: "var(--text-muted)" }}>Місто / відділення:</span> {String(codPreview.city)} — Відділення №{String(codPreview.warehouseNum)}</div>
+                  <div><span style={{ color: "var(--text-muted)" }}>Місто / відділення:</span> {String(codPreview.city)} — {codPreview.warehouseNum != null ? `Відділення №${String(codPreview.warehouseNum)}` : String(codPreview.addressText ?? "—")}</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вага:</span> {String(codPreview.weight)} кг</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Розміри (орієнтовно):</span> {String(codPreview.length)}×{String(codPreview.width)}×{String(codPreview.height)} см</div>
                   <div><span style={{ color: "var(--text-muted)" }}>Вартість оголошена:</span> {Number(codPreview.cost).toFixed(2)} грн</div>

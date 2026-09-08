@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase";
-import { npFindCityRef, npFindWarehouseRef, npCreateTtn, npDeleteTtn, parseNpAddress } from "@/lib/nova-poshta";
+import { npFindCityRef, npFindWarehouseRef, npCreateTtn, npDeleteTtn, parseNpAddress, npSearchWarehouses } from "@/lib/nova-poshta";
 
 // Shared by every path that can end up creating a Nova Poshta TTN for an
 // order — the standard "Підтвердити оплату" flow, the cash-on-delivery
@@ -8,6 +8,29 @@ import { npFindCityRef, npFindWarehouseRef, npCreateTtn, npDeleteTtn, parseNpAdd
 
 function getSetting(settings: { value: string; text: string }[], key: string) {
   return settings.find((s) => s.value === key)?.text?.trim() ?? "";
+}
+
+// Resolves parseNpAddress's result to an actual warehouse Ref. Tries the
+// numeric WarehouseId lookup first when a number was parsed (fast, exact);
+// falls back to a free-text search scoped to the city (matching against
+// the address's remainder text — street, or the location's own name for a
+// numberless type like "Пункт приймання-видачі") when there's no number,
+// or as a last resort if the numeric lookup somehow comes up empty. Picks
+// the first match — same "best guess, manager can still correct via
+// manual TTN entry" tradeoff the rest of this automatic-resolution flow
+// already accepts for city/warehouse matching.
+async function resolveWarehouseRef(
+  npApiKey: string,
+  cityRef: string,
+  parsed: { warehouseNum: number | null; addressText: string }
+): Promise<string | null> {
+  if (parsed.warehouseNum != null) {
+    const ref = await npFindWarehouseRef(npApiKey, cityRef, parsed.warehouseNum);
+    if (ref) return ref;
+  }
+  if (!parsed.addressText) return null;
+  const matches = await npSearchWarehouses(npApiKey, cityRef, parsed.addressText, 1);
+  return matches[0]?.ref ?? null;
 }
 
 // Every zipper/accessory in this catalog is dense metal/plastic hardware —
@@ -217,7 +240,7 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
 
   const parsed = parseNpAddress(order.addr_delivery);
   if (!parsed) {
-    return { ok: false, kind: "warn", error: "Не вдалося розпарсити адресу (підтримується формат «Місто — Відділення №N» або «Місто — Поштомат №N») — скористайтесь ручним введенням нижче" };
+    return { ok: false, kind: "warn", error: "Не вдалося розпарсити адресу (підтримується формат «Місто — Відділення №N», «Місто — Поштомат №N» або «Місто — Тип відділення: адреса») — скористайтесь ручним введенням нижче" };
   }
   if (opts.requirePostomat && !parsed.isPostomat) {
     return { ok: false, kind: "error", error: "Адреса доставки — не поштомат" };
@@ -241,11 +264,14 @@ export async function createOrderTtn(orderId: number, opts: CreateTtnOptions = {
     };
   }
 
-  const recipientWhRef = await npFindWarehouseRef(npApiKey, recipientCityRef, parsed.warehouseNum);
+  const recipientWhRef = await resolveWarehouseRef(npApiKey, recipientCityRef, parsed);
   if (!recipientWhRef) {
+    const whDesc = parsed.warehouseNum != null
+      ? `${parsed.isPostomat ? "Поштомат" : "Відділення"} №${parsed.warehouseNum}`
+      : parsed.addressText || (parsed.isPostomat ? "Поштомат" : "Відділення");
     return {
       ok: false, kind: "error",
-      error: `${parsed.isPostomat ? "Поштомат" : "Відділення"} №${parsed.warehouseNum} не знайдено в ${parsed.city} — скористайтесь ручним введенням нижче`,
+      error: `${whDesc} не знайдено в ${parsed.city} — скористайтесь ручним введенням нижче`,
     };
   }
 
@@ -316,7 +342,8 @@ export type ResolvePreview =
       recipientName: string;
       recipientPhone: string;
       city: string;
-      warehouseNum: number;
+      warehouseNum: number | null;
+      addressText: string;
       isPostomat: boolean;
       weight: number;
       length: number;
@@ -348,7 +375,7 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
   if (!order.addr_delivery) return { ok: false, error: "Адреса доставки відсутня" };
 
   const parsed = parseNpAddress(order.addr_delivery);
-  if (!parsed) return { ok: false, error: "Не вдалося розпарсити адресу доставки" };
+  if (!parsed) return { ok: false, error: "Не вдалося розпарсити адресу доставки (підтримується формат «Місто — Відділення №N», «Місто — Поштомат №N» або «Місто — Тип відділення: адреса»)" };
   if (parsed.isPostomat) {
     return { ok: false, error: "Накладений платіж не підтримується Новою Поштою для поштоматів (видача лише після повної передоплати)." };
   }
@@ -368,6 +395,7 @@ export async function resolveCodPreview(orderId: number): Promise<ResolvePreview
     recipientPhone: order.phone,
     city: parsed.city,
     warehouseNum: parsed.warehouseNum,
+    addressText: parsed.addressText,
     isPostomat: parsed.isPostomat,
     weight,
     length: dims.length,

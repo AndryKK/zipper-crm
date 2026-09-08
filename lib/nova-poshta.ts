@@ -118,7 +118,18 @@ export async function npSearchAddress(apiKey: string, q: string, cityLimit = 3, 
 // Poshta doesn't support cash-on-delivery there) and want per-parcel
 // dimensions (OptionsSeat) rather than the flat Weight a regular warehouse
 // shipment uses.
-export function parseNpAddress(addr: string): { city: string; warehouseNum: number; isPostomat: boolean } | null {
+//
+// warehouseNum is null for location types Nova Poshta itself never gives a
+// public "№N" to — confirmed live: "Осій — Пункт приймання-видачі (до 30
+// кг): вул. Лазянська, 1а" has no number at all, unlike every "Відділення"/
+// "Поштомат" address. Callers resolve those by searching getWarehouses'
+// free-text match against addressText (npSearchWarehouses) instead of the
+// numeric WarehouseId lookup — see createOrderTtn/resolveCodPreview in
+// lib/order-ttn.ts. addressText itself is always populated (the text after
+// the city/type separator) so a caller can fall back to a text search even
+// on an otherwise-numbered address if the numeric lookup somehow comes up
+// empty.
+export function parseNpAddress(addr: string): { city: string; warehouseNum: number | null; isPostomat: boolean; addressText: string } | null {
   // Between the "Відділення"/"Поштомат" keyword and the "№" there can be
   // extra text — postomats in particular often carry an operator label NP
   // itself adds, e.g. `Рівне — Поштомат "Нова Пошта" №25029: вул. Миру, 16
@@ -127,8 +138,31 @@ export function parseNpAddress(addr: string): { city: string; warehouseNum: numb
   // shape of address, so TTN creation errored with "не вдалося
   // розпарсити адресу" for every postomat with a labeled name).
   const m = addr.match(/^(.+?)\s*[—–-]+\s*(Відділення|Поштомат)[^№]*№\s*(\d+)/i);
-  if (!m) return null;
-  return { city: m[1].trim(), warehouseNum: parseInt(m[3]), isPostomat: /поштомат/i.test(m[2]) };
+  if (m) {
+    // Whatever's left may have another parenthetical qualifier before its
+    // own colon (e.g. "№4 (до 30 кг на одне місце): вул. ...") — found and
+    // fixed live: an earlier version of this branch required the colon to
+    // follow the number directly (optionally, but anchored with `$`),
+    // which broke this exact already-working shape by requiring the WHOLE
+    // remainder to be empty when it wasn't, falling through to the
+    // no-number fallback below instead. Just search the untouched rest of
+    // the string for the first colon instead of trying to encode that
+    // gap in the same anchored group.
+    const colonIdx = addr.indexOf(":", m[0].length);
+    const addressText = colonIdx >= 0 ? addr.slice(colonIdx + 1).trim() : "";
+    return { city: m[1].trim(), warehouseNum: parseInt(m[3]), isPostomat: /поштомат/i.test(m[2]), addressText };
+  }
+  // Fallback for location types with no "№N" in their address text at all
+  // (e.g. "Пункт приймання-видачі") — same "City — Type: street" shape,
+  // just without a number to anchor on. Loose on purpose (any "Type" text
+  // between the separator and the colon); safe because the extracted city
+  // still has to resolve against Nova Poshta's real city list downstream
+  // (npFindCityRef) before anything is ever created, so a genuinely
+  // unrelated string with a colon in it just fails there instead of
+  // silently producing a wrong TTN.
+  const m2 = addr.match(/^(.+?)\s*[—–-]+\s*(.+?):\s*(.+)$/);
+  if (!m2) return null;
+  return { city: m2[1].trim(), warehouseNum: null, isPostomat: /поштомат/i.test(m2[2]), addressText: m2[3].trim() };
 }
 
 export interface NpTtnParams {
