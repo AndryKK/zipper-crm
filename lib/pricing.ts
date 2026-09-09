@@ -46,9 +46,24 @@ export async function resolveOrderDiscountPercent(order: { login: string | null;
 // priceBase = converted grn price before the client discount; price = what
 // they actually pay. Rounding matches every existing price_base/price pair
 // found in real orders (round-half-up to 2dp at each step).
-export function computeItemPricing(rawPrice: number, rate: number, discountPercent: number) {
+//
+// saleRawPrice — products.price_sale, passed only when the product is
+// flagged "on sale" (products.label_action == 1). The legacy storefront's
+// product_price_prod()/product_price_prod_simple() (includes/functions.php)
+// ALWAYS substitute price_sale for the discount-eligible price once that
+// flag is set — price_base still reflects the regular `price` (or the
+// price2/price3 tier, whichever rawPrice the caller passed in), but the
+// price the client actually pays is `price_sale * rate * (1-discount%)`,
+// not `rawPrice * rate * (1-discount%)`. Confirmed against order 20997
+// (product 7969, price=1/price_sale=0.91, category discount 10% at
+// qty>=100): the storefront's own checkout charged price_sale-based 49.14
+// (9828 total for qty 200), but this function — before this fix — ignored
+// price_sale entirely and recomputed 54.00 (10800) the moment the CRM
+// reprocessed the order, silently discarding the sale price.
+export function computeItemPricing(rawPrice: number, rate: number, discountPercent: number, saleRawPrice?: number | null) {
   const priceBase = Math.round(rawPrice * rate * 100) / 100;
-  const price = Math.round(priceBase * (1 - discountPercent / 100) * 100) / 100;
+  const clientRaw = saleRawPrice != null && saleRawPrice > 0 ? saleRawPrice : rawPrice;
+  const price = Math.round(clientRaw * rate * (1 - discountPercent / 100) * 100) / 100;
   return { priceBase, price };
 }
 
@@ -75,7 +90,7 @@ export async function computeItemPricingForProduct(
 ): Promise<{ priceBase: number; price: number } | null> {
   const { data: product } = await supabaseServer
     .from("products")
-    .select("price, price2, price2n, price3, price3n, pid")
+    .select("price, price2, price2n, price3, price3n, pid, price_sale, label_action")
     .eq("id", productId)
     .maybeSingle();
   if (!product) return null;
@@ -85,6 +100,12 @@ export async function computeItemPricingForProduct(
   const price2n = Number(product.price2n) || 0;
   const price3 = Number(product.price3) || 0;
   const price3n = Number(product.price3n) || 0;
+  // See computeItemPricing's own comment — labelAction==1 means the
+  // storefront charges price_sale instead of whatever base this branch
+  // would otherwise use, no matter which discount branch below applies.
+  const saleRaw = Number(product.label_action) === 1 && Number(product.price_sale) > 0
+    ? Number(product.price_sale)
+    : null;
 
   const { data: category } = await supabaseServer
     .from("categories")
@@ -96,21 +117,19 @@ export async function computeItemPricingForProduct(
     .maybeSingle();
 
   if (category && quantity >= category.ndiscount) {
-    const priceBase = Math.round(price * rate * 100) / 100;
-    const discounted = Math.round(priceBase * (1 - category.discount / 100) * 100) / 100;
-    return { priceBase, price: discounted };
+    return computeItemPricing(price, rate, category.discount, saleRaw);
   }
 
   if (quantity >= price2n) {
     if (price3 > 0 && quantity >= price3n) {
-      return computeItemPricing(price3, rate, clientDiscountPercent);
+      return computeItemPricing(price3, rate, clientDiscountPercent, saleRaw);
     }
     if (price2 > 0 && quantity >= price2n) {
-      return computeItemPricing(price2, rate, clientDiscountPercent);
+      return computeItemPricing(price2, rate, clientDiscountPercent, saleRaw);
     }
   }
 
-  return computeItemPricing(price, rate, clientDiscountPercent);
+  return computeItemPricing(price, rate, clientDiscountPercent, saleRaw);
 }
 
 // Ignores any category/quantity bulk-discount rule entirely and applies
@@ -130,9 +149,16 @@ export async function computeFlatItemPricing(
   rate: number,
   discountPercent: number
 ): Promise<{ priceBase: number; price: number } | null> {
-  const { data: product } = await supabaseServer.from("products").select("price").eq("id", productId).maybeSingle();
+  const { data: product } = await supabaseServer
+    .from("products").select("price, price_sale, label_action").eq("id", productId).maybeSingle();
   if (!product) return null;
-  return computeItemPricing(Number(product.price) || 0, rate, discountPercent);
+  // Same price_sale substitution as computeItemPricing's own comment — an
+  // on-sale product is still on sale even when a manager forces a flat %%,
+  // this only skips the category/tier lookup, not the sale-price base.
+  const saleRaw = Number(product.label_action) === 1 && Number(product.price_sale) > 0
+    ? Number(product.price_sale)
+    : null;
+  return computeItemPricing(Number(product.price) || 0, rate, discountPercent, saleRaw);
 }
 
 // What the "Знижка клієнта, %" field on the stock-confirmation popup
