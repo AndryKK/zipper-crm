@@ -4,9 +4,14 @@ import { auth } from "@/lib/auth";
 import { resolveInventoryProductId } from "@/lib/inventory";
 import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 
+// package (NOT active — see app/(admin)/products/page.tsx's own AVAILABILITY
+// comment: products.active doesn't actually hide anything, products.package
+// is the real "В наявності/Немає в наявності" status) is purely a display
+// label on the inventory card (app/(admin)/inventory/page.tsx's OutOfStockBadge)
+// — never read anywhere in this file's own quantity/reserved/low-stock math.
 const SELECT = `
   *,
-  product:products!inventory_product_id_fkey(id, title, pcode, lang, img, uri, translation_id, factory_id, factory:factories(id, title)),
+  product:products!inventory_product_id_fkey(id, title, pcode, lang, img, uri, translation_id, factory_id, package, factory:factories(id, title)),
   warehouse:warehouses!inventory_warehouse_id_fkey(id, title)
 `;
 

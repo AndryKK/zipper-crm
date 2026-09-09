@@ -8,6 +8,7 @@ import {
   Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History, Factory,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
@@ -35,6 +36,12 @@ interface InventoryRow {
   product?: {
     id: number; title: string; pcode?: string; lang: string; img?: string | null;
     factory_id?: number | null; factory?: { id: number; title: string } | null;
+    // products.package (1-5, measures.translation_id) — the real "В
+    // наявності/Немає в наявності" flag, NOT products.active (which doesn't
+    // actually hide anything — see products/page.tsx's own AVAILABILITY
+    // comment). Purely a display label here — see OutOfStockBadge below,
+    // never read by this page's own quantity/reserved/low-stock math.
+    package?: number | null;
   };
   product_uk?: { id: number; title: string } | null;
   warehouse?: { id: number; title: string };
@@ -86,6 +93,25 @@ function ProductTitleLink({ row, fontSize }: { row: InventoryRow; fontSize: numb
     >
       {title}
     </a>
+  );
+}
+
+// "Немає в наявності" — products.package === 5 (measures.translation_id 5,
+// "Немає в наявності"; see product-form.tsx's «В наявності» selector).
+// Deliberately NOT products.active — that field doesn't actually hide a
+// product from the storefront (see products/page.tsx's AVAILABILITY
+// comment) and, same as here, has no bearing on real stock at all. Purely
+// informational: a manager restocking or doing a stock count needs to see
+// at a glance that the storefront is currently showing this position as
+// unavailable, but this badge never feeds into quantity/reserved/low-stock
+// math anywhere on this page — package is only ever read for this label.
+function OutOfStockBadge({ row }: { row: InventoryRow }) {
+  if (row.product?.package !== 5) return null;
+  return (
+    <Badge variant="destructive" className="inline-flex items-center gap-1" style={{ fontSize: 10.5 }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />
+      Немає в наявності
+    </Badge>
   );
 }
 
@@ -680,7 +706,10 @@ function InventoryContent() {
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <ProductThumb row={row} size={36} />
                             <div>
-                              <ProductTitleLink row={row} fontSize={13.5} />
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <ProductTitleLink row={row} fontSize={13.5} />
+                                <OutOfStockBadge row={row} />
+                              </div>
                               {row.product?.pcode && (
                                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "monospace" }}>
                                   {row.product.pcode}
@@ -778,7 +807,10 @@ function InventoryContent() {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
                       <ProductThumb row={row} size={40} />
                       <div style={{ minWidth: 0 }}>
-                        <ProductTitleLink row={row} fontSize={14} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <ProductTitleLink row={row} fontSize={14} />
+                          <OutOfStockBadge row={row} />
+                        </div>
                         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
                           {row.product?.pcode && <span style={{ fontFamily: "monospace" }}>{row.product.pcode}</span>}
                           {row.product?.pcode && " · "}
