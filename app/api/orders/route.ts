@@ -154,5 +154,11 @@ export async function GET(req: NextRequest) {
     clientPhone: (o.login && phoneByLogin.get(o.login)) || o.phone,
   }));
 
-  return NextResponse.json({ items, total: count ?? 0 });
+  // Explicit no-store — this is a plain client-side fetch() with no cache
+  // option of its own (see orders-page-client.tsx's load()), so without an
+  // explicit header here a browser is free to serve a stale response from
+  // its own HTTP cache for a repeat identical URL (e.g. re-searching the
+  // same order id) even though this route itself is correctly per-request
+  // dynamic on the server.
+  return NextResponse.json({ items, total: count ?? 0 }, { headers: { "Cache-Control": "no-store" } });
 }
