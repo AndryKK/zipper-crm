@@ -290,7 +290,9 @@ export default async function ProductsPage({
                     <div className="h-12 w-12 rounded flex items-center justify-center text-xs flex-shrink-0" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>—</div>
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>#{product.id}</div>
+                    <div className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
+                    </div>
                     {url ? (
                       <a
                         href={url}
@@ -329,18 +331,11 @@ export default async function ProductsPage({
                     marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)",
                   }}
                 >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                      {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
-                    </div>
-                    {category && (
-                      <div
-                        className="text-xs"
-                        style={{ color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      >
-                        {category}
-                      </div>
-                    )}
+                  <div
+                    className="text-xs"
+                    style={{ minWidth: 0, flex: 1, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {category ?? "—"}
                   </div>
                   <Badge variant={avail.variant} className="inline-flex items-center gap-1" style={{ flexShrink: 0 }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: avail.dot, flexShrink: 0 }} />
@@ -368,10 +363,9 @@ export default async function ProductsPage({
           <table className="crm-table">
             <thead>
               <tr>
-                <th style={{ width: 48 }}>ID</th>
+                <th style={{ width: 100 }}>Артикул</th>
                 <th style={{ width: 80 }}>Фото</th>
                 <th>Назва</th>
-                <th>Артикул</th>
                 <th>Ціна</th>
                 <th>Категорія</th>
                 <th>Статус</th>
@@ -381,7 +375,9 @@ export default async function ProductsPage({
             <tbody>
               {allProductsWithOrphans.map((product: any) => (
                 <tr key={product.id}>
-                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>{product.id}</td>
+                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
+                  </td>
                   <td>
                     {product.img ? (
                       <ImageZoom
@@ -414,9 +410,6 @@ export default async function ProductsPage({
                     {product.lang && product.lang !== "uk" && (
                       <Badge variant="secondary" className="mt-0.5">Без UK, {product.lang.toUpperCase()}</Badge>
                     )}
-                  </td>
-                  <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                    {product.pcode ? <CopyableText value={product.pcode} /> : "—"}
                   </td>
                   <td className="font-medium whitespace-nowrap">
                     {product.price_sale ? (
