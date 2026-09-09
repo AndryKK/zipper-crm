@@ -112,8 +112,21 @@ export async function GET(req: NextRequest) {
 
   const orderIds = (orderRows || []).map((o: { id: number }) => o.id);
   const { data: allItems } = orderIds.length > 0
-    ? await supabaseServer.from("orders_item").select("oid, price, quantity").in("oid", orderIds)
+    ? await supabaseServer.from("orders_item").select("oid, price, quantity, active").in("oid", orderIds)
     : { data: [] };
+  // Soft-removed lines (active===false — see the item DELETE-flag convention
+  // documented in app/api/orders/[id]/items/[itemId]/route.ts and used the
+  // same way by the order-detail page's own orderTotal and the process
+  // route's orderTotal) must never count toward the sum shown here either.
+  // This used to select without `active` at all and sum every row
+  // unconditionally — a line a manager had already removed (or a stale
+  // duplicate left over from an edit) kept inflating this list's total even
+  // though the order card correctly excluded it, e.g. order 20991: one
+  // leftover active=false duplicate (price 6.44) made this list show
+  // 6620.12 instead of the real 6613.68. `!== false` (not `=== true`) so a
+  // legacy row with a null/missing active column still counts, same as
+  // every other place in the app that filters this column.
+  const activeItems = (allItems || []).filter((i: { active?: boolean }) => i.active !== false);
 
   const logins = Array.from(new Set((orderRows || []).map((o: { login: string | null }) => o.login).filter(Boolean)));
   const { data: loginUsers } = logins.length > 0
@@ -136,7 +149,7 @@ export async function GET(req: NextRequest) {
 
   const items = (orderRows || []).map((o: { id: number; login: string | null; phone: string | null }) => ({
     ...o,
-    items: (allItems || []).filter((i: { oid: number }) => i.oid === o.id),
+    items: activeItems.filter((i: { oid: number }) => i.oid === o.id),
     isPremiumUser: premiumLogins.includes(o.login ?? ""),
     clientPhone: (o.login && phoneByLogin.get(o.login)) || o.phone,
   }));
