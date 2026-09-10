@@ -100,8 +100,42 @@ export type OrderDocumentData = {
   supplierEdrpou: string;
   supplierLines: string;
   recipientLines: string;
+  // "Інший платник" — see scripts/add-orders-alt-payer-column.sql. Both
+  // non-null only when the order carries an alternate-payer blob, then they
+  // replace the invoice's "Платник" value and the waybill's "Покупець"
+  // value. altPayerLines is HTML-escaped, <br/>-joined (HTML docs);
+  // altPayerText is the same content unescaped, still <br/>-joined so
+  // lib/order-pdf.ts's drawLabelBlock (which splits on <br/>) can use it as
+  // plain text. The parcel recipient / Nova Poshta data is untouched —
+  // recipientLines still holds the actual delivery person.
+  altPayerLines: string | null;
+  altPayerText: string | null;
   amountWords: string;
 };
+
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
+// { name, code, address, iban, bank, phone } — every field optional; a
+// manager pastes whatever requisites the client sent. Returns the raw
+// (unescaped) requisite lines, or null when nothing usable is present so
+// callers fall back to the normal party.
+export function buildAltPayerParts(altPayer: unknown): string[] | null {
+  if (!altPayer || typeof altPayer !== "object") return null;
+  const p = altPayer as Record<string, unknown>;
+  const code = String(p.code ?? "").trim();
+  const codeLabel = code.replace(/\D/g, "").length === 10 ? "ІПН" : "ЄДРПОУ";
+  const lines = [
+    String(p.name ?? "").trim(),
+    code ? `${codeLabel} ${code}` : "",
+    String(p.address ?? "").trim(),
+    String(p.iban ?? "").trim() ? `Р/р ${String(p.iban).trim()}` : "",
+    String(p.bank ?? "").trim(),
+    String(p.phone ?? "").trim() ? `тел. ${String(p.phone).trim()}` : "",
+  ].filter(Boolean);
+  return lines.length ? lines : null;
+}
 
 const DEFAULT_THRESHOLD = 3000;
 
@@ -203,6 +237,9 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
   );
 
   const amountWords = amountToWords(orderTotal);
+  const altPayerParts = buildAltPayerParts(order.alt_payer);
+  const altPayerLines = altPayerParts ? altPayerParts.map(esc).join("<br/>") : null;
+  const altPayerText = altPayerParts ? altPayerParts.join("<br/>") : null;
 
   return {
     order,
@@ -216,6 +253,8 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     supplierEdrpou,
     supplierLines,
     recipientLines,
+    altPayerLines,
+    altPayerText,
     amountWords,
   };
 }
@@ -288,7 +327,7 @@ const ITEMS_TABLE_COLGROUP = `
     </colgroup>`;
 
 export function renderInvoiceHtml(doc: OrderDocumentData): string {
-  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
+  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, altPayerLines, amountWords } = doc;
   return `<!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="UTF-8"/><title>Рахунок-фактура ${docNumber}</title><style>${DOC_STYLE}</style></head>
@@ -299,7 +338,7 @@ export function renderInvoiceHtml(doc: OrderDocumentData): string {
       <tr><td style="padding-top:6pt"></td></tr>
       <tr><td class="req-label">Одержувач:</td><td class="req-value">${recipientLines || "—"}</td></tr>
       ${order.notes ? `<tr><td class="req-label">Примітка:</td><td class="req-value">${order.notes}</td></tr>` : ""}
-      <tr><td class="req-label">Платник:</td><td class="req-value"><b>той самий</b></td></tr>
+      <tr><td class="req-label">Платник:</td><td class="req-value">${altPayerLines || "<b>той самий</b>"}</td></tr>
       <tr><td class="req-label">Замовлення:</td><td class="req-value">Замовлення №${order.id}</td></tr>
     </tbody>
   </table>
@@ -339,7 +378,7 @@ export function renderInvoiceHtml(doc: OrderDocumentData): string {
 }
 
 export function renderWaybillHtml(doc: OrderDocumentData): string {
-  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
+  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, altPayerLines, amountWords } = doc;
   return `<!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="UTF-8"/><title>Видаткова накладна ${docNumber}</title><style>${DOC_STYLE}</style></head>
@@ -351,7 +390,7 @@ export function renderWaybillHtml(doc: OrderDocumentData): string {
     <tbody>
       <tr><td class="req-label">Постачальник:</td><td class="req-value">${supplierLines}</td></tr>
       <tr><td style="padding-top:6pt"></td></tr>
-      <tr><td class="req-label">Покупець:</td><td class="req-value">${recipientLines || "—"}</td></tr>
+      <tr><td class="req-label">Покупець:</td><td class="req-value">${altPayerLines || recipientLines || "—"}</td></tr>
       ${order.notes ? `<tr><td class="req-label">Примітка:</td><td class="req-value">${order.notes}</td></tr>` : ""}
     </tbody>
   </table>

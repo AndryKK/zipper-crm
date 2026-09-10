@@ -159,13 +159,13 @@ function drawTotals(doc: PDFKit.PDFDocument, y: number, orderTotal: number): num
 }
 
 export async function renderInvoicePdf(doc: OrderDocumentData): Promise<Buffer> {
-  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
+  const { order, items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, altPayerText, amountWords } = doc;
   const pdf = newDoc();
 
   let y = MARGIN;
   y = drawLabelBlock(pdf, y, "Постачальник:", supplierLines);
   y = drawLabelBlock(pdf, y, "Одержувач:", recipientLines || "—");
-  y = drawLabelBlock(pdf, y, "Платник:", "той самий");
+  y = drawLabelBlock(pdf, y, "Платник:", altPayerText || "той самий");
   y = drawLabelBlock(pdf, y, "Замовлення:", `Замовлення №${order.id}`);
 
   y += 6;
@@ -197,7 +197,7 @@ export async function renderInvoicePdf(doc: OrderDocumentData): Promise<Buffer> 
 }
 
 export async function renderWaybillPdf(doc: OrderDocumentData): Promise<Buffer> {
-  const { items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, amountWords } = doc;
+  const { items, orderTotal, docNumber, dateStr, supplierLines, recipientLines, altPayerText, amountWords } = doc;
   const pdf = newDoc();
 
   let y = MARGIN;
@@ -207,7 +207,7 @@ export async function renderWaybillPdf(doc: OrderDocumentData): Promise<Buffer> 
   y += 24;
 
   y = drawLabelBlock(pdf, y, "Постачальник:", supplierLines);
-  y = drawLabelBlock(pdf, y, "Покупець:", recipientLines || "—");
+  y = drawLabelBlock(pdf, y, "Покупець:", altPayerText || recipientLines || "—");
   y += 6;
 
   y = drawItemsTable(pdf, y, items);

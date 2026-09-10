@@ -1,0 +1,21 @@
+-- "Інший платник" — lets an order's invoice (рахунок-фактура) and delivery
+-- note (видаткова накладна) be issued to a DIFFERENT sole trader / legal
+-- entity than the person the parcel ships to. The client still receives
+-- the goods and is still the Nova Poshta recipient; only the "Платник"
+-- line on the invoice and the "Покупець" line on the waybill change.
+--
+-- Stored as one JSONB blob rather than a spread of columns because it's a
+-- pure CRM-side document concern the storefronts never read or write, and
+-- the shape is a loose bag of optional requisites a manager pastes in from
+-- whatever the client sent:
+--   { name, code, address, iban, bank, phone }   -- every field optional
+-- NULL  = no alternate payer (the default, and every pre-existing order).
+-- object = alternate payer active; any subset of fields may be filled.
+--
+-- Read only by lib/order-documents.ts (getOrderDocumentData -> the two
+-- render*Html functions) and lib/order-pdf.ts, which all documents, the
+-- client email attachments, and the Viber-message doc links already funnel
+-- through — so setting this once updates every channel at once. Written by
+-- app/api/orders/[id]/alt-payer (the standalone "Перегенерувати документи"
+-- panel) and app/api/orders/[id]/process (the stock-confirmation popup).
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS alt_payer JSONB;

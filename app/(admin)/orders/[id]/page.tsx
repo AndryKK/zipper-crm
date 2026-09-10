@@ -38,6 +38,46 @@ const PIPELINE = [
   { status: "Завершено",   label: "Завершено",     sublabel: "Клієнт отримав",       color: "#059669" },
 ];
 
+// "Інший платник" requisites — every field optional (see the state block
+// and scripts/add-orders-alt-payer-column.sql). `code` is ЄДРПОУ or ІПН;
+// the document render picks the label by digit count.
+const EMPTY_ALT_PAYER = { name: "", code: "", address: "", iban: "", bank: "", phone: "" };
+const ALT_PAYER_FIELDS: { key: keyof typeof EMPTY_ALT_PAYER; label: string; placeholder: string; wide?: boolean }[] = [
+  { key: "name",    label: "Назва / ПІБ",      placeholder: "ФОП Іваненко Іван Іванович", wide: true },
+  { key: "code",    label: "ЄДРПОУ / ІПН",     placeholder: "1234567890" },
+  { key: "phone",   label: "Телефон",          placeholder: "+380..." },
+  { key: "address", label: "Адреса",           placeholder: "м. Київ, вул. ...", wide: true },
+  { key: "iban",    label: "IBAN",             placeholder: "UA..." },
+  { key: "bank",    label: "Банк",             placeholder: "АТ КБ «ПриватБанк»" },
+];
+
+// Shared by the stock-confirmation popup and the standalone Step-0 panel.
+// Every field optional; only "Назва / ПІБ" is softly required before a save
+// goes through (a "Платник" line with nothing in it isn't a document).
+function AltPayerFields({
+  value, onChange,
+}: {
+  value: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+      {ALT_PAYER_FIELDS.map((f) => (
+        <div key={f.key} style={f.wide ? { gridColumn: "1 / -1" } : undefined}>
+          <Label style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{f.label}</Label>
+          <Input
+            value={value[f.key] ?? ""}
+            onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
+            onClick={(e) => e.stopPropagation()}
+            placeholder={f.placeholder}
+            style={{ height: 30, fontSize: 12.5, marginTop: 2 }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Nova Poshta's own brand red — used for every action whose primary
 // purpose is a Nova Poshta shipment (postomat, cash-on-delivery, manual
 // city/warehouse TTN creation), so it's visually obvious which buttons
@@ -164,6 +204,32 @@ export default function OrderDetailPage() {
   // and resendWithDiscount.
   const [orgCheckbox, setOrgCheckbox] = useState(false);
   const [edrpouInput, setEdrpouInput] = useState("");
+
+  // "Інший платник" — the invoice's "Платник" line and the waybill's
+  // "Покупець" line get issued to this ФОП/entity instead of the parcel
+  // recipient (who stays the Nova Poshta recipient regardless). Every field
+  // optional — a manager pastes whatever requisites the client sent. Stored
+  // as one JSONB blob on the order (scripts/add-orders-alt-payer-column.sql)
+  // via /api/orders/[id]/alt-payer (the standalone panel's "Перегенерувати
+  // документи" button) or /api/orders/[id]/process (the stock-check popup).
+  // Editing here never re-sends anything to the client — the docs/PDF/Viber
+  // links just read the new data on next open.
+  const [altPayerOn, setAltPayerOn] = useState(false);
+  const [altPayer, setAltPayer] = useState<Record<string, string>>(EMPTY_ALT_PAYER);
+  const [savingAltPayer, setSavingAltPayer] = useState(false);
+
+  function fillAltPayerFrom(data: { alt_payer?: Record<string, string> | null }) {
+    const ap = data.alt_payer;
+    setAltPayerOn(!!ap && Object.keys(ap).length > 0);
+    setAltPayer({ ...EMPTY_ALT_PAYER, ...(ap ?? {}) });
+  }
+
+  // The blob to send — null when the checkbox is off or every field is blank.
+  function altPayerPayload() {
+    if (!altPayerOn) return null;
+    const clean = Object.fromEntries(Object.entries(altPayer).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
+    return Object.keys(clean).length ? clean : null;
+  }
 
   // Resend email — lets a manager fix a typo'd address before either the
   // payment-request or payment-confirmed letter is (re)sent via the
@@ -376,6 +442,7 @@ export default function OrderDetailPage() {
       setDiscountInput(String(data.discount_percent ?? data.clientDiscountPercent ?? 5));
       setOrgCheckbox(!!data.is_organization);
       setEdrpouInput(data.edrpou ?? "");
+      fillAltPayerFrom(data);
     });
   }, [params.id]);
 
@@ -470,6 +537,7 @@ export default function OrderDetailPage() {
     setDiscountTouched(false);
     setOrgCheckbox(!!order.is_organization);
     setEdrpouInput(order.edrpou ?? "");
+    fillAltPayerFrom(order);
     setShowStockConfirm(true);
     refreshDiscountPreview();
   }
@@ -504,6 +572,7 @@ export default function OrderDetailPage() {
 
   async function confirmStockAndProcess() {
     if (orgCheckbox && !edrpouInput.trim()) { toast.error("Вкажіть код ЄДРПОУ для організації"); return; }
+    if (altPayerOn && !altPayer.name.trim()) { toast.error("Вкажіть щонайменше назву іншого платника"); return; }
     setShowStockConfirm(false);
     const discountPercent = parseFloat(discountInput);
     await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined, discountTouched);
@@ -522,6 +591,7 @@ export default function OrderDetailPage() {
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+          altPayer: altPayerPayload(),
           ...(discountPercent !== undefined ? { discountPercent, forceDiscountPercent: !!forceDiscountPercent } : {}),
         }),
       });
@@ -550,6 +620,29 @@ export default function OrderDetailPage() {
   // typing a number and clicking "надіслати", so it wins even over a
   // category/tier bulk discount, same as a manager typing directly into a
   // line's own price would.
+  // "Перегенерувати документи" on the standalone «Інший платник» panel —
+  // store-only (see /api/orders/[id]/alt-payer). The invoice/waybill (their
+  // quick-view links, the PDF attachments, the Viber-message doc links) all
+  // read orders.alt_payer fresh on next open, so saving IS the regenerate;
+  // nothing is re-emailed to the client here.
+  async function saveAltPayer() {
+    if (altPayerOn && !altPayer.name.trim()) { toast.error("Вкажіть щонайменше назву платника"); return; }
+    setSavingAltPayer(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/alt-payer`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ altPayer: altPayerPayload() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      fillAltPayerFrom({ alt_payer: data.altPayer });
+      await refreshOrder();
+      toast.success(data.altPayer ? "Платника збережено — документи оновлено" : "Іншого платника вимкнено — документи на клієнта");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setSavingAltPayer(false); }
+  }
+
   async function resendWithDiscount() {
     const discountPercent = parseFloat(discountInput);
     if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
@@ -1451,6 +1544,43 @@ export default function OrderDetailPage() {
                       </button>
                     </div>
                   )}
+                  {/* «Інший платник» — issues the рахунок-фактура ("Платник")
+                      and видаткова накладна ("Покупець") to a different
+                      ФОП/entity than the parcel recipient. Store-only: the
+                      docs, PDF attachments and Viber links all read
+                      orders.alt_payer on next open, so "Перегенерувати
+                      документи" just saves. Nothing is re-emailed to the
+                      client here — that's the separate "надіслати повторно"
+                      action above. */}
+                  {order.doc_field_1 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: altPayerOn ? "rgba(245,158,11,0.08)" : "var(--bg)", border: "1px solid var(--border)" }}>
+                      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={altPayerOn}
+                          onChange={(e) => setAltPayerOn(e.target.checked)}
+                          style={{ width: 14, height: 14, marginTop: 2, cursor: "pointer", flexShrink: 0 }}
+                        />
+                        <span>
+                          <span style={{ fontWeight: 500 }}>Інший платник</span>
+                          <span style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                            Рахунок-фактура («Платник») і видаткова накладна («Покупець») будуть на цей ФОП. Доставка й отримувач Нової Пошти не змінюються.
+                          </span>
+                        </span>
+                      </label>
+                      {altPayerOn && <AltPayerFields value={altPayer} onChange={setAltPayer} />}
+                      <button
+                        onClick={saveAltPayer}
+                        disabled={savingAltPayer}
+                        className="w-full sm:w-auto"
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
+                        title="Зберегти дані платника — рахунок, накладна й посилання у Viber одразу віддаватимуть нового платника"
+                      >
+                        {savingAltPayer ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={12} />}
+                        Перегенерувати документи
+                      </button>
+                    </div>
+                  )}
                   {/* Postomat orders confirm payment here too — /api/orders/[id]/confirm-payment
                       already skips TTN creation for a postomat address (via skipPostomat)
                       but still sends the thank-you email and advances status to "Оплачено"
@@ -2029,6 +2159,27 @@ export default function OrderDetailPage() {
                     style={{ marginTop: 8, width: 160 }}
                   />
                 )}
+              </div>
+            </label>
+            <label
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px",
+                borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
+                background: altPayerOn ? "rgba(245,158,11,0.08)" : "transparent",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={altPayerOn}
+                onChange={(e) => setAltPayerOn(e.target.checked)}
+                style={{ width: 17, height: 17, flexShrink: 0, marginTop: 1, cursor: "pointer" }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Інший платник</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                  Рахунок-фактура («Платник») і видаткова накладна («Покупець») будуть на цей ФОП. Доставка й отримувач Нової Пошти не змінюються.
+                </div>
+                {altPayerOn && <AltPayerFields value={altPayer} onChange={setAltPayer} />}
               </div>
             </label>
             <div className="space-y-1.5">

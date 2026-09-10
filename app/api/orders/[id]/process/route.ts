@@ -45,6 +45,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }).eq("id", orderId);
   }
 
+  // "Інший платник" (also from the stock-confirmation popup) — the invoice's
+  // "Платник" and waybill's "Покупець" get issued to this entity instead of
+  // the parcel recipient. Same store-only contract as
+  // app/api/orders/[id]/alt-payer: only written when the key is present, so
+  // a bare/legacy call never clears it. Object with any subset of
+  // {name,code,address,iban,bank,phone} filled -> active; null -> off.
+  if (body.altPayer !== undefined) {
+    const src = body.altPayer && typeof body.altPayer === "object" ? body.altPayer : {};
+    const clean: Record<string, string> = {};
+    for (const f of ["name", "code", "address", "iban", "bank", "phone"]) {
+      const v = String(src[f] ?? "").trim();
+      if (v) clean[f] = v;
+    }
+    await supabaseServer.from("orders")
+      .update({ alt_payer: Object.keys(clean).length ? clean : null }).eq("id", orderId);
+  }
+
   // Manual supplier override (also from the stock-confirmation popup) —
   // must be written before STEP 3 below generates the invoice/sends the
   // email, since getOrderDocumentData reads it fresh from the order row.
