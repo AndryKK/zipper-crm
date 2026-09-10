@@ -17,8 +17,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const pid = parseInt(id);
+  const trId = (product as any).translation_id ?? pid;
   const [{ data: categories }, { data: photos }, { data: photos2 }, { data: chars }] = await Promise.all([
-    supabaseServer.from("products_categories").select("*").eq("pid", pid),
+    // Categories are keyed by translation_id (see the PUT handler below and
+    // the storefront's catalog filter) — read them back the same way.
+    supabaseServer.from("products_categories").select("*").eq("pid", trId),
     supabaseServer.from("products_photos").select("*").eq("pid", pid).order("priority", { ascending: true }),
     supabaseServer.from("products_photos2").select("*").eq("pid", pid).order("priority", { ascending: true }),
     supabaseServer.from("products_chars").select("*").eq("pid", pid).order("priority", { ascending: true }),
@@ -56,10 +59,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   if (categoryIds !== undefined && product) {
-    await supabaseServer.from("products_categories").delete().eq("pid", (product as any).id);
+    // products_categories.pid must be the shared translation_id, NOT this
+    // language row's own id. The storefront's catalog filter matches
+    // `products.translationId IN (SELECT pid FROM products_categories ...)`
+    // (reference/.../catalog.php) — a row keyed by a per-language id
+    // never matches there, so the product silently drops out of its
+    // category on the live site even though the CRM checkbox stays
+    // ticked (it read the row back by the same wrong key). One row per
+    // (translation_id, cid) covers both language versions, same as every
+    // correctly-imported product in the catalog. FK products_categories
+    // .pid -> products(id) is satisfied because the first-created
+    // language row's id always equals the translation_id.
+    const trId = (product as any).translation_id;
+    await supabaseServer.from("products_categories").delete().eq("pid", trId);
     if (categoryIds.length) {
       await supabaseServer.from("products_categories").upsert(
-        categoryIds.map((cid: number) => ({ pid: (product as any).id, cid })),
+        categoryIds.map((cid: number) => ({ pid: trId, cid })),
         { onConflict: "pid,cid", ignoreDuplicates: true }
       );
     }

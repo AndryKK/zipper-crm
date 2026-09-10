@@ -144,7 +144,10 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     supabaseServer.from("categories").select("id, pid, title, translationId:translation_id").eq("lang", "uk").order("title"),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title"),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority"),
-    supabaseServer.from("products_categories").select("cid").in("pid", langIds),
+    // Keyed by translation_id, not per-language row id — matches the
+    // storefront's catalog filter and the PUT handler in
+    // app/api/products/[id]/route.ts.
+    supabaseServer.from("products_categories").select("cid").in("pid", langTrIds),
   ]);
 
   const filtersWithChildren = await getFiltersWithChildren();
