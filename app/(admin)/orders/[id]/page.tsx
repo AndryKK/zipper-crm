@@ -756,7 +756,19 @@ export default function OrderDetailPage() {
     setGeneratingTtn(true);
     setTtnGenError("");
     try {
-      const body: Record<string, unknown> = {};
+      const body: Record<string, unknown> = {
+        // Always sent explicitly (not left to /ttn/generate's own DB
+        // fallback) — a retry after a "перевищено X кг" error must never
+        // silently drop back to Cash/individual just because this call
+        // happens to omit them. Sourced from the same state the stock-
+        // confirm popup and «Організація (ЄДРПОУ)» card edit, so whatever
+        // a manager sees checked there (or edits right in the retry panel
+        // below, see the ttnGenError block) is exactly what gets resent —
+        // and re-persisted to the order by the route itself.
+        isOrganization: orgCheckbox,
+        edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+        nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
+      };
       if (opts.weight) body.weight = opts.weight;
       if (opts.forceMainSenderWarehouse) body.forceMainSenderWarehouse = true;
       const res = await fetch(`/api/orders/${params.id}/ttn/generate`, {
@@ -1748,6 +1760,26 @@ export default function OrderDetailPage() {
                             <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
                               <XCircle size={12} /> {ttnGenError}
                             </span>
+                            {/* Every retry below (weight, №100, plain
+                                "Перегенерувати") now resends isOrganization/
+                                edrpou/nonCashPayment explicitly — see
+                                generateTtnManually — instead of leaning on
+                                the route's own DB fallback, so a manager
+                                retrying after a NP rejection sees exactly
+                                what's about to be resent and can fix it
+                                right here instead of it silently reverting
+                                to Cash/individual. */}
+                            {orgCheckbox && (
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={nonCashCheckbox}
+                                  onChange={(e) => setNonCashCheckbox(e.target.checked)}
+                                  style={{ width: 14, height: 14, cursor: "pointer" }}
+                                />
+                                Оплата за доставку безготівковим розрахунком (ЄДРПОУ {edrpouInput || "—"})
+                              </label>
+                            )}
                             {/* Weight-only retry — city/warehouse stay exactly what
                                 automatic parsing already resolved; only the kg sent
                                 to Nova Poshta changes. Separate from "Обрати вручну"
