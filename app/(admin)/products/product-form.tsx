@@ -511,6 +511,48 @@ function EditForm({
   const activeLangVariants = activeColorEntry?.langVariants ?? langVariants;
   const activeLangs = langs.filter((l: any) => activeLangVariants.some((v: any) => v.lang === l.code));
 
+  // ── Групова зміна ціни ──────────────────────────────────────────────
+  // A separate, top-of-page tool: one $ value written straight to every
+  // color's every lang row (ru+uk) in this product's color group, in one
+  // shot — independent of the big multi-tab "Зберегти" below (which also
+  // happens to push common.price to every color on every save, since price
+  // is one shared field across the whole group — see pricePayload in
+  // save()). This exists for the common case where a manager just wants to
+  // reprice a whole color family without touching anything else on the
+  // form (titles, descriptions, categories, photos mid-edit elsewhere).
+  // Per-товар (per-color) price editing on the "Ціни" tab is untouched.
+  const [groupPriceInput, setGroupPriceInput] = useState(String(common.price ?? ""));
+  const [applyingGroupPrice, setApplyingGroupPrice] = useState(false);
+  const groupPriceTargets = allColors.flatMap((c) => c.langVariants.map((v: any) => v.id as number));
+
+  async function applyGroupPrice() {
+    const price = parseFloat(groupPriceInput);
+    if (!Number.isFinite(price) || price < 0) { toast.error("Вкажіть коректну ціну"); return; }
+    setApplyingGroupPrice(true);
+    try {
+      const results = await Promise.all(
+        groupPriceTargets.map((id) =>
+          fetch(`/api/products/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ price }),
+          })
+        )
+      );
+      const failed = results.filter((r) => !r.ok).length;
+      // Keep the "Ціни" tab's own field in sync — otherwise the next
+      // unrelated "Зберегти" click would silently revert every color back
+      // to whatever common.price still held from page load.
+      setC("price", price);
+      if (failed) toast.warning(`Застосовано з помилками: ${groupPriceTargets.length - failed}/${groupPriceTargets.length}`);
+      else toast.success(`Ціну ${price.toFixed(2)}$ застосовано до ${allColors.length} колір${allColors.length === 1 ? "у" : "ів"} (${groupPriceTargets.length} записів ru/ua)`);
+    } catch {
+      toast.error("Помилка з'єднання");
+    } finally {
+      setApplyingGroupPrice(false);
+    }
+  }
+
   // ── Current text data ─────────────────────────────────────────────
   const ld = (allLangData[activeColorTrId] ?? {})[activeLang] ?? ({} as LangData);
 
@@ -961,6 +1003,41 @@ function EditForm({
 
   return (
     <div className="p-4 md:p-6">
+
+      {/* ── Групова зміна ціни ──────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10,
+          padding: "10px 14px", marginBottom: 14, borderRadius: 10,
+          border: "1.5px solid #6366f1", background: "#eef2ff",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#4f46e5", whiteSpace: "nowrap" }}>
+          Групова зміна ціни
+        </div>
+        <Input
+          type="number" step="0.01" min={0}
+          value={groupPriceInput}
+          onChange={(e) => setGroupPriceInput(e.target.value)}
+          placeholder="Ціна, $"
+          style={{ width: 110, height: 32, fontSize: 13, background: "#fff" }}
+        />
+        <button
+          type="button"
+          onClick={applyGroupPrice}
+          disabled={applyingGroupPrice}
+          style={{
+            padding: "6px 14px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+            background: "#4f46e5", color: "#fff", border: "none",
+            cursor: applyingGroupPrice ? "wait" : "pointer", opacity: applyingGroupPrice ? 0.7 : 1,
+          }}
+        >
+          {applyingGroupPrice ? "Застосовую…" : "Застосувати"}
+        </button>
+        <div style={{ fontSize: 11.5, color: "#4f46e5", opacity: 0.75, flexBasis: "100%" }}>
+          Одразу запише цю ціну (в доларах) у всі {allColors.length} колір{allColors.length === 1 ? "" : allColors.length < 5 ? "и" : "ів"} цієї групи, ru та uk — незалежно від «Зберегти» нижче. Редагування ціни на вкладці «Ціни» для одного товару лишається як є.
+        </div>
+      </div>
 
       {/* ── Color dropdown ──────────────────────────────────────────── */}
       {colorDropdownOpen && (
