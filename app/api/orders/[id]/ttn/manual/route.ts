@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { supabaseServer } from "@/lib/supabase";
 import { createOrderTtnManual } from "@/lib/order-ttn";
 
 // Manual TTN creation, bypassing parseNpAddress entirely — the escape
@@ -29,6 +30,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (isOrganization && !String(edrpou ?? "").trim()) {
     return NextResponse.json({ error: "Вкажіть код ЄДРПОУ для організації" }, { status: 400 });
   }
+
+  // Persist to the order too — this dialog used to be a pure per-call
+  // override (deliberately, so a one-off manual TTN never changed the
+  // order's own stored organization status), but that meant a manager who
+  // ticked "Оплата за доставку безготівково" only here (never through the
+  // stock-confirmation popup or the "Організація (ЄДРПОУ)" card) had it
+  // silently vanish on the next page load or retry — nothing ever wrote it
+  // to orders.np_noncash_payment. Now every place that edits this trio
+  // (this route, /process, /ttn/generate) saves it the same way, so
+  // whatever a manager last set here is what a later retry falls back to.
+  await supabaseServer.from("orders").update({
+    is_organization: !!isOrganization,
+    edrpou: isOrganization ? String(edrpou).trim() : null,
+    np_noncash_payment: isOrganization ? !!nonCashPayment : false,
+  }).eq("id", orderId);
 
   const result = await createOrderTtnManual(orderId, {
     cityRef,

@@ -284,7 +284,7 @@ export function translateNpError(raw: string): string {
 
 export async function npCreateTtn(
   p: NpTtnParams
-): Promise<{ ttn: string; organizationDetails?: Record<string, unknown> } | { error: string }> {
+): Promise<{ ttn: string; organizationDetails?: Record<string, unknown>; warnings?: string[] } | { error: string }> {
   const date = kyivDateString();
   const nameParts = p.recipientName.trim().split(/\s+/);
   const recipientPhoneDigits = p.recipientPhone.replace(/\D/g, "");
@@ -399,7 +399,15 @@ export async function npCreateTtn(
   if (!docRes.success) return { error: docRes.errors?.length ? translateNpError(docRes.errors.join(", ")) : "TTN error" };
   const ttn = docRes.data?.[0]?.IntDocNumber;
   if (!ttn) return { error: "Порожня відповідь TTN" };
-  return { ttn, organizationDetails };
+  // NP's response envelope carries `warnings`/`info` alongside `data` even
+  // on success — e.g. it's known to silently fall back a Recipient's
+  // PaymentMethod:"NonCash" to Cash when that ЄДРПОУ has no active
+  // безготівковий-settlement договір registered with Nova Poshta itself,
+  // something no field in our own request can force into existing. Surface
+  // whatever NP actually said instead of a manager only discovering the
+  // downgrade later in NP's own cabinet.
+  const warnings = [...(docRes.warnings ?? []), ...(docRes.info ?? [])].filter(Boolean);
+  return { ttn, organizationDetails, warnings: warnings.length ? warnings : undefined };
 }
 
 // Cancels a TTN. We only ever store the human-readable IntDocNumber, but

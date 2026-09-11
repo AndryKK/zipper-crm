@@ -781,6 +781,11 @@ export default function OrderDetailPage() {
       setTtnWeightOverride("");
       await refreshOrder();
       toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
+      // Nova Poshta can silently adjust the request (e.g. downgrade
+      // PaymentMethod:"NonCash" to Cash when the ЄДРПОУ has no active
+      // безготівковий договір with them) — see npCreateTtn's own comment.
+      // Surfaced here instead of a manager only finding out in NP's cabinet.
+      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`, { duration: 12000 });
     } catch { setTtnGenError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
     finally { setGeneratingTtn(false); }
   }
@@ -844,6 +849,7 @@ export default function OrderDetailPage() {
       setShowNpManualDialog(false);
       setTtnGenError("");
       toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
+      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`, { duration: 12000 });
     } catch { setNpManualError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
     finally { setNpManualSubmitting(false); }
   }

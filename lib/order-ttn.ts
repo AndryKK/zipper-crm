@@ -140,7 +140,7 @@ export type CreateTtnOptions = {
 };
 
 export type CreateTtnResult =
-  | { ok: true; ttn: string; demo: boolean; organizationDetails?: Record<string, unknown> }
+  | { ok: true; ttn: string; demo: boolean; organizationDetails?: Record<string, unknown>; npWarnings?: string[] }
   | { ok: false; kind: "skipped" | "warn" | "error"; error: string };
 
 // Shared tail once we have a resolved recipient city AND warehouse ref
@@ -248,16 +248,23 @@ async function finishTtnCreation(
     // is_oversized to begin with would already have gone through the main
     // branch anyway, so a note here would be noise, not information.
     const forcedMainOverOversized = !!opts.forceMainSenderWarehouse && !!order.is_oversized;
-    const noteLine = forcedMainOverOversized
-      ? `[Автоматично ${new Date().toLocaleDateString("uk-UA")}]: ТТН сформовано через Відділення №100 (примусово, а не через відділення для габаритних товарів)`
-      : null;
+    const noteLines = [
+      forcedMainOverOversized
+        ? `[Автоматично ${new Date().toLocaleDateString("uk-UA")}]: ТТН сформовано через Відділення №100 (примусово, а не через відділення для габаритних товарів)`
+        : null,
+      // See npCreateTtn's own comment — NP can silently downgrade
+      // PaymentMethod:"NonCash" (no безготівковий договір on file for this
+      // ЄДРПОУ) or otherwise adjust the request; recorded here so it's
+      // visible on the order afterward, not just in this one response.
+      result.warnings?.length ? `[Нова Пошта ${new Date().toLocaleDateString("uk-UA")}]: ${result.warnings.join("; ")}` : null,
+    ].filter((l): l is string => !!l);
     await supabaseServer.from("orders").update({
       ttn: result.ttn,
       ttn_auto_created: true,
       ...(result.organizationDetails ? { np_org_details: result.organizationDetails } : {}),
-      ...(noteLine ? { notes: order.notes ? `${order.notes}\n${noteLine}` : noteLine } : {}),
+      ...(noteLines.length ? { notes: [order.notes, ...noteLines].filter(Boolean).join("\n") } : {}),
     }).eq("id", orderId);
-    return { ok: true, ttn: result.ttn, demo: false, organizationDetails: result.organizationDetails };
+    return { ok: true, ttn: result.ttn, demo: false, organizationDetails: result.organizationDetails, npWarnings: result.warnings };
   } catch (e) {
     return { ok: false, kind: "error", error: (e as Error).message };
   }

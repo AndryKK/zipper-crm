@@ -68,5 +68,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     isOrganization, edrpou, nonCashPayment,
   });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json({ ok: true, ttn: result.ttn, demo: result.demo });
+  return NextResponse.json({ ok: true, ttn: result.ttn, demo: result.demo, npWarnings: result.npWarnings });
 }
