@@ -1,0 +1,17 @@
+-- Lets an organization/ФОП recipient pay Nova Poshta's own delivery fee by
+-- bank transfer ("безготівковий розрахунок") instead of cash on pickup —
+-- Nova Poshta's InternetDocument.PaymentMethod field, "NonCash" instead of
+-- the "Cash" every TTN used to hard-code (see lib/nova-poshta.ts's
+-- npCreateTtn PaymentMethod). Only meaningful together with is_organization
+-- (see add-orders-organization-fields.sql) — the CRM only ever offers this
+-- checkbox once a ЄДРПОУ is entered, and lib/order-ttn.ts's
+-- finishTtnCreation only ever sends NonCash when isOrganization is true
+-- regardless of this column, so a stray true here on an individual order is
+-- harmless.
+--
+-- Read the same way is_organization/edrpou already are: finishTtnCreation
+-- falls back to this column for every automatic TTN path (confirm-payment,
+-- cod, generate, postomat), while the manual TTN dialog's own checkbox
+-- (createOrderTtnManual's nonCashPayment param) overrides it per-call
+-- without touching this column.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS np_noncash_payment BOOLEAN NOT NULL DEFAULT false;

@@ -122,6 +122,12 @@ export type CreateTtnOptions = {
   // the order's own person/phone.
   orgContactName?: string;
   orgContactPhone?: string;
+  // Organization-only: pay Nova Poshta's own delivery fee by bank transfer
+  // instead of cash on pickup — see scripts/add-orders-np-noncash-payment-
+  // column.sql and NpTtnParams.nonCashPayment. Manual dialog's own
+  // checkbox override, same relationship to orders.np_noncash_payment that
+  // isOrganization/edrpou above have to is_organization/edrpou.
+  nonCashPayment?: boolean;
   // Skips the order's own is_oversized flag for sender-warehouse selection
   // and always uses np_sender_warehouse_ref (Відділення №100) — an escape
   // hatch for the quick TTN-retry UI when the normally-selected sender
@@ -145,16 +151,17 @@ export type CreateTtnResult =
 // one place.
 async function finishTtnCreation(
   orderId: number,
-  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null; notes?: string | null },
+  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null; np_noncash_payment?: boolean | null; notes?: string | null },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
-  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone" | "forceMainSenderWarehouse">
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone" | "nonCashPayment" | "forceMainSenderWarehouse">
 ): Promise<CreateTtnResult> {
   // Manual dialog's checkbox/field wins if a manager set it; every
   // automatic path (confirm-payment/cod/generate) leaves opts.isOrganization
   // undefined and gets whatever the order itself carries.
   const isOrganization = opts.isOrganization ?? !!order.is_organization;
   const edrpou = (opts.edrpou ?? order.edrpou ?? "").trim();
+  const nonCashPayment = opts.nonCashPayment ?? !!order.np_noncash_payment;
   if (isOrganization && !edrpou) {
     return { ok: false, kind: "error", error: "Вкажіть код ЄДРПОУ для формування накладної на організацію" };
   }
@@ -225,6 +232,7 @@ async function finishTtnCreation(
       edrpou:      isOrganization ? edrpou : undefined,
       orgContactName:  opts.orgContactName,
       orgContactPhone: opts.orgContactPhone,
+      nonCashPayment: isOrganization ? nonCashPayment : undefined,
       codAmount:   opts.codAmount,
       seat,
     });
@@ -334,6 +342,7 @@ export async function createOrderTtnManual(
     edrpou?: string;
     orgContactName?: string;
     orgContactPhone?: string;
+    nonCashPayment?: boolean;
   }
 ): Promise<CreateTtnResult> {
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
@@ -365,6 +374,7 @@ export async function createOrderTtnManual(
       seat: params.seat, codAmount: params.codAmount,
       isOrganization: params.isOrganization, edrpou: params.edrpou,
       orgContactName: params.orgContactName, orgContactPhone: params.orgContactPhone,
+      nonCashPayment: params.nonCashPayment,
     }
   );
 }

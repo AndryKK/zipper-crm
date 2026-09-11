@@ -204,6 +204,11 @@ export default function OrderDetailPage() {
   // and resendWithDiscount.
   const [orgCheckbox, setOrgCheckbox] = useState(false);
   const [edrpouInput, setEdrpouInput] = useState("");
+  // "Оплата за доставку безготівково" — only ever shown/meaningful once
+  // orgCheckbox (ЄДРПОУ) is on; see scripts/add-orders-np-noncash-payment-
+  // column.sql. Same save path as orgCheckbox/edrpouInput above (process
+  // route), and forced false there the moment isOrganization is false.
+  const [nonCashCheckbox, setNonCashCheckbox] = useState(false);
 
   // "Інший платник" — the invoice's "Платник" line and the waybill's
   // "Покупець" line get issued to this ФОП/entity instead of the parcel
@@ -307,6 +312,7 @@ export default function OrderDetailPage() {
   // updated to send them yet), in which case it just starts unchecked.
   const [npManualIsOrg, setNpManualIsOrg] = useState(false);
   const [npManualEdrpou, setNpManualEdrpou] = useState("");
+  const [npManualNonCash, setNpManualNonCash] = useState(false);
   // Revealed only after a failed organization attempt (see submitNpManual)
   // — the "якщо не підтягне, проси заповнити інші дані" retry path: an
   // org's real pickup contact often isn't order.person/order.phone, and
@@ -442,6 +448,7 @@ export default function OrderDetailPage() {
       setDiscountInput(String(data.discount_percent ?? data.clientDiscountPercent ?? 5));
       setOrgCheckbox(!!data.is_organization);
       setEdrpouInput(data.edrpou ?? "");
+      setNonCashCheckbox(!!data.np_noncash_payment);
       fillAltPayerFrom(data);
     });
   }, [params.id]);
@@ -537,6 +544,7 @@ export default function OrderDetailPage() {
     setDiscountTouched(false);
     setOrgCheckbox(!!order.is_organization);
     setEdrpouInput(order.edrpou ?? "");
+    setNonCashCheckbox(!!order.np_noncash_payment);
     fillAltPayerFrom(order);
     setShowStockConfirm(true);
     refreshDiscountPreview();
@@ -591,6 +599,7 @@ export default function OrderDetailPage() {
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+          nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
           altPayer: altPayerPayload(),
           ...(discountPercent !== undefined ? { discountPercent, forceDiscountPercent: !!forceDiscountPercent } : {}),
         }),
@@ -657,6 +666,7 @@ export default function OrderDetailPage() {
           forceDiscountPercent: true,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+          nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
         }),
       });
       const data = await res.json();
@@ -770,6 +780,7 @@ export default function OrderDetailPage() {
     setNpManualError("");
     setNpManualIsOrg(!!order?.is_organization);
     setNpManualEdrpou(order?.edrpou ?? "");
+    setNpManualNonCash(!!order?.np_noncash_payment);
     setNpManualOrgContactFailed(false);
     setNpManualOrgContactName(order?.person ?? "");
     setNpManualOrgContactPhone(order?.phone ?? "");
@@ -788,6 +799,7 @@ export default function OrderDetailPage() {
         isPostomat: npWhSelected.isPostomat,
         isOrganization: npManualIsOrg,
         edrpou: npManualIsOrg ? npManualEdrpou.trim() : undefined,
+        nonCashPayment: npManualIsOrg ? npManualNonCash : undefined,
         // Only sent once the manager has actually edited the revealed
         // retry fields — an empty override would otherwise silently
         // replace a perfectly good order.person/order.phone with "".
@@ -1532,6 +1544,17 @@ export default function OrderDetailPage() {
                           />
                         )}
                       </div>
+                      {orgCheckbox && (
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={nonCashCheckbox}
+                            onChange={(e) => setNonCashCheckbox(e.target.checked)}
+                            style={{ width: 14, height: 14, cursor: "pointer" }}
+                          />
+                          Оплата за доставку безготівковим розрахунком
+                        </label>
+                      )}
                       <button
                         onClick={resendWithDiscount}
                         disabled={resendingDiscount}
@@ -2151,13 +2174,32 @@ export default function OrderDetailPage() {
                   Пізніше ТТН Нової Пошти формуватиметься на організацію за цим кодом ЄДРПОУ
                 </div>
                 {orgCheckbox && (
-                  <Input
-                    value={edrpouInput}
-                    onChange={(e) => setEdrpouInput(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    placeholder="Код ЄДРПОУ"
-                    style={{ marginTop: 8, width: 160 }}
-                  />
+                  <>
+                    <Input
+                      value={edrpouInput}
+                      onChange={(e) => setEdrpouInput(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="Код ЄДРПОУ"
+                      style={{ marginTop: 8, width: 160 }}
+                    />
+                    {/* Тільки для ФОП/організації — оплата за доставку
+                        (не за товар) безготівковим розрахунком замість
+                        готівки кур'єру/у відділенні. Накладений платіж за
+                        сам товар (BackwardDeliveryData) — окрема, незалежна
+                        річ, див. openCodDialog нижче. */}
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonCashCheckbox}
+                        onChange={(e) => setNonCashCheckbox(e.target.checked)}
+                        style={{ width: 15, height: 15, cursor: "pointer" }}
+                      />
+                      <span style={{ fontSize: 12.5 }}>Оплата за доставку безготівковим розрахунком</span>
+                    </label>
+                  </>
                 )}
               </div>
             </label>
@@ -2405,6 +2447,17 @@ export default function OrderDetailPage() {
                   onChange={(e) => setNpManualEdrpou(e.target.value)}
                   placeholder="Код ЄДРПОУ"
                 />
+              )}
+              {npManualIsOrg && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={npManualNonCash}
+                    onChange={(e) => setNpManualNonCash(e.target.checked)}
+                    style={{ width: 14, height: 14, cursor: "pointer" }}
+                  />
+                  Оплата за доставку безготівковим розрахунком
+                </label>
               )}
               {npManualIsOrg && npManualOrgContactFailed && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}>

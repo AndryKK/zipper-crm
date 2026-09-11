@@ -38,10 +38,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // orders/[id]/page.tsx). Read straight off this order row by every later
   // Nova Poshta TTN path (lib/order-ttn.ts's finishTtnCreation) unless a
   // manager overrides it again in the manual TTN dialog.
+  //
+  // np_noncash_payment ("Оплата за доставку безготівково") only makes
+  // sense alongside is_organization — the checkbox for it only ever shows
+  // in the UI once ЄДРПОУ is entered (see nonCashCheckbox in
+  // orders/[id]/page.tsx) — so it's forced false the moment isOrganization
+  // itself is false, same as edrpou above, instead of possibly keeping a
+  // stale true from an earlier organization order.
   if (typeof body.isOrganization === "boolean") {
     await supabaseServer.from("orders").update({
       is_organization: body.isOrganization,
       edrpou: body.isOrganization ? String(body.edrpou ?? "").trim() || null : null,
+      np_noncash_payment: body.isOrganization ? !!body.nonCashPayment : false,
     }).eq("id", orderId);
   }
 

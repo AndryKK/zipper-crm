@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const orderId = parseInt(id);
   const body = await req.json().catch(() => ({}));
 
-  const { cityRef, warehouseRef, isPostomat, seat, codAmount, isOrganization, edrpou, orgContactName, orgContactPhone } = body;
+  const { cityRef, warehouseRef, isPostomat, seat, codAmount, isOrganization, edrpou, orgContactName, orgContactPhone, nonCashPayment } = body;
   if (!cityRef || !warehouseRef) {
     return NextResponse.json({ error: "Оберіть місто і відділення/поштомат" }, { status: 400 });
   }
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     edrpou: isOrganization ? String(edrpou).trim() : undefined,
     orgContactName: isOrganization && orgContactName ? String(orgContactName).trim() : undefined,
     orgContactPhone: isOrganization && orgContactPhone ? String(orgContactPhone).trim() : undefined,
+    nonCashPayment: isOrganization ? !!nonCashPayment : undefined,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });

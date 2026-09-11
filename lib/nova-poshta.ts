@@ -193,6 +193,14 @@ export interface NpTtnParams {
   // recipientType "individual".
   orgContactName?: string;
   orgContactPhone?: string;
+  // Безготівковий розрахунок за доставку: NP's own delivery fee gets billed
+  // by bank transfer to the organization instead of collected as cash on
+  // pickup (PaymentMethod "NonCash" instead of "Cash") — see
+  // scripts/add-orders-np-noncash-payment-column.sql. Distinct from
+  // codAmount below, which is about who pays for the GOODS, not the
+  // delivery fee itself. Ignored for recipientType "individual" — callers
+  // only ever set this alongside recipientType "organization".
+  nonCashPayment?: boolean;
   // Накладений платіж: adds BackwardDeliveryData so the recipient pays this
   // amount in cash on pickup instead of it being collected upfront. Nova
   // Poshta does not support this for postomat deliveries (parcel lockers
@@ -346,7 +354,9 @@ export async function npCreateTtn(
     // Recipient pays the Nova Poshta delivery fee itself (separate from
     // BackwardDeliveryData below, which is about who pays for the goods).
     PayerType: "Recipient",
-    PaymentMethod: "Cash",
+    // "NonCash" only for an organization that actually asked for it — see
+    // NpTtnParams.nonCashPayment's own comment.
+    PaymentMethod: p.nonCashPayment && p.recipientType === "organization" ? "NonCash" : "Cash",
     DateTime: date,
     CargoType: "Cargo",
     VolumeGeneral: "0.001",
