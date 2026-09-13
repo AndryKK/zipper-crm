@@ -1,17 +1,33 @@
 import { supabaseServer } from "@/lib/supabase";
+import { unstable_cache } from "next/cache";
 
 // The single warehouse used for automatic stock reservation/release —
 // same "lowest priority, active" convention already used by the order
 // process/confirm-payment routes for picking their primary warehouse.
+//
+// Cached: this is called once per orders_item row from the DB-webhook fan-out
+// (app/api/webhooks/inventory-sync/route.ts) — an N-item order re-ran this
+// exact same query N times within milliseconds of each other, every time,
+// with no reason for it to ever come back different mid-fan-out. Which
+// warehouse is "default" only changes on a rare admin edit (toggling
+// active/priority in Склади), so a short cache costs nothing real.
+const getDefaultWarehouseIdCached = unstable_cache(
+  async (): Promise<number | null> => {
+    const { data } = await supabaseServer
+      .from("warehouses")
+      .select("id")
+      .eq("active", 1)
+      .order("priority", { ascending: true })
+      .limit(1)
+      .single();
+    return data?.id ?? null;
+  },
+  ["default-warehouse-id"],
+  { revalidate: 60 }
+);
+
 export async function getDefaultWarehouseId(): Promise<number | null> {
-  const { data } = await supabaseServer
-    .from("warehouses")
-    .select("id")
-    .eq("active", 1)
-    .order("priority", { ascending: true })
-    .limit(1)
-    .single();
-  return data?.id ?? null;
+  return getDefaultWarehouseIdCached();
 }
 
 export type InventorySource =
