@@ -168,11 +168,25 @@ export async function computeFlatItemPricing(
 // bracket (e.g. 20% at 1000+ units for "Бігунки"), silently contradicting
 // what the invoice was actually about to charge. Mirrors
 // computeItemPricingForProduct's own category lookup, but only needs the
-// resulting percentage. An order whose active items span several
-// categories with different bulk discounts is a real limitation here —
-// one field can't show two numbers — so this just returns the first
-// qualifying one found; same simplification the popup's single flat
-// field already had to make.
+// resulting percentage.
+//
+// IMPORTANT: this number isn't just displayed — app/api/orders/[id]/process's
+// non-forced recompute passes it straight through to
+// computeItemPricingForProduct() as `clientDiscountPercent` for EVERY active
+// item. computeItemPricingForProduct only actually uses that parameter for
+// items that DON'T reach their own category's threshold (an item that does
+// ignores it entirely and uses its category's own discount instead) — so
+// returning one item's category rate here is only safe when every other
+// active item either shares that exact same category+discount or would get
+// the plain client discount anyway. A genuinely mixed order (this function's
+// old version returned the FIRST qualifying category found, no matter how
+// many other items didn't qualify for anything) silently overcharged/
+// undercharged everything else the moment "Опрацювати"/"Змінити і
+// надіслати повторно" ran on it — confirmed live on order 21035: one item
+// (s8448) reached its category's 10%-at-100 threshold, the other four
+// didn't, and the field's borrowed "10%" got auto-applied to those four too
+// on processing (correct price should've stayed each item's real 5% client
+// discount — see git history for the fix and the exact numbers).
 export async function resolveEffectiveDiscountForOrder(orderId: number): Promise<number> {
   const { data: order } = await supabaseServer
     .from("orders").select("login, discount_percent").eq("id", orderId).maybeSingle();
@@ -180,13 +194,33 @@ export async function resolveEffectiveDiscountForOrder(orderId: number): Promise
 
   const { data: items } = await supabaseServer
     .from("orders_item").select("product, quantity").eq("oid", orderId).eq("active", true);
-  for (const item of items ?? []) {
-    const { data: product } = await supabaseServer.from("products").select("pid").eq("id", item.product).maybeSingle();
-    if (!product) continue;
-    const { data: category } = await supabaseServer
-      .from("categories").select("discount, ndiscount").eq("translation_id", product.pid).eq("lang", "uk")
-      .gt("discount", 0).gt("ndiscount", 0).maybeSingle();
-    if (category && item.quantity >= category.ndiscount) return category.discount;
+  if (!items?.length) return clientDefault;
+
+  const productIds = [...new Set(items.map((i) => i.product))];
+  const { data: products } = await supabaseServer.from("products").select("id, pid").in("id", productIds);
+  const pidByProduct = new Map((products ?? []).map((p) => [p.id, p.pid as number]));
+
+  const categoryTrIds = [...new Set([...pidByProduct.values()])];
+  const { data: categories } = categoryTrIds.length
+    ? await supabaseServer
+        .from("categories").select("translation_id, discount, ndiscount").in("translation_id", categoryTrIds)
+        .eq("lang", "uk").gt("discount", 0).gt("ndiscount", 0)
+    : { data: [] };
+  const categoryByTrId = new Map((categories ?? []).map((c) => [c.translation_id, c]));
+
+  // Only worth showing/using a category's bulk discount as THE order-wide
+  // value when literally every active item qualifies for that exact same
+  // category discount — anything else falls back to the plain client
+  // default, which computeItemPricingForProduct's own per-item category
+  // check will still correctly override for whichever item actually
+  // qualifies, regardless of what's returned here.
+  let uniform: number | null = null;
+  for (const item of items) {
+    const pid = pidByProduct.get(item.product);
+    const category = pid != null ? categoryByTrId.get(pid) : undefined;
+    if (!category || item.quantity < category.ndiscount) return clientDefault;
+    if (uniform == null) uniform = category.discount;
+    else if (uniform !== category.discount) return clientDefault;
   }
-  return clientDefault;
+  return uniform ?? clientDefault;
 }
