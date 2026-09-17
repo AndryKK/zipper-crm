@@ -7,6 +7,8 @@ import { StatCard } from "@/components/admin/stat-card";
 import { TranslateButton } from "@/components/admin/translate-button";
 import { unstable_cache } from "next/cache";
 import { orderStatusLabel, orderStatusClass, orderRowClass, isNewStatus, ORDER_STATUSES } from "@/lib/order-status";
+import { auth } from "@/lib/auth";
+import { ROLES } from "@/lib/roles";
 
 // This is the CRM's most-visited page — force-dynamic meant every single
 // visit re-ran all these queries from scratch, including a full fetch of
@@ -151,7 +153,169 @@ async function getStatusData() {
   return ORDER_STATUSES.map((name) => ({ name, value: statusMap[name] ?? 0 }));
 }
 
+// "Останні замовлення" card — shared by the full dashboard and the
+// Адміністратор складу's reduced one below, so the two never drift apart.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function RecentOrdersCard({ recentOrders }: { recentOrders: any[] }) {
+  return (
+    <div className="crm-card" style={{ marginTop: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 20px 12px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+            Останні замовлення
+          </h2>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
+            10 найновіших
+          </p>
+        </div>
+        <a href="/orders" className="btn-ghost" style={{ fontSize: 12 }}>
+          Всі замовлення →
+        </a>
+      </div>
+
+      {/* ── Mobile cards (< md) — left color stripe matches the
+          status, same colors as the desktop badge below.
+          display:flex lives on the inner div, not here — an inline
+          style="display:..." on the same element as md:hidden always
+          wins over that class's @media rule (learned this the first
+          time on the orders-detail items table). ──────── */}
+      <div className="md:hidden">
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+        {recentOrders.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "36px 0", color: "var(--text-muted)", fontSize: 13 }}>
+            Замовлень ще немає
+          </div>
+        ) : (
+          recentOrders.map((order: any) => {
+            const total = (order.items || []).reduce(
+              (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
+              0
+            );
+            return (
+              <a
+                key={order.id}
+                href={`/orders/${order.id}`}
+                // crm-card sets the default background (same class
+                // the real /orders list's own mobile cards use); the
+                // order-row--* class (same one that page's table rows
+                // use) overrides it when this status is one of the
+                // three that get a tint there — no separate color
+                // scheme invented just for cards.
+                className={`crm-card ${orderRowClass(order.status)}`}
+                style={{
+                  display: "block", padding: "12px 14px", borderRadius: 10,
+                  border: "1px solid var(--border)", textDecoration: "none", color: "inherit",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                  <span className="font-mono" style={{ color: "var(--accent)", fontWeight: 600, fontSize: 12.5 }}>
+                    #{order.id}
+                  </span>
+                  <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
+                </div>
+                <div style={{ fontWeight: 500, fontSize: 13.5 }}>{order.person ?? order.login ?? "—"}</div>
+                {order.phone && (
+                  <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>{order.phone}</div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(order.date)}</span>
+                  <span style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</span>
+                </div>
+              </a>
+            );
+          })
+        )}
+      </div>
+      </div>
+
+      {/* ── Desktop table (>= md) ─────────────────────────────────── */}
+      <div className="hidden md:block" style={{ overflowX: "auto" }}>
+        <table className="crm-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Клієнт</th>
+              <th>Телефон</th>
+              <th>Сума</th>
+              <th>Дата</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recentOrders.map((order: any) => {
+              const total = (order.items || []).reduce(
+                (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
+                0
+              );
+              return (
+                // Same order-row--* class the real /orders table uses
+                // (per this page's own .crm-table CSS, it targets
+                // `tr.order-row--*`) — so a row here is tinted exactly
+                // like the matching row there, not just similarly.
+                <tr key={order.id} className={orderRowClass(order.status)}>
+                  <td>
+                    <a
+                      href={`/orders/${order.id}`}
+                      style={{ fontFamily: "monospace", color: "var(--accent)", fontWeight: 600, fontSize: 12.5 }}
+                    >
+                      #{order.id}
+                    </a>
+                  </td>
+                  <td style={{ fontWeight: 500 }}>{order.person ?? order.login ?? "—"}</td>
+                  <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
+                  <td style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</td>
+                  <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>{formatDate(order.date)}</td>
+                  <td>
+                    <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
+                  </td>
+                </tr>
+              );
+            })}
+            {recentOrders.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)" }}>
+                  Замовлень ще немає
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
+  const session = await auth();
+  // Адміністратор складу only ever sees the two order-related widgets
+  // below — the KPI row (catalog/client counts, revenue, article count) is
+  // store-wide business data this role has no reason to see, and skipping
+  // getStats() entirely for them also saves the 30-day orders_item fetch
+  // it does purely to compute the revenue card (see CLAUDE.md's egress
+  // hygiene rule — no point paying for a query whose result never renders).
+  const isWarehouseAdmin = (session?.user as { role?: string } | undefined)?.role === ROLES.WAREHOUSE_ADMIN;
+
+  if (isWarehouseAdmin) {
+    const [recentOrders, statusData] = await Promise.all([getRecentOrders(), getStatusData()]);
+    return (
+      <>
+        <Header title="Дашборд" subtitle="Останні замовлення та статистика" actions={<TranslateButton />} />
+        <div className="page-content p-4 md:p-6" style={{ flex: 1 }}>
+          <DashboardCharts statusData={statusData} />
+          <RecentOrdersCard recentOrders={recentOrders} />
+        </div>
+      </>
+    );
+  }
+
   const [
     { productsCount, ordersCount, usersCount, articlesCount, newOrders, totalRevenue, warehouses, warehousesCount },
     recentOrders,
@@ -236,138 +400,7 @@ export default async function DashboardPage() {
         <DashboardCharts statusData={statusData} />
 
         {/* Recent orders table */}
-        <div className="crm-card" style={{ marginTop: 20 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "16px 20px 12px",
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-                Останні замовлення
-              </h2>
-              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
-                10 найновіших
-              </p>
-            </div>
-            <a href="/orders" className="btn-ghost" style={{ fontSize: 12 }}>
-              Всі замовлення →
-            </a>
-          </div>
-
-          {/* ── Mobile cards (< md) — left color stripe matches the
-              status, same colors as the desktop badge below.
-              display:flex lives on the inner div, not here — an inline
-              style="display:..." on the same element as md:hidden always
-              wins over that class's @media rule (learned this the first
-              time on the orders-detail items table). ──────── */}
-          <div className="md:hidden">
-          <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-            {recentOrders.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "36px 0", color: "var(--text-muted)", fontSize: 13 }}>
-                Замовлень ще немає
-              </div>
-            ) : (
-              recentOrders.map((order: any) => {
-                const total = (order.items || []).reduce(
-                  (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
-                  0
-                );
-                return (
-                  <a
-                    key={order.id}
-                    href={`/orders/${order.id}`}
-                    // crm-card sets the default background (same class
-                    // the real /orders list's own mobile cards use); the
-                    // order-row--* class (same one that page's table rows
-                    // use) overrides it when this status is one of the
-                    // three that get a tint there — no separate color
-                    // scheme invented just for cards.
-                    className={`crm-card ${orderRowClass(order.status)}`}
-                    style={{
-                      display: "block", padding: "12px 14px", borderRadius: 10,
-                      border: "1px solid var(--border)", textDecoration: "none", color: "inherit",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                      <span className="font-mono" style={{ color: "var(--accent)", fontWeight: 600, fontSize: 12.5 }}>
-                        #{order.id}
-                      </span>
-                      <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
-                    </div>
-                    <div style={{ fontWeight: 500, fontSize: 13.5 }}>{order.person ?? order.login ?? "—"}</div>
-                    {order.phone && (
-                      <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>{order.phone}</div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(order.date)}</span>
-                      <span style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</span>
-                    </div>
-                  </a>
-                );
-              })
-            )}
-          </div>
-          </div>
-
-          {/* ── Desktop table (>= md) ─────────────────────────────────── */}
-          <div className="hidden md:block" style={{ overflowX: "auto" }}>
-            <table className="crm-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Клієнт</th>
-                  <th>Телефон</th>
-                  <th>Сума</th>
-                  <th>Дата</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order: any) => {
-                  const total = (order.items || []).reduce(
-                    (s: number, i: any) => s + Number(i.price) * Number(i.quantity),
-                    0
-                  );
-                  return (
-                    // Same order-row--* class the real /orders table uses
-                    // (per this page's own .crm-table CSS, it targets
-                    // `tr.order-row--*`) — so a row here is tinted exactly
-                    // like the matching row there, not just similarly.
-                    <tr key={order.id} className={orderRowClass(order.status)}>
-                      <td>
-                        <a
-                          href={`/orders/${order.id}`}
-                          style={{ fontFamily: "monospace", color: "var(--accent)", fontWeight: 600, fontSize: 12.5 }}
-                        >
-                          #{order.id}
-                        </a>
-                      </td>
-                      <td style={{ fontWeight: 500 }}>{order.person ?? order.login ?? "—"}</td>
-                      <td style={{ color: "var(--text-muted)" }}>{order.phone ?? "—"}</td>
-                      <td style={{ fontWeight: 700 }}>{total.toFixed(2)} ₴</td>
-                      <td style={{ color: "var(--text-muted)", fontSize: 12.5 }}>{formatDate(order.date)}</td>
-                      <td>
-                        <span className={orderStatusClass(order.status)}>{orderStatusLabel(order.status)}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {recentOrders.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)" }}>
-                      Замовлень ще немає
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RecentOrdersCard recentOrders={recentOrders} />
       </div>
     </>
   );

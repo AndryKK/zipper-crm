@@ -25,7 +25,14 @@ export const ROLE_LABELS: Record<Role, string> = {
 // (the dashboard), which every logged-in role can always see regardless of
 // role — see isPathAllowed below.
 const ROLE_ALLOWED_PREFIXES: Record<string, string[]> = {
-  [ROLES.WAREHOUSE_ADMIN]: ["/orders", "/api/orders", "/returns", "/api/returns", "/products", "/api/products"],
+  // Also gets /warehouses and /inventory (Склади/Залишки/Під мінімумом —
+  // the latter two share the /inventory prefix) same as INVENTORY_ADMIN
+  // below, plus /api/factories for the same reason INVENTORY_ADMIN needs
+  // it: the inventory table's factory-assignment dropdown.
+  [ROLES.WAREHOUSE_ADMIN]: [
+    "/orders", "/api/orders", "/returns", "/api/returns", "/products", "/api/products",
+    "/warehouses", "/api/warehouses", "/inventory", "/api/inventory", "/api/factories",
+  ],
   // /api/factories (not /factories — there's no standalone page, it's a
   // section on /settings which stays superadmin-only) is here so the
   // inventory table can load the options list to assign a product's
