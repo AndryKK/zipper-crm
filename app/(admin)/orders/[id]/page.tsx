@@ -163,11 +163,6 @@ export default function OrderDetailPage() {
   // ever skips the warning, never the "don't email the fake address" rule.
   const [showGuestCheckoutWarning, setShowGuestCheckoutWarning] = useState(false);
   const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
-  // Decides which Nova Poshta sender warehouse a later TTN creation step
-  // uses (see lib/order-ttn.ts) — asked here because this is the one place
-  // a manager already looks the physical items over before anything else
-  // happens to the order.
-  const [isOversized, setIsOversized] = useState(false);
   // Forces which supplier (settings "Постачальник 1"/"Постачальник 2") the
   // invoice/waybill for this order is generated from, overriding the
   // automatic amount-vs-threshold pick — "auto" leaves that pick alone.
@@ -534,7 +529,6 @@ export default function OrderDetailPage() {
 
   function openStockConfirm() {
     setStockChecks({});
-    setIsOversized(false);
     setSupplierOverride("auto");
     // Instant value so the popup never opens blank — refreshDiscountPreview
     // (below) immediately supersedes this with the real category-aware
@@ -583,10 +577,10 @@ export default function OrderDetailPage() {
     if (altPayerOn && !altPayer.name.trim()) { toast.error("Вкажіть щонайменше назву іншого платника"); return; }
     setShowStockConfirm(false);
     const discountPercent = parseFloat(discountInput);
-    await autoProcess(isOversized, supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined, discountTouched);
+    await autoProcess(supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined, discountTouched);
   }
 
-  async function autoProcess(oversized?: boolean, supplier?: "auto" | "1" | "2", discountPercent?: number, forceDiscountPercent?: boolean) {
+  async function autoProcess(supplier?: "auto" | "1" | "2", discountPercent?: number, forceDiscountPercent?: boolean) {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
@@ -595,7 +589,6 @@ export default function OrderDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          isOversized: oversized,
           supplierOverride: supplier === "1" ? 1 : supplier === "2" ? 2 : null,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
@@ -752,7 +745,7 @@ export default function OrderDetailPage() {
     finally { setStockChecking(false); }
   }
 
-  async function generateTtnManually(opts: { weight?: number; forceMainSenderWarehouse?: boolean } = {}) {
+  async function generateTtnManually(opts: { weight?: number } = {}) {
     setGeneratingTtn(true);
     setTtnGenError("");
     try {
@@ -770,7 +763,6 @@ export default function OrderDetailPage() {
         nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
       };
       if (opts.weight) body.weight = opts.weight;
-      if (opts.forceMainSenderWarehouse) body.forceMainSenderWarehouse = true;
       const res = await fetch(`/api/orders/${params.id}/ttn/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1809,25 +1801,6 @@ export default function OrderDetailPage() {
                                 Змінити вагу і перегенерувати
                               </Button>
                             </div>
-                            {/* Alternative to changing weight — bypasses is_oversized
-                                and always sends through the main sender branch
-                                (Відділення №100). Only shown when it would actually
-                                change anything: an order not marked oversized already
-                                goes through №100. finishTtnCreation records a note on
-                                the order (see createOrderTtn's own comment) whenever
-                                this override is what actually got used, so it's clear
-                                later why a "габаритний" order shipped from the regular
-                                branch instead of the oversized one. */}
-                            {order.is_oversized && (
-                              <Button
-                                size="sm" variant="outline"
-                                disabled={generatingTtn}
-                                onClick={() => generateTtnManually({ forceMainSenderWarehouse: true })}
-                                style={{ alignSelf: "flex-start" }}
-                              >
-                                Відправити з Відділення №100 (замість габаритного)
-                              </Button>
-                            )}
                             {/* ТТН не вдалось створити автоматично — лист-подяка з
                                 номером ТТН теж не пішов (див. confirm-payment/route.ts).
                                 Поки клієнт не отримав жодного листа, дозволяємо
@@ -2159,26 +2132,6 @@ export default function OrderDetailPage() {
                 )}
               </div>
             )}
-            <label
-              style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-                borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
-                background: isOversized ? "rgba(245,158,11,0.08)" : "transparent",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isOversized}
-                onChange={(e) => setIsOversized(e.target.checked)}
-                style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }}
-              />
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Товари габаритні</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                  ТТН буде сформовано з відділення для габаритних відправлень (№18) замість основного (№100)
-                </div>
-              </div>
-            </label>
             <div className="space-y-1.5">
               <Label style={{ fontSize: 13, fontWeight: 500 }}>Знижка клієнта, %</Label>
               <Input

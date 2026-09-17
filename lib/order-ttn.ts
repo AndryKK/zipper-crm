@@ -128,15 +128,6 @@ export type CreateTtnOptions = {
   // checkbox override, same relationship to orders.np_noncash_payment that
   // isOrganization/edrpou above have to is_organization/edrpou.
   nonCashPayment?: boolean;
-  // Skips the order's own is_oversized flag for sender-warehouse selection
-  // and always uses np_sender_warehouse_ref (Відділення №100) — an escape
-  // hatch for the quick TTN-retry UI when the normally-selected sender
-  // branch itself is what's rejecting the shipment (e.g. a small branch's
-  // "max allowed volumeweight" cap, or — found live 2026-09 — the
-  // configured np_sender_warehouse_ref_oversized pointing at a Ref Nova
-  // Poshta no longer recognizes at all). A no-op when the order wasn't
-  // routing through the oversized branch to begin with.
-  forceMainSenderWarehouse?: boolean;
 };
 
 export type CreateTtnResult =
@@ -151,10 +142,10 @@ export type CreateTtnResult =
 // one place.
 async function finishTtnCreation(
   orderId: number,
-  order: { person: string | null; login: string | null; phone: string | null; is_oversized?: boolean; is_organization?: boolean | null; edrpou?: string | null; np_noncash_payment?: boolean | null; notes?: string | null },
+  order: { person: string | null; login: string | null; phone: string | null; is_organization?: boolean | null; edrpou?: string | null; np_noncash_payment?: boolean | null; notes?: string | null; np_diagnostics?: string | null },
   orderTotal: number,
   recipient: { cityRef: string; warehouseRef: string; isPostomat: boolean },
-  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone" | "nonCashPayment" | "forceMainSenderWarehouse">
+  opts: Pick<CreateTtnOptions, "codAmount" | "seat" | "isOrganization" | "edrpou" | "orgContactName" | "orgContactPhone" | "nonCashPayment">
 ): Promise<CreateTtnResult> {
   // Manual dialog's checkbox/field wins if a manager set it; every
   // automatic path (confirm-payment/cod/generate) leaves opts.isOrganization
@@ -179,17 +170,12 @@ async function finishTtnCreation(
   const npSenderRef        = getSetting(settings, "np_sender_ref");
   const npSenderContactRef = getSetting(settings, "np_sender_contact_ref");
   const npSenderCityRef    = getSetting(settings, "np_sender_city_ref");
-  // Товари, позначені як габаритні на попапі підтвердження наявності
-  // (orders.is_oversized), відправляються з окремого відділення (Відділення
-  // №18 — витримує великі/важкі посилки), решта — з основного (Відділення
-  // №100). Якщо оверсайз-реф не налаштовано, тихо падаємо назад на основний,
-  // а не вимагаємо його для КОЖНОГО замовлення. forceMainSenderWarehouse
-  // (see CreateTtnOptions' own comment) skips this entirely and always
-  // uses the main ref.
-  const routedThroughOversized = !opts.forceMainSenderWarehouse && !!order.is_oversized;
-  const npSenderWhRef =
-    (routedThroughOversized && getSetting(settings, "np_sender_warehouse_ref_oversized")) ||
-    getSetting(settings, "np_sender_warehouse_ref");
+  // A single sender branch (Відділення №18) for every shipment now — see
+  // scripts/set-np-sender-warehouse-18.mjs. This used to route "габаритні"
+  // orders through a second, separately-configured branch
+  // (np_sender_warehouse_ref_oversized); that distinction, orders.is_oversized,
+  // and the forceMainSenderWarehouse escape hatch are gone.
+  const npSenderWhRef      = getSetting(settings, "np_sender_warehouse_ref");
   const npSenderPhone      = getSetting(settings, "np_sender_phone");
 
   const missing = [
@@ -243,26 +229,27 @@ async function finishTtnCreation(
     // the ЄДРПОУ — saved so it's still visible on the order after this
     // request, not just in this one response (see np_org_details in
     // orders/[id]/page.tsx).
-    // Only worth recording when the override actually changed which
-    // branch got used — forcing it on an order that wasn't marked
-    // is_oversized to begin with would already have gone through the main
-    // branch anyway, so a note here would be noise, not information.
-    const forcedMainOverOversized = !!opts.forceMainSenderWarehouse && !!order.is_oversized;
-    const noteLines = [
-      forcedMainOverOversized
-        ? `[Автоматично ${new Date().toLocaleDateString("uk-UA")}]: ТТН сформовано через Відділення №100 (примусово, а не через відділення для габаритних товарів)`
-        : null,
-      // See npCreateTtn's own comment — NP can silently downgrade
-      // PaymentMethod:"NonCash" (no безготівковий договір on file for this
-      // ЄДРПОУ) or otherwise adjust the request; recorded here so it's
-      // visible on the order afterward, not just in this one response.
-      result.warnings?.length ? `[Нова Пошта ${new Date().toLocaleDateString("uk-UA")}]: ${result.warnings.join("; ")}` : null,
-    ].filter((l): l is string => !!l);
+    //
+    // NP's own warnings/info (see npCreateTtn's own comment — e.g. it can
+    // silently downgrade PaymentMethod:"NonCash" back to Cash when the
+    // ЄДРПОУ has no безготівковий договір on file) go to np_diagnostics
+    // (scripts/add-orders-np-diagnostics-column.sql), NOT orders.notes —
+    // notes is read back into the invoice/waybill "Примітка" line and the
+    // order-confirmation email (see lib/order-documents.ts), so raw NP
+    // API text doesn't belong there; np_diagnostics is never read by any
+    // UI, purely an internal record for whoever needs to dig into why a
+    // specific TTN came out different from what was requested. The manager
+    // still sees these warnings immediately via the toast at the call site
+    // (order page's generateTtnManually/submitNpManual) — this is only
+    // about the *persisted* copy.
+    const diagLine = result.warnings?.length
+      ? `[Нова Пошта ${new Date().toLocaleDateString("uk-UA")}]: ${result.warnings.join("; ")}`
+      : null;
     await supabaseServer.from("orders").update({
       ttn: result.ttn,
       ttn_auto_created: true,
       ...(result.organizationDetails ? { np_org_details: result.organizationDetails } : {}),
-      ...(noteLines.length ? { notes: [order.notes, ...noteLines].filter(Boolean).join("\n") } : {}),
+      ...(diagLine ? { np_diagnostics: [order.np_diagnostics, diagLine].filter(Boolean).join("\n") } : {}),
     }).eq("id", orderId);
     return { ok: true, ttn: result.ttn, demo: false, organizationDetails: result.organizationDetails, npWarnings: result.warnings };
   } catch (e) {

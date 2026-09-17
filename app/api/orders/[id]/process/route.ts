@@ -25,14 +25,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { data: order } = await supabaseServer.from("orders").select("*").eq("id", orderId).single();
   if (!order) return NextResponse.json({ error: "Замовлення не знайдено" }, { status: 404 });
 
-  // Set from the stock-confirmation popup ("Товари габаритні?") — decides
-  // which Nova Poshta sender warehouse a later TTN-creation step uses (see
-  // finishTtnCreation in lib/order-ttn.ts). Only written when explicitly
-  // passed so a bare/legacy call to this route never silently resets it.
-  if (typeof body.isOversized === "boolean") {
-    await supabaseServer.from("orders").update({ is_oversized: body.isOversized }).eq("id", orderId);
-  }
-
   // Organization/ЄДРПОУ — set/edited from the stock-confirmation popup or
   // the "змінити і надіслати повторно" discount box (see orgCheckbox in
   // orders/[id]/page.tsx). Read straight off this order row by every later

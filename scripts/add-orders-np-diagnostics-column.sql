@@ -1,0 +1,15 @@
+-- Nova Poshta's own warnings/info from TTN creation (e.g. it silently
+-- downgrading PaymentMethod:"NonCash" back to Cash when the ЄДРПОУ has no
+-- active безготівковий договір on file) used to get appended to
+-- orders.notes — but notes is read back into customer-facing documents
+-- (the invoice/waybill "Примітка" line and the order-confirmation email,
+-- see lib/order-documents.ts), so raw NP API text doesn't belong there.
+--
+-- np_diagnostics is a separate, append-only log for exactly this kind of
+-- internal diagnostic text (see lib/order-ttn.ts's finishTtnCreation) —
+-- deliberately never read by any UI or document; the manager still sees
+-- these warnings immediately via a toast at TTN-creation time
+-- (orders/[id]/page.tsx's generateTtnManually/submitNpManual), this column
+-- only exists so the same information survives afterward for anyone who
+-- needs to dig into why a specific TTN came out different from requested.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS np_diagnostics TEXT;

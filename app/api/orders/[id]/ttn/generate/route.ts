@@ -18,12 +18,6 @@ import { createOrderTtn, estimateDimensionsCm } from "@/lib/order-ttn";
 // automatic estimate already does (createOrderTtn's own seat fallback),
 // not left at whatever the too-large original guess was.
 //
-// Optional body.forceMainSenderWarehouse: true skips the order's own
-// is_oversized flag and always sends through np_sender_warehouse_ref
-// (Відділення №100) — for when the branch that's actually rejecting the
-// shipment is the *oversized* sender branch itself (its own volumeweight
-// cap, or a stale/unrecognized Ref — see createOrderTtn's own comment).
-//
 // Optional body.isOrganization/edrpou/nonCashPayment: normally this route
 // leans entirely on finishTtnCreation's own fallback to the order's stored
 // is_organization/edrpou/np_noncash_payment (see lib/order-ttn.ts) — a bare
@@ -44,7 +38,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({}));
   const weight = typeof body.weight === "number" && Number.isFinite(body.weight) && body.weight > 0 ? body.weight : undefined;
   const seat = weight != null ? { weight, ...estimateDimensionsCm(weight) } : undefined;
-  const forceMainSenderWarehouse = body.forceMainSenderWarehouse === true;
 
   let isOrganization: boolean | undefined;
   let edrpou: string | undefined;
@@ -64,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const result = await createOrderTtn(orderId, {
-    skipPostomat: true, seat, forceMainSenderWarehouse,
+    skipPostomat: true, seat,
     isOrganization, edrpou, nonCashPayment,
   });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
