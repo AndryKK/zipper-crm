@@ -159,7 +159,16 @@ function MetricToggle({ metric, onChange }: { metric: "revenue" | "orders"; onCh
   );
 }
 
-export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
+// showRevenue=false (Адміністратор складу's reduced dashboard — see
+// app/(admin)/page.tsx) skips the "Виручка та замовлення"/"Замовлення по
+// днях" cards entirely, not just visually: both are driven by the same
+// /api/dashboard/chart fetch below, and that path isn't in this role's
+// allowed prefixes (lib/roles.ts) — proxy.ts blocks it, so without this
+// flag the two cards would sit there empty/stuck on "Завантаження..."
+// forever instead of not existing. Only "Статуси замовлень" (the pie
+// chart) stays — it's built entirely from the statusData prop, no fetch
+// of its own.
+export function DashboardCharts({ statusData, showRevenue = true }: { statusData: StatusData[]; showRevenue?: boolean }) {
   const router = useRouter();
   // /orders' own STATUS_FILTER_CLAUSES (app/api/orders/route.ts) matches
   // this chart's exact grouping (STATUS_DISPLAY in app/(admin)/page.tsx),
@@ -187,7 +196,103 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
     }
   }, []);
 
-  useEffect(() => { load(period); }, [period, load]);
+  useEffect(() => {
+    if (!showRevenue) return;
+    load(period);
+  }, [period, load, showRevenue]);
+
+  // Pie chart — order statuses. Extracted so it can render alone
+  // (showRevenue=false) or as one of the three grid cells below — built
+  // entirely from the statusData prop, no fetch of its own.
+  const statusCard = (
+    <div className="crm-card animate-fade-in p-4 md:p-5">
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+          Статуси замовлень
+        </h3>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
+          Розподіл за останні 10 днів
+        </p>
+      </div>
+      {/* statusData always has all six statuses now (some can be 0) so
+          the list always shows every status — but the pie/legend pair
+          as a whole should still fall back to "Немає даних" when every
+          one of them is 0, not render an empty ring. */}
+      {statusData.some((s) => s.value > 0) ? (
+        <>
+          <ResponsiveContainer width="100%" height={160}>
+            <PieChart>
+              <Pie
+                // Only non-zero slices in the ring itself — a 0-value
+                // entry would still claim a sliver of paddingAngle,
+                // drawing a stray gap for a status that has nothing to
+                // show. The legend below lists all six regardless.
+                data={statusData.filter((s) => s.value > 0)}
+                cx="50%"
+                cy="50%"
+                innerRadius={42}
+                outerRadius={72}
+                paddingAngle={3}
+                dataKey="value"
+                onClick={(entry) => goToStatus((entry as unknown as StatusData).name)}
+                style={{ cursor: "pointer" }}
+              >
+                {statusData.filter((s) => s.value > 0).map((s, i) => (
+                  <Cell key={i} fill={STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR} />
+                ))}
+              </Pie>
+              <Tooltip content={customTooltip} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 8 }}>
+            {statusData.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => goToStatus(s.name)}
+                title={`Переглянути замовлення зі статусом «${s.name}»`}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+                  background: "none", border: "none", padding: "2px 0", width: "100%",
+                  cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit",
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ flex: 1, color: "var(--text-muted)", truncate: true } as any}>
+                  {s.name}
+                </span>
+                <span style={{ fontWeight: 700, color: "var(--text)" }}>{s.value}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div
+          style={{
+            height: 200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted)",
+            fontSize: 13,
+          }}
+        >
+          Немає даних
+        </div>
+      )}
+    </div>
+  );
+
+  if (!showRevenue) {
+    return <div className="grid grid-cols-1 gap-3 md:gap-4">{statusCard}</div>;
+  }
 
   return (
     // Single column and stacked on phone, back to the 2/3 + 1/3 layout
@@ -281,90 +386,7 @@ export function DashboardCharts({ statusData }: { statusData: StatusData[] }) {
         </div>
       </div>
 
-      {/* Pie chart — order statuses */}
-      <div className="crm-card animate-fade-in p-4 md:p-5">
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-            Статуси замовлень
-          </h3>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
-            Розподіл за останні 10 днів
-          </p>
-        </div>
-        {/* statusData always has all six statuses now (some can be 0) so
-            the list always shows every status — but the pie/legend pair
-            as a whole should still fall back to "Немає даних" when every
-            one of them is 0, not render an empty ring. */}
-        {statusData.some((s) => s.value > 0) ? (
-          <>
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie
-                  // Only non-zero slices in the ring itself — a 0-value
-                  // entry would still claim a sliver of paddingAngle,
-                  // drawing a stray gap for a status that has nothing to
-                  // show. The legend below lists all six regardless.
-                  data={statusData.filter((s) => s.value > 0)}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={42}
-                  outerRadius={72}
-                  paddingAngle={3}
-                  dataKey="value"
-                  onClick={(entry) => goToStatus((entry as unknown as StatusData).name)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {statusData.filter((s) => s.value > 0).map((s, i) => (
-                    <Cell key={i} fill={STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR} />
-                  ))}
-                </Pie>
-                <Tooltip content={customTooltip} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 8 }}>
-              {statusData.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => goToStatus(s.name)}
-                  title={`Переглянути замовлення зі статусом «${s.name}»`}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8, fontSize: 12,
-                    background: "none", border: "none", padding: "2px 0", width: "100%",
-                    cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: STATUS_PIE_COLORS[s.name] ?? FALLBACK_PIE_COLOR,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ flex: 1, color: "var(--text-muted)", truncate: true } as any}>
-                    {s.name}
-                  </span>
-                  <span style={{ fontWeight: 700, color: "var(--text)" }}>{s.value}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div
-            style={{
-              height: 200,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--text-muted)",
-              fontSize: 13,
-            }}
-          >
-            Немає даних
-          </div>
-        )}
-      </div>
+      {statusCard}
 
       {/* Bar chart — orders per bucket (all sites combined) */}
       <div className="crm-card animate-fade-in p-4 md:p-5 lg:col-span-3">

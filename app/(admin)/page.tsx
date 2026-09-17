@@ -309,7 +309,7 @@ export default async function DashboardPage() {
       <>
         <Header title="Дашборд" subtitle="Останні замовлення та статистика" actions={<TranslateButton />} />
         <div className="page-content p-4 md:p-6" style={{ flex: 1 }}>
-          <DashboardCharts statusData={statusData} />
+          <DashboardCharts statusData={statusData} showRevenue={false} />
           <RecentOrdersCard recentOrders={recentOrders} />
         </div>
       </>
