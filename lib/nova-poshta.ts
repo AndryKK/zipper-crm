@@ -279,12 +279,54 @@ export function translateNpError(raw: string): string {
       : "Зменшіть вагу/розміри посилки або оберіть інше відділення отримувача (кнопка «Вручну» дозволяє це) і сформуйте ТТН ще раз.";
     return `Відділення ${side} не приймає посилки з об'ємною вагою більше ${volW[2]} кг. ${suggestion}`;
   }
+  // "FirstName has invalid characters" (or LastName/MiddleName) with no
+  // other detail — Nova Poshta itself doesn't say which character. Usually
+  // this IS a mixed-script name (see findMixedScriptWord below) that
+  // npCreateTtn already checks for and rejects before ever reaching NP, but
+  // if that miss for some other reason (a digit, an emoji, punctuation NP
+  // doesn't accept) this at least explains what the bare English means.
+  if (/(First|Last|Middle)Name has invalid characters/i.test(raw)) {
+    return `Нова Пошта відхилила ім'я одержувача — недійсні символи (${raw}). Часта причина: у прізвищі/імені/по батькові випадково змішані кириличні та латинські літери, які виглядають однаково (наприклад латинська "i" замість української "і") — уважно передрукуйте ім'я і спробуйте ще раз.`;
+  }
   return raw;
+}
+
+// A word that mixes Cyrillic and Latin letters is essentially always a
+// typo, not an intentional bilingual name — most commonly a Latin i/a/e/o/
+// p/c/x/y typed (or pasted from somewhere that silently substituted one)
+// where a visually-identical Cyrillic letter belongs, e.g. "Геннадiй"
+// (Latin "i", U+0069) instead of "Геннадій" (Cyrillic "і", U+0456). Nova
+// Poshta's Counterparty/save rejects exactly this with a useless bare
+// "FirstName has invalid characters" — this catches it BEFORE that call
+// (see npCreateTtn below) and names the exact word/letters at fault, so a
+// manager fixes the real typo instead of guessing why an all-Ukrainian-
+// looking name "has invalid characters". Confirmed live: order 21102's
+// "Геннадiй" had exactly one stray Latin "i".
+function findMixedScriptWord(name: string): { word: string; latinChars: string[] } | null {
+  for (const word of name.trim().split(/\s+/)) {
+    const latinChars = [...new Set(word.match(/[A-Za-z]/g) ?? [])];
+    const hasCyrillic = /[Ѐ-ӿ]/.test(word);
+    if (latinChars.length && hasCyrillic) return { word, latinChars };
+  }
+  return null;
+}
+
+function mixedScriptError(name: string, label: string): string | null {
+  const found = findMixedScriptWord(name);
+  if (!found) return null;
+  return `${label} «${found.word}» містить латинську літеру «${found.latinChars.join("», «")}» замість кириличної — Нова Пошта відхилить це як недійсні символи (виглядає однаково, але це інша літера). Виправте написання і спробуйте ще раз.`;
 }
 
 export async function npCreateTtn(
   p: NpTtnParams
 ): Promise<{ ttn: string; organizationDetails?: Record<string, unknown>; warnings?: string[] } | { error: string }> {
+  const mixedRecipient = mixedScriptError(p.recipientName, "Ім'я одержувача");
+  if (mixedRecipient) return { error: mixedRecipient };
+  if (p.orgContactName) {
+    const mixedContact = mixedScriptError(p.orgContactName, "Ім'я контактної особи");
+    if (mixedContact) return { error: mixedContact };
+  }
+
   const date = kyivDateString();
   const nameParts = p.recipientName.trim().split(/\s+/);
   const recipientPhoneDigits = p.recipientPhone.replace(/\D/g, "");
