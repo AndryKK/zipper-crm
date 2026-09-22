@@ -791,7 +791,11 @@ export default function OrderDetailPage() {
       // PaymentMethod:"NonCash" to Cash when the ЄДРПОУ has no active
       // безготівковий договір with them) — see npCreateTtn's own comment.
       // Surfaced here instead of a manager only finding out in NP's cabinet.
-      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`, { duration: 12000 });
+      // No explicit duration override anymore — every toast in the app
+      // (see app/layout.tsx's <Toaster duration={1000}>) disappears after
+      // 1s now, this one included, per explicit instruction to apply that
+      // uniformly with no exceptions even for longer diagnostic text.
+      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`);
     } catch { setTtnGenError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
     finally { setGeneratingTtn(false); }
   }
@@ -855,7 +859,7 @@ export default function OrderDetailPage() {
       setShowNpManualDialog(false);
       setTtnGenError("");
       toast.success(data.demo ? `ТТН згенеровано (демо): ${data.ttn}` : `ТТН ${data.ttn} створено`);
-      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`, { duration: 12000 });
+      if (data.npWarnings?.length) toast.warning(`Нова Пошта: ${data.npWarnings.join("; ")}`);
     } catch { setNpManualError("Помилка з'єднання"); toast.error("Помилка з'єднання"); }
     finally { setNpManualSubmitting(false); }
   }

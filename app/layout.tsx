@@ -28,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Toaster
             richColors
             position="top-right"
+            duration={1000}
             toastOptions={{
               style: {
                 background: "var(--bg-card)",
