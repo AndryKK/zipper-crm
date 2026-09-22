@@ -81,6 +81,14 @@ export type OrderDocumentItem = {
   name: string;
   img: string | null;
   quantity: number;
+  // The product's real unit of sale (measures_real.title — "штук"/"пачка"/
+  // "пара"/"метри"/"рулони", NOT the "measures" table, which is actually
+  // products.package's availability-status lookup — see this file's own
+  // fetch of it below for that whole story). Every document used to
+  // hardcode "штук" here regardless of what the product actually sells
+  // in; ~13% of live products (measure=4 "пачка" or 5 "пара") were
+  // printing the wrong unit on every invoice/waybill.
+  measureLabel: string;
   price: number;
   priceBase: number;
   sum: number;
@@ -190,7 +198,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
   // product row had if no Ukrainian translation exists).
   const productIds = (items ?? []).map((i: { product: number }) => i.product);
   const { data: products } = productIds.length
-    ? await supabaseServer.from("products").select("id, translation_id, title, pcode, img").in("id", productIds)
+    ? await supabaseServer.from("products").select("id, translation_id, title, pcode, img, measure").in("id", productIds)
     : { data: [] };
 
   const translationIds = [...new Set((products ?? []).map((p: { translation_id: number }) => p.translation_id))];
@@ -201,10 +209,38 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     (ukProducts ?? []).map((p: { translation_id: number; title: string; pcode: string | null }) => [p.translation_id, p])
   );
 
-  const prodMap: Record<number, { title: string; pcode: string | null; img: string | null }> = {};
+  // measures_real (NOT measures — that table is products.package's
+  // availability-status lookup, an entirely different enum that happens to
+  // share the naming pattern) is products.measure's real lookup table:
+  // штук/пачка/пара/метри/рулони. Same join the legacy admin invoice
+  // generator (adm/invoiceRF.php) used — "m.title" there is exactly this
+  // "uk" title. Falls back to "штук" when a product's own measure doesn't
+  // resolve (defensive only — every live product currently has one set).
+  //
+  // products.measure comes back from PostgREST as a STRING ("5"), while
+  // measures_real.translation_id comes back as a proper number (5) — two
+  // Postgres columns with different underlying types (confirmed against
+  // live data) despite both looking like plain ids. Map lookups are
+  // strict-equality, so building/reading this map without normalizing
+  // both sides to Number() silently missed on every single row — every
+  // item rendered as the "штук" fallback regardless of its real measure,
+  // which looked like the fix did nothing at all.
+  const measureIds = [...new Set((products ?? []).map((p: { measure: number | string | null }) => Number(p.measure)).filter((m) => m > 0))];
+  const { data: measureRows } = measureIds.length
+    ? await supabaseServer.from("measures_real").select("translation_id, title").eq("lang", "uk").in("translation_id", measureIds)
+    : { data: [] };
+  const measureTitleById = new Map((measureRows ?? []).map((m: { translation_id: number; title: string }) => [Number(m.translation_id), m.title]));
+
+  const prodMap: Record<number, { title: string; pcode: string | null; img: string | null; measureLabel: string }> = {};
   for (const p of products ?? []) {
     const uk = ukByTranslation.get(p.translation_id);
-    prodMap[p.id] = { title: uk?.title ?? p.title, pcode: uk?.pcode ?? p.pcode, img: p.img ?? null };
+    const measureId = Number(p.measure);
+    prodMap[p.id] = {
+      title: uk?.title ?? p.title,
+      pcode: uk?.pcode ?? p.pcode,
+      img: p.img ?? null,
+      measureLabel: (measureId > 0 && measureTitleById.get(measureId)) || "штук",
+    };
   }
 
   const orderTotal = (items ?? []).reduce(
@@ -249,6 +285,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
         name: prod?.title ?? `Товар #${item.product}`,
         img: prod?.img ?? null,
         quantity: item.quantity,
+        measureLabel: prod?.measureLabel ?? "штук",
         price: item.price,
         priceBase,
         sum: item.price * item.quantity,
@@ -308,13 +345,22 @@ const DOC_STYLE = `
        body box, not on every page in between. */
     .items-table thead { display: table-header-group; }
     .items-table tbody { display: table-row-group; }
-    .items-table tr { page-break-inside: avoid; break-inside: avoid; }
+    /* Both the legacy (page-break-*) and modern Fragmentation (break-*,
+       including the page-specific avoid-page variant) properties — browser
+       print engines and physical printer drivers don't all honor the same
+       one, so setting every variant is what actually holds up on real
+       paper, not just in a browser's own print preview. */
+    .items-table tr {
+      page-break-inside: avoid; break-inside: avoid; break-inside: avoid-page;
+    }
     /* Best-effort nudge (not a hard guarantee — "avoid" is a hint the
        renderer can still override if a page is genuinely full) to keep the
        last item row on the same page as the totals/signature block that
        immediately follows it, so a document doesn't end on an almost-empty
        final page with zero item rows next to the signature. */
-    .items-table tbody tr:last-child { page-break-after: avoid; break-after: avoid; }
+    .items-table tbody tr:last-child {
+      page-break-after: avoid; break-after: avoid; break-after: avoid-page;
+    }
     .items-table th {
       border: 1px solid #000; background: #d9d9d9;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -329,7 +375,10 @@ const DOC_STYLE = `
        across two pages, and can't visually "repeat" on multiple pages
        either, since an atomic break-inside:avoid block only ever renders
        once, wherever it lands. */
-    .doc-summary { page-break-inside: avoid; break-inside: avoid; page-break-before: avoid; break-before: avoid; }
+    .doc-summary {
+      page-break-inside: avoid; break-inside: avoid; break-inside: avoid-page;
+      page-break-before: avoid; break-before: avoid; break-before: avoid-page;
+    }
     .totals { margin-top: 8pt; margin-bottom: 16pt; border-top: 1pt solid #000; padding-top: 6pt; }
     .totals-row { display: flex; justify-content: flex-end; font-size: 11pt; line-height: 1.9; color: #000; }
     .totals-row .lbl { min-width: 148pt; text-align: right; padding-right: 8pt; font-weight: 600; }
@@ -353,10 +402,16 @@ const DOC_STYLE = `
        every physical page. Top raised well past the old 12mm print value
        (the root cause of "breaks items": with margin:0 here, body's own
        top padding only ever rendered on page 1, so page 2+ started flush
-       against the paper edge) and bottom raised further still, giving the
-       last-page-summary block (see .doc-summary above) real room to land
-       next to at least one item instead of alone. */
-    @page { size: A4; margin: 18mm 16mm 20mm; }
+       against the paper edge). Bottom raised further still (20mm -> 35mm)
+       — real printers have their own hardware non-printable margin near
+       the edge that a browser's print preview doesn't show, and a page
+       break landing right at that edge is exactly what can make it look
+       like a row got cut in half on the physical page even though the
+       break-inside:avoid rules above never actually split it — a bigger
+       reserved buffer means the break lands well clear of that zone,
+       giving the last-page-summary block (see .doc-summary above) real
+       room to land next to at least one item instead of alone, too. */
+    @page { size: A4; margin: 18mm 16mm 35mm; }
     @media print { body { padding: 0; max-width: none; } }
 `;
 
@@ -367,7 +422,7 @@ function itemRowsHtml(items: OrderDocumentItem[]): string {
         <td class="c">${item.pcode}</td>
         <td>${item.name}</td>
         <td class="c">${item.quantity}</td>
-        <td class="c">штук</td>
+        <td class="c">${esc(item.measureLabel)}</td>
         <td class="r">${item.price.toFixed(2)}</td>
         <td class="r">${item.sum.toFixed(2)}</td>
       </tr>`).join("");
@@ -516,7 +571,7 @@ function confirmationItemRowsHtml(items: OrderDocumentItem[]): string {
           ${item.price.toFixed(2)} грн
           ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.priceBase.toFixed(2)} грн</span>` : ""}
         </td>
-        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">${item.quantity} шт.</td>
+        <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">${item.quantity} ${esc(item.measureLabel)}</td>
         <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">
           ${item.sum.toFixed(2)} грн
           ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.sumBase.toFixed(2)} грн</span>` : ""}
