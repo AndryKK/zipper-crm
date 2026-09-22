@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const { pcode: pcodeInput, uri, copyText } = body as {
+  const { pcode: pcodeInput, uri, copyText, requireExisting } = body as {
     pcode?: string;
     uri?: string;
     copyText?: {
@@ -29,6 +29,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       currentColorNameRu?: string;
       newColorNameRu?: string;
     };
+    // "Додати вже існуючий товар" (product-form.tsx) — attaching an
+    // already-existing standalone product into this group must never
+    // silently fall into the "not found -> create a new product" branch
+    // below the way "Додати колір" is designed to; if the pcode doesn't
+    // match anything, that's a mistyped артикул and should error, not
+    // create a brand-new product nobody asked for.
+    requireExisting?: boolean;
   };
 
   const sourceId = parseInt(id);
@@ -71,6 +78,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from("products")
     .select("id, translation_id")
     .eq("pcode", pcode.trim());
+
+  if (requireExisting && !existing?.length) {
+    return NextResponse.json({ error: `Товар з артикулом «${pcode.trim()}» не знайдено` }, { status: 404 });
+  }
+
+  // Source's OWN group membership BEFORE any new link below — needed to
+  // resolve an active=1 conflict after merging (see the "existing found"
+  // branch's own comment further down): once the new products_colors edge
+  // exists, findColorGroupTrIds(sourceId) would return the MERGED set, so
+  // this has to be captured first to know which active=1 row (if any)
+  // belongs to the group being merged INTO, as opposed to the incoming one.
+  const sourceGroupTrIdsBeforeMerge = existing?.length ? await findColorGroupTrIds(sourceId) : [];
 
   // Exactly one bidirectional pair per color-group relationship, keyed by
   // translation_id — NOT per-language row ids. This must match the
@@ -253,6 +272,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { pid: srcId, pid_with: tgtId },
         { pid: tgtId, pid_with: srcId },
       ]);
+    }
+  }
+
+  // ── Resolve an active=1 conflict introduced by merging an EXISTING
+  //    product into this group ("Додати вже існуючий товар" / requireExisting,
+  //    but also reachable from "Додати колір" if the typed pcode happens to
+  //    already exist) ────────────────────────────────────────────────────
+  // Only the "existing found" branch above can create this conflict — the
+  // "not found, create new" branch already prevents a fresh row from being
+  // born active=1 into a group that already has one (groupAlreadyHasActive
+  // above). The product being merged in might itself have been the active
+  // "головний" head of its own separate group (or of a whole other multi-
+  // color group) — exactly one active=1 per group is what the storefront's
+  // search/color-picker depends on (see resolveStorefrontGroups in
+  // lib/products.ts), so after the merge the group being merged INTO keeps
+  // whichever row was already its own active head, and every other
+  // active=1 row pulled in by the merge gets demoted to 0 — the incoming
+  // product becomes a subordinate member of this group, never a second head.
+  if (existing?.length) {
+    const mergedGroupTrIds = await findColorGroupTrIds(sourceId);
+    const { data: activeRows } = await supabaseServer
+      .from("products")
+      .select("translation_id")
+      .in("translation_id", mergedGroupTrIds)
+      .eq("active", 1);
+    const activeTrIds = [...new Set((activeRows ?? []).map((r: any) => r.translation_id))];
+    if (activeTrIds.length > 1) {
+      const keep = activeTrIds.find((tid) => sourceGroupTrIdsBeforeMerge.includes(tid)) ?? activeTrIds[0];
+      const demote = activeTrIds.filter((tid) => tid !== keep);
+      if (demote.length) {
+        await supabaseServer.from("products").update({ active: 0 }).in("translation_id", demote);
+        // newVariants was already fetched above (still showing the
+        // pre-demotion `active` value) — patch it in-memory so the
+        // response the frontend applies to its own state matches what the
+        // DB actually ends up with, instead of the UI showing this color
+        // as active until the next full page reload happens to re-fetch it.
+        if (demote.includes(newTrId)) newVariants = newVariants.map((v) => ({ ...v, active: 0 }));
+      }
     }
   }
 

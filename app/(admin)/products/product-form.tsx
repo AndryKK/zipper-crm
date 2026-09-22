@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { transliterate, getImgUrl, cn } from "@/lib/utils";
-import { Loader2, Plus, Trash2, X, Link2Off, Search, Star, ExternalLink, Copy, ChevronRight, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, X, Link2Off, Link2, Search, Star, ExternalLink, Copy, ChevronRight, ChevronDown } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ImageCropModal } from "@/components/admin/image-crop-modal";
@@ -460,6 +460,15 @@ function EditForm({
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
   const [addColorModal, setAddColorModal] = useState(false);
   const [addPcodeInput, setAddPcodeInput] = useState("");
+  // "Додати вже існуючий товар" — a separate, much simpler flow from
+  // "Додати колір" above: attaches an already-existing, standalone product
+  // into this group as-is (no slug/description/color-name fields — those
+  // only make sense when CREATING a new color, and "Додати колір"'s own
+  // submit is even blocked until the slug is edited, which would make no
+  // sense here since we're not touching the target's own slug at all).
+  const [addExistingModal, setAddExistingModal] = useState(false);
+  const [addExistingPcodeInput, setAddExistingPcodeInput] = useState("");
+  const [addingExisting, setAddingExisting] = useState(false);
   const [addCurrentColorInput, setAddCurrentColorInput] = useState("");
   const [addNewColorInput, setAddNewColorInput] = useState("");
   const [addCurrentColorInputRu, setAddCurrentColorInputRu] = useState("");
@@ -663,6 +672,36 @@ function EditForm({
     sel.removeAllRanges();
   }
 
+  // Shared by handleAddColor and handleAddExistingProduct — both hit the
+  // same POST endpoint and get back the same { newTrId, newVariants }
+  // shape, so both fold the new color into colorGroups/allLangData/etc.
+  // identically without a page reload.
+  function applyNewColorGroupState(data: { newTrId?: number; newVariants?: any[] }) {
+    if (!data.newTrId || !data.newVariants?.length) return;
+    const mapped = data.newVariants.map((v) => ({
+      ...v,
+      translationId: v.translation_id,
+      labelAction: v.label_action,
+      seoTitle: v.seo_title,
+      seoKey: v.seo_key,
+      seoDescr: v.seo_descr,
+    }));
+    const ukV = mapped.find((v) => v.lang === "uk") ?? mapped[0];
+    const newTrId: number = data.newTrId;
+
+    setColorGroups((prev) => [...prev, { langVariants: mapped, photos: [], photos2: [] }]);
+    setAllLangData((prev) => ({
+      ...prev,
+      [newTrId]: Object.fromEntries(mapped.map((v) => [v.lang, makeLangEntry(v)])),
+    }));
+    setPcodes((prev) => ({ ...prev, [newTrId]: ukV?.pcode ?? "" }));
+    setActiveMap((prev) => ({ ...prev, [newTrId]: ukV?.active ?? 1 }));
+    setPhotosMap((prev) => ({ ...prev, [newTrId]: [] }));
+    setPhotos2Map((prev) => ({ ...prev, [newTrId]: [] }));
+    setActiveColorTrId(newTrId);
+    setActiveTab("photos");
+  }
+
   async function handleAddColor() {
     if (!addPcodeInput.trim()) return;
     setAddingColor(true);
@@ -690,30 +729,7 @@ function EditForm({
       if (!res.ok) { toast.error(data.error || "Помилка"); return; }
 
       // Оновлюємо стейт без перезавантаження сторінки
-      if (data.newTrId && data.newVariants?.length) {
-        const mapped = (data.newVariants as any[]).map((v) => ({
-          ...v,
-          translationId: v.translation_id,
-          labelAction: v.label_action,
-          seoTitle: v.seo_title,
-          seoKey: v.seo_key,
-          seoDescr: v.seo_descr,
-        }));
-        const ukV = mapped.find((v) => v.lang === "uk") ?? mapped[0];
-        const newTrId: number = data.newTrId;
-
-        setColorGroups((prev) => [...prev, { langVariants: mapped, photos: [], photos2: [] }]);
-        setAllLangData((prev) => ({
-          ...prev,
-          [newTrId]: Object.fromEntries(mapped.map((v) => [v.lang, makeLangEntry(v)])),
-        }));
-        setPcodes((prev) => ({ ...prev, [newTrId]: ukV?.pcode ?? "" }));
-        setActiveMap((prev) => ({ ...prev, [newTrId]: ukV?.active ?? 1 }));
-        setPhotosMap((prev) => ({ ...prev, [newTrId]: [] }));
-        setPhotos2Map((prev) => ({ ...prev, [newTrId]: [] }));
-        setActiveColorTrId(newTrId);
-        setActiveTab("photos");
-      }
+      applyNewColorGroupState(data);
 
       closeAddModal();
       toast.success("Колір додано!");
@@ -722,6 +738,43 @@ function EditForm({
       toast.error("Помилка з'єднання");
     } finally {
       setAddingColor(false);
+    }
+  }
+
+  // ── Add an already-existing, standalone product into this group ────
+  // Unlike handleAddColor, this must NEVER create a new product if the
+  // артикул doesn't match anything (requireExisting: true — see the API
+  // route's own comment) — attaching a wrong/mistyped pcode should error,
+  // not silently spawn a fresh product. No copyText/uri either: the
+  // target's own title/description/slug are left completely untouched,
+  // since it's a real, already-published product being merged in as-is,
+  // not a fresh copy being created. The API route resolves any active=1
+  // conflict this merge introduces (the incoming product may have been
+  // "головний" of its own separate group) — nothing to do about that here.
+  function closeAddExistingModal() {
+    setAddExistingModal(false);
+    setAddExistingPcodeInput("");
+  }
+
+  async function handleAddExistingProduct() {
+    if (!addExistingPcodeInput.trim()) return;
+    setAddingExisting(true);
+    try {
+      const res = await fetch(`/api/products/${baseVariant.id}/colors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pcode: addExistingPcodeInput.trim(), requireExisting: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Помилка"); return; }
+
+      applyNewColorGroupState(data);
+      closeAddExistingModal();
+      toast.success("Товар додано до групи кольорів!");
+    } catch {
+      toast.error("Помилка з'єднання");
+    } finally {
+      setAddingExisting(false);
     }
   }
 
@@ -1185,22 +1238,31 @@ function EditForm({
               })}
             </div>
 
-            {/* Divider + Add color button */}
-            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px 12px" }}>
-              {true && (
-                <button
-                  type="button"
-                  onClick={() => { closeDropdown(); setAddUriInput(baseVariant.uri ?? ""); setAddColorModal(true); }}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    fontSize: 12.5, color: "#6366f1", background: "none", border: "none",
-                    cursor: "pointer", padding: "4px 2px", fontWeight: 500,
-                  }}
-                >
-                  <Plus size={14} /> Додати колір
-                </button>
-              )}
-
+            {/* Divider + Add color / Add existing product buttons */}
+            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+              <button
+                type="button"
+                onClick={() => { closeDropdown(); setAddUriInput(baseVariant.uri ?? ""); setAddColorModal(true); }}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  fontSize: 12.5, color: "#6366f1", background: "none", border: "none",
+                  cursor: "pointer", padding: "4px 2px", fontWeight: 500,
+                }}
+              >
+                <Plus size={14} /> Додати колір
+              </button>
+              <button
+                type="button"
+                onClick={() => { closeDropdown(); setAddExistingModal(true); }}
+                title="Прилінковує вже існуючий товар (за артикулом) до цієї групи кольорів — не створює копію"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  fontSize: 12.5, color: "#6366f1", background: "none", border: "none",
+                  cursor: "pointer", padding: "4px 2px", fontWeight: 500,
+                }}
+              >
+                <Link2 size={14} /> Додати вже існуючий товар
+              </button>
             </div>
           </div>
         )}
@@ -1936,6 +1998,75 @@ function EditForm({
             </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Add existing product modal ──────────────────────────────── */}
+      {addExistingModal && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeAddExistingModal(); }}
+        >
+          <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 14, padding: "28px 32px", width: 420, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.22)" }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px", color: "var(--text)" }}>
+              Додати вже існуючий товар
+            </h3>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 22px" }}>
+              Приєднає товар з таким артикулом до цієї групи кольорів як є —
+              без копіювання чи зміни його назви, опису чи slug. Якщо цей
+              товар був головним (★) своєї власної групи, головним
+              лишиться товар цієї групи, а приєднаний стане звичайним
+              кольором.
+            </p>
+
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
+              Артикул товару (pcode)
+            </label>
+            <input
+              autoFocus
+              placeholder="напр. m2845"
+              value={addExistingPcodeInput}
+              onChange={(e) => setAddExistingPcodeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") closeAddExistingModal();
+                if (e.key === "Enter" && !addingExisting && addExistingPcodeInput.trim()) handleAddExistingProduct();
+              }}
+              style={{
+                width: "100%", fontSize: 13.5, padding: "8px 12px", borderRadius: 8,
+                border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)",
+                outline: "none", boxSizing: "border-box",
+              }}
+            />
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={handleAddExistingProduct}
+                disabled={addingExisting || !addExistingPcodeInput.trim()}
+                style={{
+                  flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  fontSize: 13.5, padding: "10px 0", borderRadius: 8,
+                  border: "none", background: "#6366f1", color: "#fff", fontWeight: 600,
+                  cursor: addingExisting || !addExistingPcodeInput.trim() ? "not-allowed" : "pointer",
+                  opacity: addingExisting || !addExistingPcodeInput.trim() ? 0.5 : 1,
+                }}
+              >
+                {addingExisting && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
+                {addingExisting ? "Додаємо..." : "Додати"}
+              </button>
+              <button
+                type="button"
+                onClick={closeAddExistingModal}
+                style={{
+                  fontSize: 13, padding: "10px 20px", borderRadius: 8,
+                  border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)",
+                  cursor: "pointer",
+                }}
+              >
+                Скасувати
+              </button>
+            </div>
           </div>
         </div>
       )}
