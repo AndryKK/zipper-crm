@@ -6,7 +6,12 @@ import { verifyOrderDocToken } from "@/lib/doc-token";
 function actionBar(isPublic: boolean) {
   return `
   <style>
-    .action-bar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 14px; }
+    /* margin-bottom is deliberately huge (not a typo) — screen-only, since
+       @media print below hides this bar entirely for the actual printed
+       page. Gives a big blank buffer between the buttons and the document
+       so a manager can screenshot just the document (or just the buttons)
+       without a tight crop clipping the other. */
+    .action-bar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 90px; }
     .btn {
       padding: 7px 16px; border-radius: 5px; font-size: 12px;
       font-weight: 600; cursor: pointer; border: none; font-family: Arial, sans-serif;
