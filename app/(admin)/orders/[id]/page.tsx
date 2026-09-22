@@ -378,24 +378,23 @@ export default function OrderDetailPage() {
     setTimeout(() => setManualHighlight(false), 2200);
   }
 
-  // "Отримувач" edit — this specific order's shipping recipient (can be a
-  // completely different person than whoever's logged in — a gift order,
-  // etc.). Kept as its own PUT of plain orders columns, same as before the
-  // Замовник/Отримувач split.
-  const [editingClient, setEditingClient] = useState(false);
-  const [clientDraft, setClientDraft] = useState({ person: "", phone: "", addr_delivery: "", pay_method: "" });
-  const [savingClient, setSavingClient] = useState(false);
-
-  // "Замовник" edit — who actually placed the order. login re-points the
-  // order at a different account entirely; original_client_name is a
-  // this-order-only display name (see its own column comment) for when the
-  // account holder wants to be addressed differently than order.person
-  // (the recipient) without changing their real account. Everything else
-  // shown on that card (order.customer — see app/api/orders/[id]/route.ts)
-  // is the account's own profile, read-only here on purpose: editing it
-  // would silently change that person's account for every other order too.
+  // "Замовник" edit — order.person/phone/addr_delivery is NOT a separate
+  // recipient's data despite the variable names this carries elsewhere
+  // (lib/order-documents.ts's recipientLines/buildOrdererLines) — it's the
+  // ЗАМОВНИК per the business's own definition, and every invoice/waybill/
+  // Nova Poshta shipment is built from exactly these three columns (see
+  // buildOrdererLines' own comment). "Отримувач" on the order page mirrors
+  // these same values read-only — there is no independent recipient data
+  // to edit there, so this is the ONE edit surface for all of it. login
+  // re-points the order at a different account entirely; original_client_name
+  // is a this-order-only display name (see its own column comment) for
+  // when the account holder wants to be addressed differently in emails
+  // without changing their real account. order.customer (the account's
+  // OWN stored profile, see app/api/orders/[id]/route.ts) is shown
+  // read-only as supplementary info only — editing it here would silently
+  // change that person's account for every other order too.
   const [editingOrderer, setEditingOrderer] = useState(false);
-  const [ordererDraft, setOrdererDraft] = useState({ login: "", original_client_name: "" });
+  const [ordererDraft, setOrdererDraft] = useState({ login: "", original_client_name: "", person: "", phone: "", addr_delivery: "", pay_method: "" });
   const [savingOrderer, setSavingOrderer] = useState(false);
 
   // Returns
@@ -1049,20 +1048,14 @@ export default function OrderDetailPage() {
     finally { setCheckingNp(false); }
   }
 
-  function startEditClient() {
-    setClientDraft({
-      person: order.person ?? "",
-      phone: order.phone ?? "",
-      addr_delivery: order.addr_delivery ?? "",
-      pay_method: order.pay_method ?? "",
-    });
-    setEditingClient(true);
-  }
-
   function startEditOrderer() {
     setOrdererDraft({
       login: order.login ?? "",
       original_client_name: order.original_client_name ?? "",
+      person: order.person ?? "",
+      phone: order.phone ?? "",
+      addr_delivery: order.addr_delivery ?? "",
+      pay_method: order.pay_method ?? "",
     });
     setEditingOrderer(true);
   }
@@ -1076,28 +1069,14 @@ export default function OrderDetailPage() {
     });
     setSavingOrderer(false);
     if (!res.ok) { toast.error("Не вдалося зберегти дані замовника"); return; }
-    // login changed -> the account-profile half of the card (order.customer)
-    // is now stale until the next full reload; refreshOrder() re-fetches it
-    // from the server instead of just merging the draft in like saveClient
-    // does (that one never changes which account owns the order).
+    // login can change which account this order belongs to, so
+    // order.customer (that account's own profile) needs a real re-fetch
+    // rather than just merging the draft in — refreshOrder() re-runs the
+    // GET, which resolves order.customer fresh for whatever login ends up
+    // in the response.
     await refreshOrder();
     setEditingOrderer(false);
     toast.success("Дані замовника оновлено");
-  }
-
-  async function saveClient() {
-    setSavingClient(true);
-    const res = await fetch(`/api/orders/${params.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(clientDraft),
-    });
-    setSavingClient(false);
-    if (!res.ok) { toast.error("Не вдалося зберегти дані клієнта"); return; }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setOrder((prev: any) => ({ ...prev, ...clientDraft }));
-    setEditingClient(false);
-    toast.success("Дані клієнта оновлено");
   }
 
   // Applies the typo-detector's suggested address both to the local resend
@@ -1369,7 +1348,7 @@ export default function OrderDetailPage() {
     saving || processing || confirming || checkingNp || cancellingTtn ||
     postomatSubmitting || codLoadingPreview || codSubmitting ||
     savingPrepayment || generatingInvoice || generatingTtn || stockChecking ||
-    emailPreviewLoading || emailSending || savingClient || savingOrderer || submittingReturn ||
+    emailPreviewLoading || emailSending || savingOrderer || submittingReturn ||
     npManualSubmitting ||
     savingItemId !== null;
 
@@ -2958,14 +2937,20 @@ export default function OrderDetailPage() {
 
         {/* ── GRID ──────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Замовник — who placed the order (order.login's own account) —
-              split out from "Отримувач" below: order.person/phone/
-              addr_delivery are the RECIPIENT this specific order ships to,
-              which can be a completely different person (a gift order,
-              someone ordering for a relative, etc.) than whoever's account
-              placed it. Same underlying orders/users tables as before —
-              nothing moved in the DB, just no longer shown as one
-              conflated "Клієнт" card. */}
+          {/* Замовник — order.person/phone/addr_delivery is the ЗАМОВНИК
+              (whoever placed the order), NOT a separate recipient's data —
+              these are the exact three columns every invoice/waybill/NP
+              shipment is built from (buildOrdererLines in
+              lib/order-documents.ts, read the same way by
+              finishTtnCreation in lib/order-ttn.ts), so they're mandatory
+              at checkout and effectively always populated. "Отримувач"
+              below mirrors these same values read-only: there is no
+              "інший отримувач" concept in the schema yet, so until one
+              exists the two cards show the same data by design. login/
+              original_client_name are this card's own fields (which
+              account owns the order, and an optional this-order-only
+              display name); order.customer (that account's own stored
+              profile) is shown further down as supplementary info only. */}
           <Card>
             <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <CardTitle className="text-sm">Замовник</CardTitle>
@@ -2997,6 +2982,31 @@ export default function OrderDetailPage() {
               {editingOrderer ? (
                 <div className="space-y-2.5">
                   <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Ім&apos;я</Label>
+                    <Input value={ordererDraft.person} onChange={(e) => setOrdererDraft((d) => ({ ...d, person: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Телефон</Label>
+                    <Input value={ordererDraft.phone} onChange={(e) => setOrdererDraft((d) => ({ ...d, phone: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Адреса</Label>
+                    {/* Same picker/format as the old Отримувач edit form —
+                        picking a suggestion writes the exact "{City} —
+                        {Тип} №{N}...: {адреса}" format parseNpAddress()
+                        (and TTN creation downstream of it) requires; typing
+                        without picking one still works as plain free text. */}
+                    <NpAddressPicker
+                      value={ordererDraft.addr_delivery}
+                      onChange={(v) => setOrdererDraft((d) => ({ ...d, addr_delivery: v }))}
+                      placeholder="напр. Рівне — Відділення №5…"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Спосіб оплати</Label>
+                    <Input value={ordererDraft.pay_method} onChange={(e) => setOrdererDraft((d) => ({ ...d, pay_method: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1" style={{ paddingTop: 6, borderTop: "1px solid var(--border)" }}>
                     <Label style={{ fontSize: 12 }}>Логін</Label>
                     <Input value={ordererDraft.login} onChange={(e) => setOrdererDraft((d) => ({ ...d, login: e.target.value }))} />
                   </div>
@@ -3005,24 +3015,33 @@ export default function OrderDetailPage() {
                     <Input
                       value={ordererDraft.original_client_name}
                       onChange={(e) => setOrdererDraft((d) => ({ ...d, original_client_name: e.target.value }))}
-                      placeholder="якщо відрізняється від імені отримувача"
+                      placeholder="якщо звертатись треба інакше, ніж на ім'я вище"
                     />
                   </div>
                 </div>
               ) : (
                 <>
+                  <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
+                  <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
+                  <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
                   <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
                   {order.original_client_name && (
                     <div><span className="text-gray-500">Ім&apos;я замовника:</span> {order.original_client_name}</div>
                   )}
-                  {/* order.customer — the account's own profile (app/api/
-                      orders/[id]/route.ts), null for a guest checkout or a
-                      login that never became a real account. Read-only
-                      here on purpose: editing it would change that
-                      person's account for every other order too, not just
-                      this one — see this page's own state comment. */}
+                  {/* order.customer — the account's OWN stored profile
+                      (app/api/orders/[id]/route.ts), null for a guest
+                      checkout or a login that never became a real account.
+                      Shown here only as supplementary reference (e.g. to
+                      compare a rank/discount or catch a stale default
+                      address) — the fields above are what's actually used
+                      for this order, and editing account data here would
+                      silently change it for every other order that login
+                      has ever placed. */}
                   {order.customer ? (
-                    <>
+                    <div style={{ marginTop: 6, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4 }}>
+                        Дані акаунта (довідково)
+                      </div>
                       {order.customer.person && <div><span className="text-gray-500">Ім&apos;я:</span> {order.customer.person}</div>}
                       {order.customer.phone && <div><span className="text-gray-500">Телефон:</span> {order.customer.phone}</div>}
                       {order.customer.addrDelivery && <div><span className="text-gray-500">Адреса за замовчуванням:</span> {order.customer.addrDelivery}</div>}
@@ -3035,13 +3054,11 @@ export default function OrderDetailPage() {
                       {order.customer.isOrganization && (
                         <div><span className="text-gray-500">Організація:</span> ЄДРПОУ {order.customer.edrpou ?? "—"}</div>
                       )}
-                    </>
+                    </div>
                   ) : (
-                    order.login && (
-                      <div style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
-                        {isGuestCheckoutEmail(order.login)
-                          ? "Гостьове оформлення без реєстрації — контактні дані клієнта дивіться в картці «Отримувач»"
-                          : "Акаунта з таким логіном не знайдено"}
+                    order.login && !isGuestCheckoutEmail(order.login) && (
+                      <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 4 }}>
+                        Акаунта з таким логіном не знайдено
                       </div>
                     )
                   )}
@@ -3050,74 +3067,21 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Отримувач — this order's shipping recipient (order.person/
-              phone/addr_delivery/ttn) — see the Замовник card's own
-              comment above for why these are kept separate. */}
+          {/* Отримувач — read-only mirror of the Замовник card's
+              person/phone/addr_delivery. There's no "інший отримувач"
+              flag anywhere in the schema yet — when one exists and is set,
+              this card should show that separate data instead; until
+              then, editing belongs solely to the Замовник card above so
+              there's exactly one place these three columns get written
+              from. */}
           <Card>
-            <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <CardHeader>
               <CardTitle className="text-sm">Отримувач</CardTitle>
-              {!editingClient ? (
-                <button
-                  onClick={startEditClient}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
-                >
-                  <Pencil size={12} /> Редагувати
-                </button>
-              ) : (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={() => setEditingClient(false)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(148,163,184,0.15)", color: "#64748b", border: "none", cursor: "pointer" }}
-                  >
-                    <X size={12} /> Скасувати
-                  </button>
-                  <button
-                    onClick={saveClient} disabled={savingClient}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#6366f1", color: "#fff", border: "none", cursor: "pointer" }}
-                  >
-                    {savingClient ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти
-                  </button>
-                </div>
-              )}
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              {editingClient ? (
-                <div className="space-y-2.5">
-                  <div className="space-y-1">
-                    <Label style={{ fontSize: 12 }}>Ім&apos;я</Label>
-                    <Input value={clientDraft.person} onChange={(e) => setClientDraft((d) => ({ ...d, person: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label style={{ fontSize: 12 }}>Телефон</Label>
-                    <Input value={clientDraft.phone} onChange={(e) => setClientDraft((d) => ({ ...d, phone: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label style={{ fontSize: 12 }}>Адреса</Label>
-                    {/* Search box for Nova Poshta's own city+warehouse list
-                        (one field, per the ask) — picking a suggestion
-                        writes the exact "{City} — {Тип} №{N}...: {адреса}"
-                        format parseNpAddress() (and TTN creation
-                        downstream of it) requires; typing without picking
-                        one still works as plain free text, for delivery
-                        addresses that aren't an NP warehouse at all. */}
-                    <NpAddressPicker
-                      value={clientDraft.addr_delivery}
-                      onChange={(v) => setClientDraft((d) => ({ ...d, addr_delivery: v }))}
-                      placeholder="напр. Рівне — Відділення №5…"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label style={{ fontSize: 12 }}>Спосіб оплати</Label>
-                    <Input value={clientDraft.pay_method} onChange={(e) => setClientDraft((d) => ({ ...d, pay_method: e.target.value }))} />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
-                  <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
-                  <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
-                </>
-              )}
+              <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
+              <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
+              <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
               {order.ttn && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span className="text-gray-500">ТТН:</span>

@@ -137,6 +137,26 @@ export function buildAltPayerParts(altPayer: unknown): string[] | null {
   return lines.length ? lines : null;
 }
 
+// order.person/phone/addr_delivery — despite the "recipient" name this has
+// carried in this file historically — is actually the ЗАМОВНИК per the
+// business's own definition: whoever placed the order. There is currently
+// no separate "different recipient" data anywhere in the schema — Nova
+// Poshta's own shipment (finishTtnCreation's recipientName/recipientPhone/
+// address parsing, lib/order-ttn.ts) reads these exact same three columns,
+// and so does every document here. That's why these three fields are
+// mandatory at checkout and effectively always populated (unlike an
+// account's own users-table profile, which can be null/blank for a guest
+// checkout) — every invoice/waybill/customer communication is built from
+// THIS data, never from the logged-in account's own stored profile
+// (users.person/phone). The order page's
+// "Замовник" card (app/(admin)/orders/[id]/page.tsx) shows these same
+// three fields for exactly that reason, and "Отримувач" there mirrors them
+// (no independent data of its own) until a genuinely separate recipient
+// concept exists.
+export function buildOrdererLines(order: { person?: string | null; phone?: string | null; addr_delivery?: string | null }): string {
+  return [order.person || "", order.phone || "", order.addr_delivery || ""].filter(Boolean).join("<br/>");
+}
+
 const DEFAULT_THRESHOLD = 3000;
 
 export async function getOrderDocumentData(orderId: number): Promise<OrderDocumentData | null> {
@@ -217,11 +237,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     supplierEdrpou ? `ЄДРПОУ ${supplierEdrpou}` : "",
   ].filter(Boolean).join("<br/>");
 
-  const recipientLines = [
-    order.person || "",
-    order.phone || "",
-    order.addr_delivery || "",
-  ].filter(Boolean).join("<br/>");
+  const recipientLines = buildOrdererLines(order);
 
   const docItems: OrderDocumentItem[] = (items ?? []).map(
     (item: { product: number; quantity: number; price: number; price_base: number }, idx: number) => {
