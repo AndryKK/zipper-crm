@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/admin/header";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail, X, Phone } from "lucide-react";
+import { Crown, Truck, Banknote, ClipboardList, LayoutGrid, Search, Mail, X, Phone, Calendar } from "lucide-react";
 import { Pagination } from "@/components/admin/data-table-controls";
 import { isNewStatus, orderStatusLabel, orderStatusClass, orderRowClass } from "@/lib/order-status";
 
@@ -462,32 +460,33 @@ function OrdersPageInner() {
         </div>
 
         {/* ── Desktop table (>= md) ─────────────────────────────────────── */}
+        {/* Дії/Переглянути and the separate Дата/Телефон columns are gone —
+            the whole row navigates to the order now (like the mobile card
+            already did), and date/phone moved under #/Клієнт to fit more
+            rows without horizontal scroll on a smaller desktop window. */}
         <div className="crm-card overflow-hidden hidden md:block">
           <table className="crm-table">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Дії</th>
                 <th>Статус</th>
                 <th>Клієнт</th>
                 <th>Адреса</th>
                 <th style={{ textAlign: "center" }}>Сайт</th>
                 <th>Товарів</th>
                 <th>Сума</th>
-                <th>Дата</th>
-                <th>Телефон</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
+                  <td colSpan={7} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Завантаження...
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
+                  <td colSpan={7} className="text-center" style={{ padding: "48px 16px", color: "var(--text-muted)" }}>
                     Замовлень немає
                   </td>
                 </tr>
@@ -495,7 +494,12 @@ function OrdersPageInner() {
                 orders.map((order) => {
                   const orderTotal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
                   return (
-                    <tr key={order.id} className={orderRowClass(order.status)}>
+                    <tr
+                      key={order.id}
+                      className={orderRowClass(order.status)}
+                      onClick={() => router.push(`/orders/${order.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <td className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                           {order.id}
@@ -505,20 +509,56 @@ function OrdersPageInner() {
                             </span>
                           )}
                         </div>
-                      </td>
-                      <td>
-                        <Link href={`/orders/${order.id}`}>
-                          <Button variant="outline" size="sm">Переглянути</Button>
-                        </Link>
+                        {/* Same data as the removed Дата column, just
+                            relocated — the calendar icon is what keeps it
+                            legible as a date instead of a second id. */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: 11, opacity: 0.75 }}>
+                          <Calendar size={11} />
+                          {formatDate(order.date)}
+                        </div>
                       </td>
                       <td>
                         <span className={orderStatusClass(order.status)}>
                           {orderStatusLabel(order.status)}
                         </span>
                       </td>
-                      <td className="font-medium">{order.original_client_name || order.person || order.login || "—"}</td>
-                      <td className="text-xs max-w-xs truncate" style={{ color: "var(--text-muted)" }}>
-                        {order.addr_delivery ?? "—"}
+                      <td className="font-medium">
+                        <div>{order.original_client_name || order.person || order.login || "—"}</div>
+                        {/* Same callme algorithm as the mobile card: red +
+                            the account's own phone when the client asked to
+                            be called back, otherwise the plain order phone
+                            in a muted tone — so a manager can tell "needs a
+                            callback" from "just the delivery contact" at a
+                            glance without opening the order. */}
+                        {order.callme && order.clientPhone ? (
+                          <a
+                            href={`tel:${order.clientPhone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Клієнт просить передзвонити"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 12, color: "#dc2626", fontWeight: 600, textDecoration: "none", fontFamily: "monospace" }}
+                          >
+                            <Phone size={11} />
+                            {order.clientPhone}
+                          </a>
+                        ) : order.phone ? (
+                          <a
+                            href={`tel:${order.phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--text-muted)", textDecoration: "none", fontFamily: "monospace" }}
+                          >
+                            {order.phone}
+                          </a>
+                        ) : null}
+                      </td>
+                      <td className="text-xs" style={{ color: "var(--text-muted)", maxWidth: 150 }}>
+                        {/* Address and note each get their own tooltip
+                            (title on the specific element, not the whole
+                            cell) — hovering the truncated address shows the
+                            full address, hovering the note pill shows the
+                            full note, never a mixed "both at once" tooltip. */}
+                        <div title={order.addr_delivery ?? undefined} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {order.addr_delivery ?? "—"}
+                        </div>
                         {order.ttn && (
                           <div className="font-mono" style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
                             ТТН: {order.ttn}
@@ -539,21 +579,6 @@ function OrdersPageInner() {
                       </td>
                       <td className="text-center">{(order.items || []).length}</td>
                       <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
-                      <td style={{ color: "var(--text-muted)" }}>{formatDate(order.date)}</td>
-                      <td style={{ color: "var(--text-muted)" }}>
-                        {order.callme && order.clientPhone ? (
-                          <a
-                            href={`tel:${order.clientPhone}`}
-                            title="Клієнт просить передзвонити"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#dc2626", fontWeight: 600, textDecoration: "none" }}
-                          >
-                            <Phone size={13} />
-                            {order.clientPhone}
-                          </a>
-                        ) : (
-                          order.phone ?? "—"
-                        )}
-                      </td>
                     </tr>
                   );
                 })
