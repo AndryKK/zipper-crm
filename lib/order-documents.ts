@@ -145,7 +145,12 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     // active=false items are removed from the order — see
     // scripts/add-orders-item-active-column.sql — an invoice/waybill must
     // never list something that's no longer actually being shipped.
-    supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true),
+    // order("id") so every document lists items in the same order the
+    // customer added them to their cart: the storefront's checkout inserts
+    // orders_item rows in that exact cart order (see cart.php's send-order
+    // block, which reads the cart ORDER BY add_time/id before looping),
+    // and PostgREST doesn't otherwise guarantee row order.
+    supabaseServer.from("orders_item").select("*").eq("oid", orderId).eq("active", true).order("id", { ascending: true }),
     supabaseServer.from("settings").select("value, text"),
   ]);
 

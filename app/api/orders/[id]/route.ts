@@ -18,7 +18,10 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     .single();
   if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const [{ data: items }, { data: returns }] = await Promise.all([
-    supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id)),
+    // order("id") so the item list matches the order items were originally
+    // added to the cart in — same ordering lib/order-documents.ts uses for
+    // invoices/накладні, so what staff sees here matches what prints.
+    supabaseServer.from("orders_item").select("*").eq("oid", parseInt(id)).order("id", { ascending: true }),
     // Legacy storefront returns aren't linked via `oid` at all — only via the
     // free-text `order` field — so match either, then resolve legacy rows
     // (auto-fills oid/product/qty from order/code/quantity) before returning.
