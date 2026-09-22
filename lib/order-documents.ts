@@ -19,6 +19,30 @@ function plural(n: number, one: string, few: string, many: string) {
   return many;
 }
 
+// One/few/many Ukrainian forms for each measures_real translation_id — see
+// getOrderDocumentData's own comment on that table. It only stores one
+// generic title per measure ("штук", "пачка", "пара", ...), not the three
+// grammatical forms a printed quantity actually needs ("1 пачка" / "2
+// пачки" / "5 пачок"), so this hardcodes them the same way the number-word
+// arrays above are hardcoded — a small, fixed, effectively-closed set (5
+// known measures_real rows; nothing in this app's own UI can add more).
+const MEASURE_PLURAL_FORMS: Record<number, [one: string, few: string, many: string]> = {
+  1: ["метр", "метри", "метрів"],
+  2: ["рулон", "рулони", "рулонів"],
+  3: ["штука", "штуки", "штук"],
+  4: ["пачка", "пачки", "пачок"],
+  5: ["пара", "пари", "пар"],
+};
+
+// Falls back to the raw, ungrammatical measures_real title only if
+// measureId isn't one of the five known forms above — should never
+// actually happen against live data, but keeps this from ever rendering a
+// blank unit for a measure this map doesn't yet know about.
+function measureLabelForQuantity(measureId: number, quantity: number, fallbackTitle: string): string {
+  const forms = MEASURE_PLURAL_FORMS[measureId];
+  return forms ? plural(quantity, forms[0], forms[1], forms[2]) : fallbackTitle;
+}
+
 function chunk(n: number, feminine: boolean): string {
   const parts: string[] = [];
   const h = Math.floor(n / 100);
@@ -81,10 +105,13 @@ export type OrderDocumentItem = {
   name: string;
   img: string | null;
   quantity: number;
-  // The product's real unit of sale (measures_real.title — "штук"/"пачка"/
-  // "пара"/"метри"/"рулони", NOT the "measures" table, which is actually
+  // The product's real unit of sale, already grammatically inflected for
+  // THIS item's own quantity — "1 пачка" / "2 пачки" / "5 пачок", not a
+  // flat "пачка" regardless of count (see measureLabelForQuantity/
+  // MEASURE_PLURAL_FORMS above). Sourced from products.measure ->
+  // measures_real, NOT the "measures" table, which is actually
   // products.package's availability-status lookup — see this file's own
-  // fetch of it below for that whole story). Every document used to
+  // fetch of it below for that whole story. Every document used to
   // hardcode "штук" here regardless of what the product actually sells
   // in; ~13% of live products (measure=4 "пачка" or 5 "пара") were
   // printing the wrong unit on every invoice/waybill.
@@ -231,7 +258,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
     : { data: [] };
   const measureTitleById = new Map((measureRows ?? []).map((m: { translation_id: number; title: string }) => [Number(m.translation_id), m.title]));
 
-  const prodMap: Record<number, { title: string; pcode: string | null; img: string | null; measureLabel: string }> = {};
+  const prodMap: Record<number, { title: string; pcode: string | null; img: string | null; measureId: number; measureFallbackTitle: string }> = {};
   for (const p of products ?? []) {
     const uk = ukByTranslation.get(p.translation_id);
     const measureId = Number(p.measure);
@@ -239,7 +266,8 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
       title: uk?.title ?? p.title,
       pcode: uk?.pcode ?? p.pcode,
       img: p.img ?? null,
-      measureLabel: (measureId > 0 && measureTitleById.get(measureId)) || "штук",
+      measureId,
+      measureFallbackTitle: (measureId > 0 && measureTitleById.get(measureId)) || "штук",
     };
   }
 
@@ -285,7 +313,7 @@ export async function getOrderDocumentData(orderId: number): Promise<OrderDocume
         name: prod?.title ?? `Товар #${item.product}`,
         img: prod?.img ?? null,
         quantity: item.quantity,
-        measureLabel: prod?.measureLabel ?? "штук",
+        measureLabel: measureLabelForQuantity(prod?.measureId ?? 0, item.quantity, prod?.measureFallbackTitle ?? "штук"),
         price: item.price,
         priceBase,
         sum: item.price * item.quantity,
