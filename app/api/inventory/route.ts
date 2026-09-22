@@ -50,6 +50,14 @@ export async function GET(req: Request) {
     quantity: "quantity",
     reserved: "reserved",
     min_quantity: "min_quantity",
+    // Date of last manual entry — bumped by the PUT "Змінити"/"Поставка"
+    // handlers below (and by the POST "Додати запис" insert, via its
+    // column default) but deliberately NOT by adjustInventory's own
+    // webhook-driven auto-deduct/restock path (lib/inventory.ts, only ever
+    // touches `quantity`) — so sorting by this reliably surfaces what a
+    // person actually counted/typed most recently, not what an order
+    // silently decremented.
+    updated_at: "updated_at",
   };
   const sortKey = searchParams.get("sort_by") ?? "";
   const sortColumn = SORTABLE[sortKey];
@@ -259,15 +267,36 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { product_id, warehouse_id, quantity, reserved, min_quantity } = body;
+  const { product_id, pcode, warehouse_id, quantity, reserved, min_quantity } = body;
 
-  if (!product_id || !warehouse_id) {
-    return NextResponse.json({ error: "product_id та warehouse_id обов'язкові" }, { status: 400 });
+  if ((!product_id && !pcode) || !warehouse_id) {
+    return NextResponse.json({ error: "Код товару та склад обов'язкові" }, { status: 400 });
+  }
+
+  // "Додати запис" (app/(admin)/inventory/page.tsx) asks staff for the
+  // артикул (pcode) they actually have on hand — a supplier invoice or a
+  // shelf label — never the raw internal products.id, which nobody
+  // memorizes. pcode is shared identically between a translation pair's
+  // ru/uk rows (confirmed: both carry the same string), so an exact,
+  // case-insensitive match against either row is enough; whichever one
+  // comes back, resolveInventoryProductId below normalizes it to the same
+  // shared inventory key regardless. product_id is still accepted too —
+  // kept for any other caller of this endpoint that already has a real id.
+  let rawProductId = product_id ? Number(product_id) : null;
+  if (!rawProductId && pcode) {
+    const { data: found } = await supabaseServer
+      .from("products")
+      .select("id")
+      .ilike("pcode", String(pcode).trim())
+      .limit(1)
+      .maybeSingle();
+    if (!found) return NextResponse.json({ error: `Товар з кодом «${pcode}» не знайдено` }, { status: 404 });
+    rawProductId = found.id;
   }
 
   // Whichever language's product id was entered, store under the ru/uk
   // pair's shared key so it lands on the same merged row — see lib/inventory.ts.
-  const resolvedProductId = await resolveInventoryProductId(Number(product_id));
+  const resolvedProductId = await resolveInventoryProductId(rawProductId!);
   const newQuantity = Number(quantity ?? 0);
 
   const { data, error } = await supabaseServer

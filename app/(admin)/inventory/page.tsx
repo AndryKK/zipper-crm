@@ -5,14 +5,14 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Header } from "@/components/admin/header";
 import {
-  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History, Factory,
+  Boxes, Search, Save, X, Plus, ChevronDown, AlertTriangle, Package, History, Factory, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InventoryHistoryDialog } from "@/components/admin/inventory-history-dialog";
 import { SortableTh, Pagination } from "@/components/admin/data-table-controls";
-import { getImgUrl } from "@/lib/utils";
+import { getImgUrl, formatDate } from "@/lib/utils";
 import { Toggle, HIDE_UNENTERED_KEY } from "@/components/admin/toggle";
 import { ROLES } from "@/lib/roles";
 
@@ -33,6 +33,7 @@ interface InventoryRow {
   reserved: number;
   initial_quantity: number;
   min_quantity: number;
+  updated_at: string | null;
   product?: {
     id: number; title: string; pcode?: string; lang: string; img?: string | null;
     factory_id?: number | null; factory?: { id: number; title: string } | null;
@@ -249,8 +250,12 @@ function InventoryContent() {
   const [loading, setLoading] = useState(false);
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [sortBy, setSortBy] = useState("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Defaults to "newest manual entry first" — a manager re-counting a
+  // warehouse wants to see what's already been typed in most recently (to
+  // pick up where the count left off), not the DB's arbitrary insertion
+  // order. See handleSort/the "Сортувати за датою введення" button below.
+  const [sortBy, setSortBy] = useState("updated_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // Starts true on the server-rendered pass (matches SSR/CSR markup), then
   // syncs from localStorage right after mount — see the effect below.
   // Defaults ON since the 2026-09-08 full stock reset: with every position
@@ -275,7 +280,7 @@ function InventoryContent() {
 
   /* Add-new inline form */
   const [showAdd, setShowAdd] = useState(false);
-  const [addProductId, setAddProductId] = useState("");
+  const [addPcode, setAddPcode] = useState("");
   const [addMin, setAddMin] = useState("");
   const [addQty, setAddQty] = useState("");
 
@@ -447,15 +452,15 @@ function InventoryContent() {
   }
 
   async function addEntry() {
-    if (!addProductId || !selectedWarehouse) {
-      toast.error("Вкажіть товар");
+    if (!addPcode.trim() || !selectedWarehouse) {
+      toast.error("Вкажіть код товару");
       return;
     }
     const res = await fetch("/api/inventory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        product_id: Number(addProductId),
+        pcode: addPcode.trim(),
         warehouse_id: Number(selectedWarehouse),
         quantity: Number(addQty) || 0,
         min_quantity: Number(addMin) || 0,
@@ -464,7 +469,7 @@ function InventoryContent() {
     if (res.ok) {
       toast.success("Запис додано");
       setShowAdd(false);
-      setAddProductId("");
+      setAddPcode("");
       setAddMin("");
       setAddQty("");
       loadInventory();
@@ -604,6 +609,25 @@ function InventoryContent() {
             onChange={toggleHideUnentered}
             label="Не відображати не введені позиції"
           />
+
+          {/* Dedicated sort control (not just the "Введено" column header
+              below) — this is the default sort on page load, so it needs
+              to be discoverable without scrolling a wide table sideways
+              on a phone/tablet, where the table itself is hidden in favor
+              of the card list. Clicking again flips direction, same as
+              clicking a SortableTh column header does. */}
+          <button
+            onClick={() => handleSort("updated_at")}
+            className="btn-ghost"
+            style={{
+              padding: "8px 14px", fontSize: 12.5,
+              borderColor: sortBy === "updated_at" ? "var(--accent)" : undefined,
+              color: sortBy === "updated_at" ? "var(--accent)" : undefined,
+            }}
+          >
+            <Clock size={13} /> Сортувати за датою введення
+            {sortBy === "updated_at" && <span style={{ fontSize: 10 }}>{sortDir === "asc" ? "▲" : "▼"}</span>}
+          </button>
         </div>
 
         {/* Add entry form */}
@@ -618,14 +642,14 @@ function InventoryContent() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px auto", gap: 10, alignItems: "end" }}>
               <div>
                 <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                  ID товару *
+                  Код товару *
                 </label>
                 <input
                   className="crm-input"
-                  type="number"
-                  placeholder="напр. 123"
-                  value={addProductId}
-                  onChange={(e) => setAddProductId(e.target.value)}
+                  type="text"
+                  placeholder="напр. bs10187"
+                  value={addPcode}
+                  onChange={(e) => setAddPcode(e.target.value)}
                 />
               </div>
               <div>
@@ -692,6 +716,7 @@ function InventoryContent() {
                     <SortableTh label="Поточний" sortKey="quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Доступний" sortKey="available" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <SortableTh label="Мінімум" sortKey="min_quantity" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
+                    <SortableTh label="Введено" sortKey="updated_at" currentSort={sortBy} currentDir={sortDir} onSort={handleSort} align="right" />
                     <th style={{ textAlign: "right" }}>Дії</th>
                   </tr>
                 </thead>
@@ -769,6 +794,11 @@ function InventoryContent() {
                           </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }} title={row.updated_at ? new Date(row.updated_at).toLocaleString("uk-UA") : undefined}>
+                            {row.updated_at ? formatDate(row.updated_at) : "—"}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                             <button
                               className="btn-ghost"
@@ -819,9 +849,19 @@ function InventoryContent() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                      <Factory size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                      <FactoryCell row={row} factories={factories} isSuperadmin={isSuperadmin} onChange={assignFactory} compact />
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <Factory size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                        <FactoryCell row={row} factories={factories} isSuperadmin={isSuperadmin} onChange={assignFactory} compact />
+                      </div>
+                      {row.updated_at && (
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}
+                          title={new Date(row.updated_at).toLocaleString("uk-UA")}
+                        >
+                          <Clock size={11} /> {formatDate(row.updated_at)}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
