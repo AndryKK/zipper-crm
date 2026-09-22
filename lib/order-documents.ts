@@ -300,6 +300,21 @@ const DOC_STYLE = `
     .inv-title { text-align: center; font-size: 14pt; font-weight: 700; margin: 14pt 0 2pt; }
     .inv-date  { text-align: center; font-size: 13pt; font-weight: 700; margin-bottom: 14pt; }
     .items-table { width: 100%; border-collapse: collapse; margin-bottom: 2pt; font-size: 10.5pt; }
+    /* table-header/row-group + break-inside:avoid on tr is what makes the
+       header repeat on every printed page and stops a single item's row
+       from being sliced across a page boundary — @page's margin (below)
+       is what actually repeats per page, unlike body padding, which the
+       browser only applies at the very first/last page of the fragmented
+       body box, not on every page in between. */
+    .items-table thead { display: table-header-group; }
+    .items-table tbody { display: table-row-group; }
+    .items-table tr { page-break-inside: avoid; break-inside: avoid; }
+    /* Best-effort nudge (not a hard guarantee — "avoid" is a hint the
+       renderer can still override if a page is genuinely full) to keep the
+       last item row on the same page as the totals/signature block that
+       immediately follows it, so a document doesn't end on an almost-empty
+       final page with zero item rows next to the signature. */
+    .items-table tbody tr:last-child { page-break-after: avoid; break-after: avoid; }
     .items-table th {
       border: 1px solid #000; background: #d9d9d9;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -309,12 +324,23 @@ const DOC_STYLE = `
     .items-table td { border: 1px solid #000; padding: 4pt 5pt; vertical-align: middle; }
     .c { text-align: center; }
     .r { text-align: right; }
-    .totals { margin-top: 4pt; margin-bottom: 16pt; }
-    .totals-row { display: flex; justify-content: flex-end; font-size: 11pt; line-height: 1.9; }
-    .totals-row .lbl { min-width: 148pt; text-align: right; padding-right: 8pt; }
+    /* Totals + amount-in-words + signature — kept as one non-splitting
+       block (paired with tbody tr:last-child above) so it can't be torn
+       across two pages, and can't visually "repeat" on multiple pages
+       either, since an atomic break-inside:avoid block only ever renders
+       once, wherever it lands. */
+    .doc-summary { page-break-inside: avoid; break-inside: avoid; page-break-before: avoid; break-before: avoid; }
+    .totals { margin-top: 8pt; margin-bottom: 16pt; border-top: 1pt solid #000; padding-top: 6pt; }
+    .totals-row { display: flex; justify-content: flex-end; font-size: 11pt; line-height: 1.9; color: #000; }
+    .totals-row .lbl { min-width: 148pt; text-align: right; padding-right: 8pt; font-weight: 600; }
     .totals-row .val { min-width: 56pt;  text-align: right; font-weight: 700; }
-    .summary-line { font-size: 11pt; margin-bottom: 10pt; }
-    .words { font-size: 11pt; line-height: 1.65; margin-bottom: 30pt; }
+    /* The actual amount due (last totals-row, "Всього із ПДВ") — bumped up
+       so it's unmistakably the headline number, solid black/bold rather
+       than a background-fill tint a toner-saving printer might drop. */
+    .totals-row.final { font-size: 13pt; font-weight: 700; border-top: 1pt solid #000; margin-top: 2pt; padding-top: 4pt; }
+    .totals-row.final .lbl, .totals-row.final .val { font-weight: 700; }
+    .summary-line { font-size: 11pt; font-weight: 600; color: #000; margin-bottom: 10pt; }
+    .words { font-size: 11pt; line-height: 1.65; margin-bottom: 30pt; color: #000; }
     .words b { font-weight: 700; }
     .sign-block { margin-top: 10pt; display: flex; justify-content: flex-end; }
     .sign-block.split { justify-content: space-between; gap: 40pt; }
@@ -322,9 +348,16 @@ const DOC_STYLE = `
     .sign-inner { display: flex; align-items: flex-end; gap: 6pt; font-size: 11pt; }
     .sign-line { width: 160pt; border-bottom: 1px solid #000; margin-bottom: 1pt; }
     .sign-col .sign-line { width: auto; margin-top: 26pt; }
-    .footer { text-align: right; font-size: 9pt; color: #555; margin-top: 14pt; font-style: italic; }
-    @page { size: A4; margin: 0; }
-    @media print { body { padding: 12mm 16mm 12mm; } }
+    .footer { text-align: right; font-size: 9pt; color: #333; margin-top: 14pt; font-style: italic; }
+    /* @page's own margin — NOT body padding — is what actually repeats on
+       every physical page. Top raised well past the old 12mm print value
+       (the root cause of "breaks items": with margin:0 here, body's own
+       top padding only ever rendered on page 1, so page 2+ started flush
+       against the paper edge) and bottom raised further still, giving the
+       last-page-summary block (see .doc-summary above) real room to land
+       next to at least one item instead of alone. */
+    @page { size: A4; margin: 18mm 16mm 20mm; }
+    @media print { body { padding: 0; max-width: none; } }
 `;
 
 function itemRowsHtml(items: OrderDocumentItem[]): string {
@@ -379,21 +412,23 @@ export function renderInvoiceHtml(doc: OrderDocumentData): string {
     <tbody>${itemRowsHtml(items)}</tbody>
   </table>
 
-  <div class="totals">
-    <div class="totals-row"><span class="lbl">Разом без ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
-    <div class="totals-row"><span class="lbl">ПДВ:</span><span class="val">0.00</span></div>
-    <div class="totals-row"><span class="lbl">Всього із ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
-  </div>
+  <div class="doc-summary">
+    <div class="totals">
+      <div class="totals-row"><span class="lbl">Разом без ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
+      <div class="totals-row"><span class="lbl">ПДВ:</span><span class="val">0.00</span></div>
+      <div class="totals-row final"><span class="lbl">Всього із ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
+    </div>
 
-  <div class="words">
-    Всього на суму:<br/><b>${amountWords}</b><br/>ПДВ:&nbsp;&nbsp;0.00 грн.
-  </div>
+    <div class="words">
+      Всього на суму:<br/><b>${amountWords}</b><br/>ПДВ:&nbsp;&nbsp;0.00 грн.
+    </div>
 
-  <div class="sign-block">
-    <div class="sign-inner"><span>Виписав(ла)</span><span class="sign-line"></span></div>
-  </div>
+    <div class="sign-block">
+      <div class="sign-inner"><span>Виписав(ла)</span><span class="sign-line"></span></div>
+    </div>
 
-  <div class="footer">Рахунок дійсний до сплати протягом трьох банківських днів.</div>
+    <div class="footer">Рахунок дійсний до сплати протягом трьох банківських днів.</div>
+  </div>
 </body>
 </html>`;
 }
@@ -428,21 +463,23 @@ export function renderWaybillHtml(doc: OrderDocumentData): string {
     <tbody>${itemRowsHtml(items)}</tbody>
   </table>
 
-  <div class="totals">
-    <div class="totals-row"><span class="lbl">Всього:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
-    <div class="totals-row"><span class="lbl">Сума ПДВ:</span><span class="val">0.00</span></div>
-    <div class="totals-row"><span class="lbl">Всього із ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
-  </div>
+  <div class="doc-summary">
+    <div class="totals">
+      <div class="totals-row"><span class="lbl">Всього:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
+      <div class="totals-row"><span class="lbl">Сума ПДВ:</span><span class="val">0.00</span></div>
+      <div class="totals-row final"><span class="lbl">Всього із ПДВ:</span><span class="val">${orderTotal.toFixed(2)}</span></div>
+    </div>
 
-  <div class="summary-line">Всього найменувань: ${items.length} на суму ${orderTotal.toFixed(2)} грн.</div>
+    <div class="summary-line">Всього найменувань: ${items.length} на суму ${orderTotal.toFixed(2)} грн.</div>
 
-  <div class="words">
-    <b>${amountWords}</b><br/>У т.ч. ПДВ: нуль гривень, 00 коп.
-  </div>
+    <div class="words">
+      <b>${amountWords}</b><br/>У т.ч. ПДВ: нуль гривень, 00 коп.
+    </div>
 
-  <div class="sign-block split">
-    <div class="sign-col">Від постачальника<div class="sign-line"></div></div>
-    <div class="sign-col">Отримав(ла)<div class="sign-line"></div></div>
+    <div class="sign-block split">
+      <div class="sign-col">Від постачальника<div class="sign-line"></div></div>
+      <div class="sign-col">Отримав(ла)<div class="sign-line"></div></div>
+    </div>
   </div>
 </body>
 </html>`;
