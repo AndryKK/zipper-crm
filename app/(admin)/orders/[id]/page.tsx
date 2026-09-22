@@ -378,10 +378,25 @@ export default function OrderDetailPage() {
     setTimeout(() => setManualHighlight(false), 2200);
   }
 
-  // Client edit
+  // "Отримувач" edit — this specific order's shipping recipient (can be a
+  // completely different person than whoever's logged in — a gift order,
+  // etc.). Kept as its own PUT of plain orders columns, same as before the
+  // Замовник/Отримувач split.
   const [editingClient, setEditingClient] = useState(false);
-  const [clientDraft, setClientDraft] = useState({ person: "", phone: "", login: "", addr_delivery: "", pay_method: "" });
+  const [clientDraft, setClientDraft] = useState({ person: "", phone: "", addr_delivery: "", pay_method: "" });
   const [savingClient, setSavingClient] = useState(false);
+
+  // "Замовник" edit — who actually placed the order. login re-points the
+  // order at a different account entirely; original_client_name is a
+  // this-order-only display name (see its own column comment) for when the
+  // account holder wants to be addressed differently than order.person
+  // (the recipient) without changing their real account. Everything else
+  // shown on that card (order.customer — see app/api/orders/[id]/route.ts)
+  // is the account's own profile, read-only here on purpose: editing it
+  // would silently change that person's account for every other order too.
+  const [editingOrderer, setEditingOrderer] = useState(false);
+  const [ordererDraft, setOrdererDraft] = useState({ login: "", original_client_name: "" });
+  const [savingOrderer, setSavingOrderer] = useState(false);
 
   // Returns
   const [returnProduct, setReturnProduct] = useState("");
@@ -1038,11 +1053,36 @@ export default function OrderDetailPage() {
     setClientDraft({
       person: order.person ?? "",
       phone: order.phone ?? "",
-      login: order.login ?? "",
       addr_delivery: order.addr_delivery ?? "",
       pay_method: order.pay_method ?? "",
     });
     setEditingClient(true);
+  }
+
+  function startEditOrderer() {
+    setOrdererDraft({
+      login: order.login ?? "",
+      original_client_name: order.original_client_name ?? "",
+    });
+    setEditingOrderer(true);
+  }
+
+  async function saveOrderer() {
+    setSavingOrderer(true);
+    const res = await fetch(`/api/orders/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ordererDraft),
+    });
+    setSavingOrderer(false);
+    if (!res.ok) { toast.error("Не вдалося зберегти дані замовника"); return; }
+    // login changed -> the account-profile half of the card (order.customer)
+    // is now stale until the next full reload; refreshOrder() re-fetches it
+    // from the server instead of just merging the draft in like saveClient
+    // does (that one never changes which account owns the order).
+    await refreshOrder();
+    setEditingOrderer(false);
+    toast.success("Дані замовника оновлено");
   }
 
   async function saveClient() {
@@ -1329,7 +1369,7 @@ export default function OrderDetailPage() {
     saving || processing || confirming || checkingNp || cancellingTtn ||
     postomatSubmitting || codLoadingPreview || codSubmitting ||
     savingPrepayment || generatingInvoice || generatingTtn || stockChecking ||
-    emailPreviewLoading || emailSending || savingClient || submittingReturn ||
+    emailPreviewLoading || emailSending || savingClient || savingOrderer || submittingReturn ||
     npManualSubmitting ||
     savingItemId !== null;
 
@@ -2918,10 +2958,104 @@ export default function OrderDetailPage() {
 
         {/* ── GRID ──────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Client info */}
+          {/* Замовник — who placed the order (order.login's own account) —
+              split out from "Отримувач" below: order.person/phone/
+              addr_delivery are the RECIPIENT this specific order ships to,
+              which can be a completely different person (a gift order,
+              someone ordering for a relative, etc.) than whoever's account
+              placed it. Same underlying orders/users tables as before —
+              nothing moved in the DB, just no longer shown as one
+              conflated "Клієнт" card. */}
           <Card>
             <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <CardTitle className="text-sm">Клієнт</CardTitle>
+              <CardTitle className="text-sm">Замовник</CardTitle>
+              {!editingOrderer ? (
+                <button
+                  onClick={startEditOrderer}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.1)", color: "#6366f1", border: "none", cursor: "pointer" }}
+                >
+                  <Pencil size={12} /> Редагувати
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => setEditingOrderer(false)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(148,163,184,0.15)", color: "#64748b", border: "none", cursor: "pointer" }}
+                  >
+                    <X size={12} /> Скасувати
+                  </button>
+                  <button
+                    onClick={saveOrderer} disabled={savingOrderer}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#6366f1", color: "#fff", border: "none", cursor: "pointer" }}
+                  >
+                    {savingOrderer ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check size={12} />} Зберегти
+                  </button>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              {editingOrderer ? (
+                <div className="space-y-2.5">
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Логін</Label>
+                    <Input value={ordererDraft.login} onChange={(e) => setOrdererDraft((d) => ({ ...d, login: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label style={{ fontSize: 12 }}>Ім&apos;я замовника (для звернень)</Label>
+                    <Input
+                      value={ordererDraft.original_client_name}
+                      onChange={(e) => setOrdererDraft((d) => ({ ...d, original_client_name: e.target.value }))}
+                      placeholder="якщо відрізняється від імені отримувача"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
+                  {order.original_client_name && (
+                    <div><span className="text-gray-500">Ім&apos;я замовника:</span> {order.original_client_name}</div>
+                  )}
+                  {/* order.customer — the account's own profile (app/api/
+                      orders/[id]/route.ts), null for a guest checkout or a
+                      login that never became a real account. Read-only
+                      here on purpose: editing it would change that
+                      person's account for every other order too, not just
+                      this one — see this page's own state comment. */}
+                  {order.customer ? (
+                    <>
+                      {order.customer.person && <div><span className="text-gray-500">Ім&apos;я:</span> {order.customer.person}</div>}
+                      {order.customer.phone && <div><span className="text-gray-500">Телефон:</span> {order.customer.phone}</div>}
+                      {order.customer.addrDelivery && <div><span className="text-gray-500">Адреса за замовчуванням:</span> {order.customer.addrDelivery}</div>}
+                      {order.customer.rankLabel && (
+                        <div>
+                          <span className="text-gray-500">Ранг:</span> {order.customer.rankLabel}
+                          {order.customer.rankDiscount != null && ` (${order.customer.rankDiscount}%)`}
+                        </div>
+                      )}
+                      {order.customer.isOrganization && (
+                        <div><span className="text-gray-500">Організація:</span> ЄДРПОУ {order.customer.edrpou ?? "—"}</div>
+                      )}
+                    </>
+                  ) : (
+                    order.login && (
+                      <div style={{ color: "var(--text-muted)", fontSize: 12.5 }}>
+                        {isGuestCheckoutEmail(order.login)
+                          ? "Гостьове оформлення без реєстрації — контактні дані клієнта дивіться в картці «Отримувач»"
+                          : "Акаунта з таким логіном не знайдено"}
+                      </div>
+                    )
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Отримувач — this order's shipping recipient (order.person/
+              phone/addr_delivery/ttn) — see the Замовник card's own
+              comment above for why these are kept separate. */}
+          <Card>
+            <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <CardTitle className="text-sm">Отримувач</CardTitle>
               {!editingClient ? (
                 <button
                   onClick={startEditClient}
@@ -2958,10 +3092,6 @@ export default function OrderDetailPage() {
                     <Input value={clientDraft.phone} onChange={(e) => setClientDraft((d) => ({ ...d, phone: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label style={{ fontSize: 12 }}>Логін</Label>
-                    <Input value={clientDraft.login} onChange={(e) => setClientDraft((d) => ({ ...d, login: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1">
                     <Label style={{ fontSize: 12 }}>Адреса</Label>
                     {/* Search box for Nova Poshta's own city+warehouse list
                         (one field, per the ask) — picking a suggestion
@@ -2985,7 +3115,6 @@ export default function OrderDetailPage() {
                 <>
                   <div><span className="text-gray-500">Ім&apos;я:</span> {order.person ?? "—"}</div>
                   <div><span className="text-gray-500">Телефон:</span> {order.phone ?? "—"}</div>
-                  <div><span className="text-gray-500">Логін:</span> {order.login ?? "—"}</div>
                   <div><span className="text-gray-500">Адреса:</span> {order.addr_delivery ?? "—"}</div>
                 </>
               )}
@@ -3055,9 +3184,12 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Manual control */}
+          {/* Manual control — spans both columns now that Замовник/
+              Отримувач fill the row above it instead of just one "Клієнт"
+              card, so it isn't left stranded alone next to empty space. */}
           <Card
             ref={manualCardRef}
+            className="md:col-span-2"
             style={manualHighlight ? { borderColor: "#6366f1", boxShadow: "0 0 0 3px rgba(99,102,241,0.25)", transition: "box-shadow 0.3s ease" } : { transition: "box-shadow 0.3s ease" }}
           >
             <CardHeader><CardTitle className="text-sm">Ручне управління</CardTitle></CardHeader>

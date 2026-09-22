@@ -5,6 +5,7 @@ import { resolveLegacyReturns } from "@/lib/returns-resolve";
 import { revalidateTag } from "next/cache";
 import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 import { getClientDiscountPercent } from "@/lib/pricing";
+import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -28,6 +29,32 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       .order("date", { ascending: false }),
   ]);
   const resolvedReturns = await resolveLegacyReturns(returns ?? []);
+
+  // Account holder's OWN profile — distinct from order.person/phone/
+  // addr_delivery, which are this specific order's RECIPIENT (can be a
+  // completely different person, e.g. a gift — see recipientPhone's own
+  // comment in lib/order-ttn.ts). The order page's "Замовник" card uses
+  // this for the person who actually placed the order; null for a login
+  // that never became a real account, OR the shared guest-checkout login
+  // (see lib/guest-checkout.ts) — that one DOES have a `users` row, but
+  // it's the site's own generic technical account (garbage placeholder
+  // data like phone="1"), not a real customer's profile.
+  const { data: customerUser } = order.login && !isGuestCheckoutEmail(order.login)
+    ? await supabaseServer.from("users").select("person, phone, rank, addr_delivery, is_organization, edrpou").eq("login", order.login).maybeSingle()
+    : { data: null };
+  const { data: customerRank } = customerUser?.rank
+    ? await supabaseServer.from("users_categories").select("title, discount").eq("translation_id", customerUser.rank).eq("lang", "uk").maybeSingle()
+    : { data: null };
+  const customer = customerUser ? {
+    person: customerUser.person,
+    phone: customerUser.phone,
+    addrDelivery: customerUser.addr_delivery,
+    isOrganization: customerUser.is_organization,
+    edrpou: customerUser.edrpou,
+    rankLabel: customerRank?.title ?? null,
+    rankDiscount: customerRank?.discount ?? null,
+  } : null;
+
   // The client's own rank-based discount (see lib/pricing.ts) — surfaced
   // separately from order.discount_percent (a manager override, may be
   // null) so the stock-check popup can show/prefill "this client's default
@@ -76,7 +103,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     };
   });
 
-  return NextResponse.json({ ...order, items: itemsWithProduct, returns: resolvedReturns, clientDiscountPercent });
+  return NextResponse.json({ ...order, items: itemsWithProduct, returns: resolvedReturns, clientDiscountPercent, customer });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
