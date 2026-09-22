@@ -83,13 +83,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: `Товар з артикулом «${pcode.trim()}» не знайдено` }, { status: 404 });
   }
 
-  // Source's OWN group membership BEFORE any new link below — needed to
-  // resolve an active=1 conflict after merging (see the "existing found"
-  // branch's own comment further down): once the new products_colors edge
-  // exists, findColorGroupTrIds(sourceId) would return the MERGED set, so
-  // this has to be captured first to know which active=1 row (if any)
-  // belongs to the group being merged INTO, as opposed to the incoming one.
+  // Source's and target's OWN group membership BEFORE any new link below —
+  // needed to resolve an active=1 conflict after merging (see the
+  // "existing found" branch's own comment further down), captured now
+  // because once the new products_colors edge exists below, a BFS from
+  // either side would return the whole newly-merged set instead.
+  //
+  // Deliberately NOT used to scan the post-merge combined component for
+  // conflicts (an earlier version of this route did exactly that, via
+  // findColorGroupTrIds(sourceId) run AFTER the link existed) — production
+  // data has old links connecting groups far beyond what either side of
+  // THIS merge actually touches (e.g. group A also has a long-stale direct
+  // link to unrelated group C from years ago), and a full-graph BFS after
+  // merging walks straight through those, "discovering" and silently
+  // flipping an active=1 conflict that has nothing to do with this
+  // request. That's exactly what happened live: merging two already-
+  // inactive products into a group reached, via one old pre-existing edge,
+  // a completely different product that also happened to be active=1, and
+  // demoted the group's real head instead — see git blame for the incident.
+  // Scoping strictly to each side's own DIRECT pre-merge group keeps this
+  // fix local to the two products an admin actually clicked "merge" on.
   const sourceGroupTrIdsBeforeMerge = existing?.length ? await findColorGroupTrIds(sourceId) : [];
+  const targetGroupTrIdsBeforeMerge = existing?.length ? await findColorGroupTrIds(existing[0].id) : [];
 
   // Exactly one bidirectional pair per color-group relationship, keyed by
   // translation_id — NOT per-language row ids. This must match the
@@ -283,32 +298,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // "not found, create new" branch already prevents a fresh row from being
   // born active=1 into a group that already has one (groupAlreadyHasActive
   // above). The product being merged in might itself have been the active
-  // "головний" head of its own separate group (or of a whole other multi-
-  // color group) — exactly one active=1 per group is what the storefront's
-  // search/color-picker depends on (see resolveStorefrontGroups in
-  // lib/products.ts), so after the merge the group being merged INTO keeps
-  // whichever row was already its own active head, and every other
-  // active=1 row pulled in by the merge gets demoted to 0 — the incoming
-  // product becomes a subordinate member of this group, never a second head.
+  // "головний" head of its own separate group — exactly one active=1 per
+  // group is what the storefront's search/color-picker depends on (see
+  // resolveStorefrontGroups in lib/products.ts) — so if the group being
+  // merged INTO already has its own active head, the incoming product's
+  // own active row(s) get demoted to 0, becoming a subordinate member
+  // instead of a second head. If source's own group had NO active head at
+  // all, the target's active status is left alone instead of stripping it
+  // and leaving the merged group headless.
+  //
+  // STRICTLY scoped to targetGroupTrIdsBeforeMerge (the target's own
+  // DIRECT pre-merge group) — never a fresh BFS over the post-merge
+  // combined component. An old, unrelated products_colors edge from
+  // either side's pre-existing group can reach a totally different
+  // product several hops away that also happens to be active=1 for
+  // reasons that have nothing to do with today's merge; scanning the
+  // whole newly-connected component for "the" conflict silently "fixes"
+  // (i.e. flips) that unrelated product instead, which is exactly what
+  // happened in production — merging two already-inactive products
+  // revealed a years-old direct link to a different active product and
+  // demoted the actual group head instead of the products just added.
   if (existing?.length) {
-    const mergedGroupTrIds = await findColorGroupTrIds(sourceId);
-    const { data: activeRows } = await supabaseServer
+    const { data: sourceActiveRows } = await supabaseServer
       .from("products")
       .select("translation_id")
-      .in("translation_id", mergedGroupTrIds)
+      .in("translation_id", sourceGroupTrIdsBeforeMerge)
       .eq("active", 1);
-    const activeTrIds = [...new Set((activeRows ?? []).map((r: any) => r.translation_id))];
-    if (activeTrIds.length > 1) {
-      const keep = activeTrIds.find((tid) => sourceGroupTrIdsBeforeMerge.includes(tid)) ?? activeTrIds[0];
-      const demote = activeTrIds.filter((tid) => tid !== keep);
-      if (demote.length) {
-        await supabaseServer.from("products").update({ active: 0 }).in("translation_id", demote);
+    const sourceHasOwnActiveHead = (sourceActiveRows ?? []).length > 0;
+
+    if (sourceHasOwnActiveHead) {
+      const { data: targetActiveRows } = await supabaseServer
+        .from("products")
+        .select("translation_id")
+        .in("translation_id", targetGroupTrIdsBeforeMerge)
+        .eq("active", 1);
+      const targetActiveTrIds = [...new Set((targetActiveRows ?? []).map((r: any) => r.translation_id))];
+      if (targetActiveTrIds.length) {
+        await supabaseServer.from("products").update({ active: 0 }).in("translation_id", targetActiveTrIds);
         // newVariants was already fetched above (still showing the
         // pre-demotion `active` value) — patch it in-memory so the
         // response the frontend applies to its own state matches what the
         // DB actually ends up with, instead of the UI showing this color
         // as active until the next full page reload happens to re-fetch it.
-        if (demote.includes(newTrId)) newVariants = newVariants.map((v) => ({ ...v, active: 0 }));
+        if (targetActiveTrIds.includes(newTrId)) newVariants = newVariants.map((v) => ({ ...v, active: 0 }));
       }
     }
   }
