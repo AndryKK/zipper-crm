@@ -512,8 +512,8 @@ function OrdersPageInner() {
                         {/* Same data as the removed Дата column, just
                             relocated — the calendar icon is what keeps it
                             legible as a date instead of a second id. */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: 11, opacity: 0.75 }}>
-                          <Calendar size={11} />
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: 13, opacity: 0.8 }}>
+                          <Calendar size={12} />
                           {formatDate(order.date)}
                         </div>
                       </td>
@@ -529,25 +529,22 @@ function OrdersPageInner() {
                             be called back, otherwise the plain order phone
                             in a muted tone — so a manager can tell "needs a
                             callback" from "just the delivery contact" at a
-                            glance without opening the order. */}
+                            glance without opening the order. Plain spans,
+                            not tel: links — on desktop any click anywhere
+                            in the row (phone included) opens the order
+                            instead of trying to dial. */}
                         {order.callme && order.clientPhone ? (
-                          <a
-                            href={`tel:${order.clientPhone}`}
-                            onClick={(e) => e.stopPropagation()}
+                          <span
                             title="Клієнт просить передзвонити"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 12, color: "#dc2626", fontWeight: 600, textDecoration: "none", fontFamily: "monospace" }}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 12, color: "#dc2626", fontWeight: 600, fontFamily: "monospace" }}
                           >
                             <Phone size={11} />
                             {order.clientPhone}
-                          </a>
+                          </span>
                         ) : order.phone ? (
-                          <a
-                            href={`tel:${order.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--text-muted)", textDecoration: "none", fontFamily: "monospace" }}
-                          >
+                          <div style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
                             {order.phone}
-                          </a>
+                          </div>
                         ) : null}
                       </td>
                       <td className="text-xs" style={{ color: "var(--text-muted)", maxWidth: 150 }}>
