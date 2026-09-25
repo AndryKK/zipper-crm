@@ -130,6 +130,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     { data: mainChars },
     { data: categories },
     { data: measures },
+    { data: measuresReal },
     { data: langs },
     { data: productCats },
   ] = await Promise.all([
@@ -143,6 +144,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     // cuts egress on one of the most-visited pages in the CRM.
     supabaseServer.from("categories").select("id, pid, title, translationId:translation_id").eq("lang", "uk").order("title"),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title"),
+    // measures_real (NOT measures above — that's products.package's
+    // availability-status lookup) is products.measure's real "тип
+    // фасування" lookup: штук/пачка/пара/метри/рулони — see
+    // lib/order-documents.ts's own comment on this exact same table for
+    // the full story of why the two are easy to confuse.
+    supabaseServer.from("measures_real").select("*").eq("lang", "uk").order("priority"),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority"),
     // Keyed by translation_id, not per-language row id — matches the
     // storefront's catalog filter and the PUT handler in
@@ -204,6 +211,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         categoryDiscounts={(categoryDiscountRows || []) as any[]}
         currencyRate={(currencyRow as any)?.rate ?? 0}
         measures={(measures || []) as any[]}
+        measuresReal={(measuresReal || []) as any[]}
         filters={filtersWithChildren}
         productFilters={productFilters}
         langs={(langs || []) as any[]}

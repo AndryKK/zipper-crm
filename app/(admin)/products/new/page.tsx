@@ -9,6 +9,7 @@ export default async function NewProductPage() {
   const [
     { data: categories },
     { data: measures },
+    { data: measuresReal },
     { data: langs },
   ] = await Promise.all([
     // Only id/pid/title/translationId are read by ProductForm's category
@@ -17,6 +18,10 @@ export default async function NewProductPage() {
     // text/img etc. cuts real egress.
     supabaseServer.from("categories").select("id, pid, title, translationId:translation_id").eq("lang", "uk").order("title", { ascending: true }),
     supabaseServer.from("measures").select("*").eq("lang", "uk").order("title", { ascending: true }),
+    // measures_real (NOT measures above — see products/[id]/page.tsx's own
+    // comment) is products.measure's real "тип фасування" lookup: штук/
+    // пачка/пара/метри/рулони.
+    supabaseServer.from("measures_real").select("*").eq("lang", "uk").order("priority", { ascending: true }),
     supabaseServer.from("langs").select("*").eq("active", 1).order("priority", { ascending: true }),
   ]);
 
@@ -28,6 +33,7 @@ export default async function NewProductPage() {
       <ProductForm
         categories={(categories || []) as any[]}
         measures={(measures || []) as any[]}
+        measuresReal={(measuresReal || []) as any[]}
         filters={filtersWithChildren}
         langs={(langs || []) as any[]}
         mode="create"

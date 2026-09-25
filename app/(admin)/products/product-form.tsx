@@ -185,6 +185,11 @@ interface Props {
   categoryDiscounts?: { translationId: number; title: string; discount: number; ndiscount: number }[];
   currencyRate?: number;
   measures: any[];
+  // Тип фасування (products.measure) options — штук/пачка/пара/метри/
+  // рулони, from measures_real. NOT the "measures" prop above, which is
+  // products.package's availability-status enum — same-shaped, unrelated
+  // table, see this file's own AVAILABILITY_COLOR comment.
+  measuresReal: any[];
   filters: any[];
   langs: any[];
   mode: "create" | "edit";
@@ -311,6 +316,7 @@ function EditForm({
   categoryDiscounts = [],
   currencyRate = 0,
   measures,
+  measuresReal,
   filters,
   langs,
 }: Props) {
@@ -391,7 +397,6 @@ function EditForm({
     price2n: baseVariant.price2n ?? "",
     price3: baseVariant.price3 ?? "",
     price3n: baseVariant.price3n ?? "",
-    measure: baseVariant.measure ? String(baseVariant.measure) : "0",
     minquantity: baseVariant.minquantity ?? 1,
     labelAction: baseVariant.labelAction ?? 0,
     popular: baseVariant.popular ?? 0,
@@ -426,6 +431,27 @@ function EditForm({
     for (const cg of initialColorGroups) {
       const ukV = cg.langVariants.find((v: any) => v.lang === "uk") ?? cg.langVariants[0];
       if (ukV) map[ukV.translationId] = ukV.package ?? 1;
+    }
+    return map;
+  });
+  // "Тип фасування" — products.measure (references measures_real.
+  // translation_id: штук/пачка/пара/метри/рулони). Per-color, same as
+  // package above, since the underlying products row already carries its
+  // own independent measure per color/language row — a product family
+  // could in principle sell one color by the pair and another by the
+  // piece, and forcing one shared value here (the way this used to be
+  // wired, via a single common.measure applied to every color on save)
+  // would silently overwrite every OTHER color's real measure the next
+  // time anyone saved this product at all, not just the one color someone
+  // meant to fix. PostgREST returns products.measure as a string, not a
+  // number (confirmed — same gotcha as lib/order-documents.ts's own
+  // measure resolution), so this coerces with Number() rather than
+  // trusting typeof.
+  const [measureMap, setMeasureMap] = useState<Record<number, number>>(() => {
+    const map: Record<number, number> = { [baseVariant.translationId]: Number(baseVariant.measure) || 3 };
+    for (const cg of initialColorGroups) {
+      const ukV = cg.langVariants.find((v: any) => v.lang === "uk") ?? cg.langVariants[0];
+      if (ukV) map[ukV.translationId] = Number(ukV.measure) || 3;
     }
     return map;
   });
@@ -978,7 +1004,6 @@ function EditForm({
         price2n: common.price2n !== "" ? parseInt(String(common.price2n)) : null,
         price3: common.price3 !== "" ? parseFloat(String(common.price3)) : null,
         price3n: common.price3n !== "" ? parseInt(String(common.price3n)) : null,
-        measure: common.measure !== "0" ? parseInt(common.measure) : null,
         minquantity: parseFloat(String(common.minquantity)) || 1,
         label_action: parseInt(String(common.labelAction)),
         popular: parseInt(String(common.popular)),
@@ -997,6 +1022,7 @@ function EditForm({
               ...pricePayload,
               active: parseInt(String(activeMap[trId] ?? 1)),
               package: parseInt(String(packageMap[trId] ?? 1)),
+              measure: measureMap[trId] ?? 3,
               pcode: pcodes[trId] ?? "",
               title: textData.title ?? "",
               main_title: textData.main_title ?? "",
@@ -1299,6 +1325,22 @@ function EditForm({
             }}
           >
             {measures.map((m: any) => (
+              <option key={m.translationId ?? m.translation_id} value={m.translationId ?? m.translation_id}>{m.title}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Тип фасування:</span>
+          <select
+            value={measureMap[activeColorTrId] ?? 3}
+            onChange={(e) => setMeasureMap((p) => ({ ...p, [activeColorTrId]: parseInt(e.target.value) }))}
+            title="Одиниця продажу цього кольору — штука/пачка/пара/... (products.measure), так само відображається на сайті"
+            style={{
+              fontSize: 12, padding: "3px 8px", borderRadius: 5,
+              border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", cursor: "pointer",
+            }}
+          >
+            {measuresReal.map((m: any) => (
               <option key={m.translationId ?? m.translation_id} value={m.translationId ?? m.translation_id}>{m.title}</option>
             ))}
           </select>
@@ -2247,7 +2289,7 @@ function PhotosSection({
 
 // ─── CREATE FORM ─────────────────────────────────────────────────────────────
 
-function CreateForm({ categories, measures, filters, langs, product }: Props) {
+function CreateForm({ categories, measures, measuresReal, filters, langs, product }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("main");
@@ -2263,7 +2305,11 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
     price3: product?.price3 ?? "",
     price3n: product?.price3n ?? "",
     minquantity: product?.minquantity ?? 1,
-    measure: product?.measure ? String(product.measure) : "0",
+    // "3" (штук) default, not "0" — every live product already has a real
+    // measure set (verified — no NULLs), and unlike "package" this select
+    // (measuresReal below) has no id=0 option to fall back to, so leaving
+    // this at "0" just rendered the dropdown with nothing visibly selected.
+    measure: product?.measure ? String(product.measure) : "3",
     active: product?.active ?? 1,
     package: product?.package ?? 1,
     labelAction: product?.labelAction ?? 0,
@@ -2329,7 +2375,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
         price3: detail.price3 ?? "",
         price3n: detail.price3n ?? "",
         minquantity: detail.minquantity ?? 1,
-        measure: detail.measure ? String(detail.measure) : "0",
+        measure: detail.measure ? String(detail.measure) : "3",
         package: detail.package ?? 1,
         labelAction: detail.labelAction ?? 0,
         popular: detail.popular ?? 0,
@@ -2381,7 +2427,7 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
           price2n: form.price2n !== "" ? parseInt(String(form.price2n)) : 0,
           price3: form.price3 !== "" ? parseFloat(String(form.price3)) : 0,
           price3n: form.price3n !== "" ? parseInt(String(form.price3n)) : 0,
-          measure: form.measure !== "0" ? parseInt(form.measure) : null,
+          measure: parseInt(form.measure) || 3,
           minquantity: parseInt(String(form.minquantity)) || 0,
           priority: parseInt(String(form.priority)) || 0,
           active: parseInt(String(form.active)),
@@ -2490,13 +2536,24 @@ function CreateForm({ categories, measures, filters, langs, product }: Props) {
             <div className="space-y-1.5"><Label>Мінімальна кількість</Label><Input type="number" value={form.minquantity} onChange={(e) => set("minquantity", e.target.value)} /></div>
             <div className="space-y-1.5"><Label>Пріоритет</Label><Input type="number" value={form.priority} onChange={(e) => set("priority", e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="space-y-1.5">
               <Label>В наявності</Label>
               <Select value={String(form.package)} onValueChange={(v) => set("package", parseInt(v))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {measures.map((m: any) => (
+                    <SelectItem key={m.translationId ?? m.translation_id} value={String(m.translationId ?? m.translation_id)}>{m.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Тип фасування</Label>
+              <Select value={form.measure} onValueChange={(v) => set("measure", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {measuresReal.map((m: any) => (
                     <SelectItem key={m.translationId ?? m.translation_id} value={String(m.translationId ?? m.translation_id)}>{m.title}</SelectItem>
                   ))}
                 </SelectContent>
