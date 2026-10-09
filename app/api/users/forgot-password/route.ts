@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { supabaseServer } from "@/lib/supabase";
 import { sendEmail, isValidEmail } from "@/lib/email";
 import { renderNewPasswordEmail } from "@/lib/email-templates";
+import { generatePassword } from "@/lib/passwords";
 
 // Public, unauthenticated — storefront "Забули пароль?" button (see
 // proxy.ts's isForgotPasswordRoute bypass; this path must stay in sync
@@ -48,14 +48,6 @@ function isRateLimited(key: string): boolean {
     }
   }
   return hits.length > RATE_LIMIT_MAX_PER_KEY;
-}
-
-const PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"; // no 0/O/1/l/I ambiguity
-function generatePassword(length = 10): string {
-  const bytes = randomBytes(length);
-  let out = "";
-  for (let i = 0; i < length; i++) out += PASSWORD_CHARS[bytes[i] % PASSWORD_CHARS.length];
-  return out;
 }
 
 export async function POST(req: NextRequest) {
