@@ -190,6 +190,16 @@ export default function OrderDetailPage() {
   // matches itemSaveGenerationRef's own reasoning elsewhere on this page).
   const discountTouchedRef = useRef(false);
   const [resendingDiscount, setResendingDiscount] = useState(false);
+  // "Застосувати примусово знижку" — its own deliberate, separately-
+  // confirmed action (see process/route.ts's own comment on
+  // forceDiscountPercent for why this must never be a side effect of
+  // something else, like the ordinary "Змінити і надіслати повторно"
+  // button used to make it). showForceDiscountConfirm gates a confirm
+  // dialog since this can genuinely overcharge/undercharge relative to
+  // what a category's own bulk discount would give — not a click to make
+  // casually.
+  const [showForceDiscountConfirm, setShowForceDiscountConfirm] = useState(false);
+  const [forcingDiscount, setForcingDiscount] = useState(false);
   // Organization/ЄДРПОУ — prefilled from order.is_organization/order.edrpou
   // (set either by the storefront checkout or a manager here) but always
   // editable, same override relationship as the manual-TTN dialog's own
@@ -688,6 +698,40 @@ export default function OrderDetailPage() {
       else          toast.success("Знижку застосовано, рахунок надіслано повторно!");
     } catch { toast.error("Помилка з'єднання"); }
     finally { setResendingDiscount(false); }
+  }
+
+  // "Застосувати примусово знижку" — deliberately its OWN action, never
+  // bundled into resendWithDiscount above. Sends forceDiscountPercent:
+  // true, which makes process/route.ts apply this %% straight to every
+  // active item (computeFlatItemPricing), bypassing any category/quantity
+  // bulk discount those items would otherwise get — see that route's own
+  // comment for exactly why this must stay separate and confirmed rather
+  // than a side effect of some other button.
+  async function forceApplyDiscount() {
+    const discountPercent = parseFloat(discountInput);
+    if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
+    if (orgCheckbox && !edrpouInput.trim()) { toast.error("Вкажіть код ЄДРПОУ для організації"); return; }
+    setForcingDiscount(true);
+    try {
+      const res = await fetch(`/api/orders/${params.id}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          discountPercent,
+          forceDiscountPercent: true,
+          isOrganization: orgCheckbox,
+          edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
+          nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "Помилка"); return; }
+      await refreshOrder();
+      const hasError = data.log.some((l: StepLog) => l.status === "error");
+      if (hasError) toast.warning("Надіслано з помилками");
+      else          toast.success("Знижку примусово застосовано до всіх товарів, рахунок надіслано повторно!");
+    } catch { toast.error("Помилка з'єднання"); }
+    finally { setForcingDiscount(false); }
   }
 
   async function confirmPayment() {
@@ -1552,18 +1596,17 @@ export default function OrderDetailPage() {
                     // room to breathe, and the button goes full-width on
                     // phone.
                     //
-                    // This whole panel (discount %% + org/non-cash
-                    // checkboxes) shares one button — "Змінити і надіслати
-                    // повторно" resends with whatever's in this %% field
-                    // regardless of why it was opened, including when a
+                    // This panel (discount %% + org/non-cash checkboxes)
+                    // now has TWO buttons on purpose (see process/route.ts's
+                    // own comment and order 21526): "Змінити і надіслати
+                    // повторно" resends with this %% as only the FALLBACK
+                    // rate — an item's own category/bulk discount always
+                    // wins regardless, so it's safe to click even when the
                     // manager's only actual intent was flipping the org/
-                    // non-cash checkboxes below. That used to matter a lot
-                    // (this field used to FORCE a flat %% onto every item,
-                    // discarding a real category bulk discount — see
-                    // process/route.ts's own comment, order 21526) — now it
-                    // only ever sets the fallback rate, so resending here
-                    // for org-info-only reasons can no longer silently
-                    // overcharge an item that has its own category discount.
+                    // non-cash checkboxes below. "Застосувати примусово
+                    // знижку" is the separate, confirmed, deliberate
+                    // override that forces this %% onto every item instead
+                    // — never the other way around.
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 12.5, color: "var(--text-muted)", flexShrink: 0 }}>Знижка клієнта:</span>
@@ -1605,16 +1648,32 @@ export default function OrderDetailPage() {
                           Оплата за доставку безготівковим розрахунком
                         </label>
                       )}
-                      <button
-                        onClick={resendWithDiscount}
-                        disabled={resendingDiscount}
-                        className="w-full sm:w-auto"
-                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
-                        title="Перерахувати ціни за новою знижкою і надіслати рахунок та накладну зі знижкою повторно"
-                      >
-                        {resendingDiscount ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail size={12} />}
-                        Змінити і надіслати повторно
-                      </button>
+                      <div className="flex flex-col sm:flex-row" style={{ gap: 8 }}>
+                        <button
+                          onClick={resendWithDiscount}
+                          disabled={resendingDiscount}
+                          className="w-full sm:w-auto"
+                          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.22)", cursor: "pointer" }}
+                          title="Перерахувати ціни за новою знижкою (категорійна/оптова знижка товару має пріоритет) і надіслати рахунок та накладну повторно"
+                        >
+                          {resendingDiscount ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail size={12} />}
+                          Змінити і надіслати повторно
+                        </button>
+                        {/* Separate, deliberately-confirmed override — see
+                            process/route.ts's forceDiscountPercent comment
+                            and forceApplyDiscount above for why this must
+                            never be the default/the button above. */}
+                        <button
+                          onClick={() => setShowForceDiscountConfirm(true)}
+                          disabled={forcingDiscount}
+                          className="w-full sm:w-auto"
+                          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(245,158,11,0.12)", color: "#d97706", border: "1px solid rgba(245,158,11,0.22)", cursor: "pointer" }}
+                          title="Застосувати цю %% до КОЖНОГО товару напряму, навіть якщо в нього є власна категорійна/оптова знижка"
+                        >
+                          {forcingDiscount ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertTriangle size={12} />}
+                          Застосувати примусово знижку
+                        </button>
+                      </div>
                     </div>
                   )}
                   {/* «Інший платник» — issues the рахунок-фактура ("Платник")
@@ -3750,6 +3809,17 @@ export default function OrderDetailPage() {
           confirmLabel="Все одно опрацювати"
           onConfirm={openStockConfirm}
           onCancel={() => setShowGuestCheckoutWarning(false)}
+        />
+      )}
+
+      {showForceDiscountConfirm && (
+        <ConfirmDialog
+          message={`Примусово застосувати знижку ${discountInput}% до КОЖНОГО товару?`}
+          subMessage="Це перезапише ціну кожної позиції цією %%, навіть якщо товар має власну категорійну/оптову знижку (наприклад -20% від 1000 шт.) — та знижка буде проігнорована для всього замовлення. Рахунок і накладна одразу надішлються повторно з новими цінами. Товари зі вже вручну зміненою ціною не торкаються."
+          destructive
+          confirmLabel="Застосувати примусово"
+          onConfirm={forceApplyDiscount}
+          onCancel={() => setShowForceDiscountConfirm(false)}
         />
       )}
     </>

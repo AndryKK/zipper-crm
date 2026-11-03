@@ -7,7 +7,7 @@ import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 import type { EmailRenderOptions } from "@/lib/email-templates";
-import { getUahRate, computeItemPricingForProduct } from "@/lib/pricing";
+import { getUahRate, computeItemPricingForProduct, computeFlatItemPricing } from "@/lib/pricing";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -81,43 +81,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   /* ── Client discount — recompute active items' price whenever a manager
      explicitly passes a new %% (the "змінити знижку і надіслати повторно"
-     action). Without an explicit value, existing prices are left exactly
-     as they were (this route runs on every normal "Підтвердити і
-     опрацювати" too, and must not silently re-price an order nobody asked
-     to re-price).
+     action, or the dedicated force-discount action below). Without an
+     explicit value, existing prices are left exactly as they were (this
+     route runs on every normal "Підтвердити і опрацювати" too, and must
+     not silently re-price an order nobody asked to re-price).
 
-     Always goes through computeItemPricingForProduct() (same category →
-     tier → flat priority as cart.php's product_price_prod_simple_in_cart())
-     and skips any item flagged price_manual — see app/api/orders/[id]/
-     items/[itemId]/route.ts's PUT, which sets that flag only when a
-     manager's edit actually changes the stored price.
+     Default: computeItemPricingForProduct() (same category → tier → flat
+     priority as cart.php's product_price_prod_simple_in_cart()) — an
+     item's own category/quantity bulk discount always wins when it
+     qualifies, newDiscountPercent is only ever the FALLBACK for items
+     that don't. Also skips any item flagged price_manual — see
+     app/api/orders/[id]/items/[itemId]/route.ts's PUT, which sets that
+     flag only when a manager's edit actually changes the stored price.
 
-     There used to be a second, "forced" path (forceDiscountPercent, true
-     when a manager typed into "Знижка клієнта, %" themselves, or always
-     for "змінити знижку і надіслати повторно") that applied the typed %%
-     straight to every item, bypassing category/tier entirely —
-     REMOVED (2026-11-03) after order 21526: it treated the client's own
-     rank discount and an item's category bulk discount as the same
-     override-able thing, when they're really two independent axes that
-     are supposed to coexist (category wins when the item's own quantity
-     qualifies; the client %% is only the fallback for items that don't).
-     A 2000-unit line with its own -20%-at-1000 category rule got silently
-     flattened to the order's plain 5% client discount this way — charged
-     12635.06 instead of the invoiced 10955.06. newDiscountPercent now only
-     ever changes the FALLBACK rate; an item's own qualifying category
-     discount always wins regardless, exactly like the normal (non-forced)
-     path already did. A genuine one-off override for one specific line is
-     still price_manual, set directly on that line — never touched here. */
+     forceDiscountPercent — ONLY ever sent by the dedicated "Застосувати
+     примусово знижку" button (orders/[id]/page.tsx's forceApplyDiscount,
+     with its own confirm step) — applies newDiscountPercent straight to
+     EVERY item via computeFlatItemPricing, bypassing category/tier
+     entirely. Deliberately NOT wired into the ordinary "Опрацювати" or
+     "Змінити знижку і надіслати повторно" paths: it used to be (REMOVED
+     2026-11-03, restored the same day as its own separate action) — a
+     manager opened the "Змінити і надіслати повторно" panel only to flip
+     the "Організація (ЄДРПОУ)" checkbox, clicked its one shared button,
+     and that silently force-flattened a 2000-unit line's real
+     -20%-at-1000 category discount down to the order's plain 5% client
+     discount (order 21526: charged 12635.06 instead of the invoiced
+     10955.06) — a side effect nobody intended from an action that had
+     nothing to do with pricing. Forcing a flat %% is a real, legitimate
+     need sometimes, but only as its own deliberate, separately-confirmed
+     action, never a default or a silent side effect of something else. A
+     genuine one-off override for one specific line is still price_manual,
+     set directly on that line — never touched by either branch here. */
   let discountPercent: number | null = null;
   if (typeof body.discountPercent === "number" && Number.isFinite(body.discountPercent)) {
     const newDiscountPercent = body.discountPercent;
+    const forceDiscountPercent = body.forceDiscountPercent === true;
     discountPercent = newDiscountPercent;
     await supabaseServer.from("orders").update({ discount_percent: newDiscountPercent }).eq("id", orderId);
 
     const rate = await getUahRate();
     for (const item of items as { id: number; product: number; quantity: number; price: number; price_base: number; price_manual?: boolean }[]) {
       if (item.price_manual) continue;
-      const pricing = await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
+      const pricing = forceDiscountPercent
+        ? await computeFlatItemPricing(item.product, rate, newDiscountPercent)
+        : await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
       if (!pricing) continue; // product since deleted — leave whatever price the line already has
       const { priceBase, price: newPrice } = pricing;
       if (Math.abs(newPrice - item.price) > 0.001 || Math.abs(item.price_base - priceBase) > 0.001) {
