@@ -591,10 +591,10 @@ export default function OrderDetailPage() {
     if (altPayerOn && !altPayer.name.trim()) { toast.error("Вкажіть щонайменше назву іншого платника"); return; }
     setShowStockConfirm(false);
     const discountPercent = parseFloat(discountInput);
-    await autoProcess(supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined, discountTouched);
+    await autoProcess(supplierOverride, Number.isFinite(discountPercent) ? discountPercent : undefined);
   }
 
-  async function autoProcess(supplier?: "auto" | "1" | "2", discountPercent?: number, forceDiscountPercent?: boolean) {
+  async function autoProcess(supplier?: "auto" | "1" | "2", discountPercent?: number) {
     setProcessing(true);
     setProcessLog(null);
     setStatus("В роботі");
@@ -608,7 +608,11 @@ export default function OrderDetailPage() {
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
           nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
           altPayer: altPayerPayload(),
-          ...(discountPercent !== undefined ? { discountPercent, forceDiscountPercent: !!forceDiscountPercent } : {}),
+          // newDiscountPercent is only ever the FALLBACK rate now (see
+          // process/route.ts's own comment) — an item's own qualifying
+          // category discount always wins regardless of this value, so
+          // there's no separate "force" flag to send anymore.
+          ...(discountPercent !== undefined ? { discountPercent } : {}),
         }),
       });
       const data = await res.json();
@@ -622,20 +626,6 @@ export default function OrderDetailPage() {
     finally  { setProcessing(false); }
   }
 
-  // "Змінити знижку і надіслати повторно" — used once the order already
-  // has an invoice (order.doc_field_1 set): recomputes every active item's
-  // price from its price_base at the new %%, regenerates the invoice, and
-  // resends it with the "Ми перерахували вартість товару..." copy (see
-  // lib/email-templates.ts's "discountChanged" reason) instead of the
-  // normal "Наявність підтверджено" text — then leaves the order at "В
-  // роботі" (awaiting payment), same as first-time processing.
-  //
-  // Always forces the typed %% (forceDiscountPercent: true below) — unlike
-  // the stock-confirm popup's own field, this control has no auto-filled
-  // default to send unexamined; every use of it is a manager deliberately
-  // typing a number and clicking "надіслати", so it wins even over a
-  // category/tier bulk discount, same as a manager typing directly into a
-  // line's own price would.
   // "Перегенерувати документи" on the standalone «Інший платник» panel —
   // store-only (see /api/orders/[id]/alt-payer). The invoice/waybill (their
   // quick-view links, the PDF attachments, the Viber-message doc links) all
@@ -659,6 +649,21 @@ export default function OrderDetailPage() {
     finally { setSavingAltPayer(false); }
   }
 
+  // "Змінити знижку і надіслати повторно" — used once the order already
+  // has an invoice (order.doc_field_1 set): recomputes every active item's
+  // price from its price_base at the new %%, regenerates the invoice, and
+  // resends it with the "Ми перерахували вартість товару..." copy (see
+  // lib/email-templates.ts's "discountChanged" reason) instead of the
+  // normal "Наявність підтверджено" text — then leaves the order at "В
+  // роботі" (awaiting payment), same as first-time processing.
+  //
+  // discountPercent here only sets the FALLBACK rate (same as the
+  // stock-confirm popup's own field) — an item whose own quantity already
+  // qualifies for its category's bulk discount keeps that discount
+  // regardless of what's typed here; see process/route.ts's own comment
+  // for why a flat "force, ignore category" mode used to exist and got
+  // removed (order 21526 charged 12635.06 instead of the invoiced
+  // 10955.06 because of it).
   async function resendWithDiscount() {
     const discountPercent = parseFloat(discountInput);
     if (!Number.isFinite(discountPercent) || discountPercent < 0) { toast.error("Некоректна знижка"); return; }
@@ -670,7 +675,6 @@ export default function OrderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           discountPercent,
-          forceDiscountPercent: true,
           isOrganization: orgCheckbox,
           edrpou: orgCheckbox ? edrpouInput.trim() : undefined,
           nonCashPayment: orgCheckbox ? nonCashCheckbox : undefined,
@@ -1547,6 +1551,19 @@ export default function OrderDetailPage() {
                     // of one cramped row — label/input/%/button now have
                     // room to breathe, and the button goes full-width on
                     // phone.
+                    //
+                    // This whole panel (discount %% + org/non-cash
+                    // checkboxes) shares one button — "Змінити і надіслати
+                    // повторно" resends with whatever's in this %% field
+                    // regardless of why it was opened, including when a
+                    // manager's only actual intent was flipping the org/
+                    // non-cash checkboxes below. That used to matter a lot
+                    // (this field used to FORCE a flat %% onto every item,
+                    // discarding a real category bulk discount — see
+                    // process/route.ts's own comment, order 21526) — now it
+                    // only ever sets the fallback rate, so resending here
+                    // for org-info-only reasons can no longer silently
+                    // overcharge an item that has its own category discount.
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 12.5, color: "var(--text-muted)", flexShrink: 0 }}>Знижка клієнта:</span>
@@ -2165,8 +2182,8 @@ export default function OrderDetailPage() {
               />
               <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                 {discountTouched
-                  ? "Вказано вручну — застосується до ціни кожного товару, навіть якщо категорія/кількість дають власну оптову знижку (крім товарів, чия ціна вже змінена вручну)."
-                  : `Автоматично: знижка категорії/кількості, якщо вона діє для товару в цьому замовленні, інакше знижка групи клієнта (${order.clientDiscountPercent ?? 5}%, за рангом клієнта). Впишіть своє значення, щоб призначити його примусово для всього замовлення.`}
+                  ? "Вказано вручну — застосується як знижка групи клієнта до товарів, для яких не діє власна знижка категорії/кількості (категорія завжди має пріоритет, навіть для цього поля; товари зі вже зміненою вручну ціною теж не чіпаються)."
+                  : `Автоматично: знижка категорії/кількості, якщо вона діє для товару в цьому замовленні, інакше знижка групи клієнта (${order.clientDiscountPercent ?? 5}%, за рангом клієнта). Впишіть своє значення, щоб призначити його як знижку групи клієнта для товарів без власної знижки категорії.`}
               </div>
             </div>
             <label

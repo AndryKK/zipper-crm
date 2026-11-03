@@ -7,7 +7,7 @@ import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
 import { revalidateTag } from "next/cache";
 import type { EmailRenderOptions } from "@/lib/email-templates";
-import { getUahRate, computeItemPricingForProduct, computeFlatItemPricing } from "@/lib/pricing";
+import { getUahRate, computeItemPricingForProduct } from "@/lib/pricing";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -86,41 +86,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
      опрацювати" too, and must not silently re-price an order nobody asked
      to re-price).
 
-     Recomputing used to mean a flat price_base*(1-newDiscountPercent/100)
-     for EVERY item — which silently threw away a category/quantity bulk
-     discount the storefront had correctly applied at checkout (e.g. a
-     -20%-at-1000-units category rule replaced by whatever flat %% this
-     popup defaults to) and clobbered a manager's own manually-typed price
-     just the same. Now goes through computeItemPricingForProduct() (same
-     category → tier → flat priority as cart.php's
-     product_price_prod_simple_in_cart()) and skips any item flagged
-     price_manual — see app/api/orders/[id]/items/[itemId]/route.ts's PUT,
-     which sets that flag only when a manager's edit actually changes the
-     stored price.
+     Always goes through computeItemPricingForProduct() (same category →
+     tier → flat priority as cart.php's product_price_prod_simple_in_cart())
+     and skips any item flagged price_manual — see app/api/orders/[id]/
+     items/[itemId]/route.ts's PUT, which sets that flag only when a
+     manager's edit actually changes the stored price.
 
-     forceDiscountPercent (true only when a manager actually typed into
-     "Знижка клієнта, %" themselves — see discountTouched in
-     orders/[id]/page.tsx, and always true for the dedicated "змінити
-     знижку і надіслати повторно" action) makes this an explicit,
-     deliberate override that wins even over a category/tier bulk
-     discount — computeFlatItemPricing applies newDiscountPercent straight
-     to the product's own price, ignoring category/tier entirely, the
-     same way a manually-typed item price already overrides everything at
-     the single-line level. Omitted/false keeps the default behavior
-     above intact (category/tier always wins when it applies). ─────────── */
+     There used to be a second, "forced" path (forceDiscountPercent, true
+     when a manager typed into "Знижка клієнта, %" themselves, or always
+     for "змінити знижку і надіслати повторно") that applied the typed %%
+     straight to every item, bypassing category/tier entirely —
+     REMOVED (2026-11-03) after order 21526: it treated the client's own
+     rank discount and an item's category bulk discount as the same
+     override-able thing, when they're really two independent axes that
+     are supposed to coexist (category wins when the item's own quantity
+     qualifies; the client %% is only the fallback for items that don't).
+     A 2000-unit line with its own -20%-at-1000 category rule got silently
+     flattened to the order's plain 5% client discount this way — charged
+     12635.06 instead of the invoiced 10955.06. newDiscountPercent now only
+     ever changes the FALLBACK rate; an item's own qualifying category
+     discount always wins regardless, exactly like the normal (non-forced)
+     path already did. A genuine one-off override for one specific line is
+     still price_manual, set directly on that line — never touched here. */
   let discountPercent: number | null = null;
   if (typeof body.discountPercent === "number" && Number.isFinite(body.discountPercent)) {
     const newDiscountPercent = body.discountPercent;
-    const forceDiscountPercent = body.forceDiscountPercent === true;
     discountPercent = newDiscountPercent;
     await supabaseServer.from("orders").update({ discount_percent: newDiscountPercent }).eq("id", orderId);
 
     const rate = await getUahRate();
     for (const item of items as { id: number; product: number; quantity: number; price: number; price_base: number; price_manual?: boolean }[]) {
       if (item.price_manual) continue;
-      const pricing = forceDiscountPercent
-        ? await computeFlatItemPricing(item.product, rate, newDiscountPercent)
-        : await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
+      const pricing = await computeItemPricingForProduct(item.product, item.quantity, rate, newDiscountPercent);
       if (!pricing) continue; // product since deleted — leave whatever price the line already has
       const { priceBase, price: newPrice } = pricing;
       if (Math.abs(newPrice - item.price) > 0.001 || Math.abs(item.price_base - priceBase) > 0.001) {

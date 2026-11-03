@@ -132,34 +132,24 @@ export async function computeItemPricingForProduct(
   return computeItemPricing(price, rate, clientDiscountPercent, saleRaw);
 }
 
-// Ignores any category/quantity bulk-discount rule entirely and applies
-// discountPercent straight to the product's own raw price — the explicit,
-// deliberate override for app/api/orders/[id]/process/route.ts's
-// forceDiscountPercent, used ONLY when a manager actually typed a value
-// into "Знижка клієнта, %" themselves (see discountTouched in
-// orders/[id]/page.tsx). Mirrors how a manually-typed item price
-// (price_manual) already overrides everything at the single-line level —
-// this is the same idea at the whole-order-field level. Never used for
-// the default/automatic recompute path; that one stays on
-// computeItemPricingForProduct so a real category discount is never
-// silently thrown away just because the field happened to have some
-// value in it (see that function's own history in the comment above).
-export async function computeFlatItemPricing(
-  productId: number,
-  rate: number,
-  discountPercent: number
-): Promise<{ priceBase: number; price: number } | null> {
-  const { data: product } = await supabaseServer
-    .from("products").select("price, price_sale, label_action").eq("id", productId).maybeSingle();
-  if (!product) return null;
-  // Same price_sale substitution as computeItemPricing's own comment — an
-  // on-sale product is still on sale even when a manager forces a flat %%,
-  // this only skips the category/tier lookup, not the sale-price base.
-  const saleRaw = Number(product.label_action) === 1 && Number(product.price_sale) > 0
-    ? Number(product.price_sale)
-    : null;
-  return computeItemPricing(Number(product.price) || 0, rate, discountPercent, saleRaw);
-}
+// REMOVED (2026-11-03, order 21526 incident): this used to ignore any
+// category/quantity bulk-discount rule entirely and apply a manager's
+// typed "Знижка клієнта, %" straight to every active item, as an explicit
+// override (app/api/orders/[id]/process/route.ts's forceDiscountPercent).
+// The intent was "same idea as a manually-typed line price (price_manual),
+// just at the whole-order level" — but a client-rank discount and a
+// category bulk discount are NOT the same axis: "Знижка клієнта, %" is
+// who the customer is, the category rule is what this specific item/
+// quantity qualifies for, and they're supposed to coexist (category wins
+// when it applies, the client % is only the fallback). Forcing flattened
+// a 2000-unit line that legitimately qualified for its category's -20%
+// rule down to the order's plain 5% client discount the moment a manager
+// typed/resent a discount %% that had nothing to do with that item —
+// order 21526 charged 12635.06 instead of the invoiced 10955.06 this way.
+// A genuine one-off override for a SPECIFIC line still exists and is the
+// right tool for that: price_manual (set via items/[itemId] PUT), which
+// never gets touched by either path below. Every repricing call site now
+// goes through computeItemPricingForProduct instead, forced or not.
 
 // What the "Знижка клієнта, %" field on the stock-confirmation popup
 // SHOULD show right now — not just the client's rank default, which used
