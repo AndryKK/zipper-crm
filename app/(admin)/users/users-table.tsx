@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Search, Zap, Crown, KeyRound, Loader2, Copy, Check } from "lucide-react";
+import { Search, KeyRound, Loader2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/admin/data-table-controls";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
@@ -17,30 +16,12 @@ type User = {
   phone: string | null;
   rank: number | null;
   addr_delivery: string | null;
-  isPremium: boolean;
 };
 
 interface UsersTableProps {
   users: User[];
   orderCountMap: Record<string, number>;
 }
-
-type Tab = "classic" | "premium";
-
-const TAB_CONFIG: Record<Tab, { label: string; icon: React.ReactNode; color: string; gradient: string }> = {
-  classic: {
-    label: "Zipper Classic",
-    icon: <Zap size={14} />,
-    color: "#2563eb",
-    gradient: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-  },
-  premium: {
-    label: "Zipper Premium",
-    icon: <Crown size={14} />,
-    color: "#d97706",
-    gradient: "linear-gradient(135deg,#f59e0b,#d97706)",
-  },
-};
 
 function UserRow({ u, cnt, resettingId, onReset }: { u: User; cnt: number; resettingId: number | null; onReset: (u: User) => void }) {
   return (
@@ -86,11 +67,6 @@ function UserRow({ u, cnt, resettingId, onReset }: { u: User; cnt: number; reset
 }
 
 export function UsersTable({ users, orderCountMap }: UsersTableProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const activeTab: Tab = searchParams.get("tab") === "premium" ? "premium" : "classic";
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
@@ -130,86 +106,23 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
     }
   }
 
-  function switchTab(tab: Tab) {
-    setQuery("");
-    setPage(1);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", tab);
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
-  const classicUsers = users.filter((u) => !u.isPremium);
-  const premiumUsers = users.filter((u) => u.isPremium);
-
-  const pool = activeTab === "classic" ? classicUsers : premiumUsers;
-
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? pool.filter(
+    ? users.filter(
         (u) =>
           u.login?.toLowerCase().includes(q) ||
           u.person?.toLowerCase().includes(q) ||
           u.phone?.toLowerCase().includes(q) ||
           u.addr_delivery?.toLowerCase().includes(q)
       )
-    : pool;
+    : users;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSlice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const cfg = TAB_CONFIG[activeTab];
-
   return (
     <>
     <div className="crm-card">
-      {/* Tabs — each button was a fixed padding/font size sized for its
-          full "Zipper Classic"/"Zipper Premium" label, which didn't leave
-          room for both side by side on a phone. Below `sm` each takes an
-          equal half of the row (flex-1) at a smaller size instead of
-          overflowing; `sm:` restores the exact original sizing. */}
-      <div
-        className="flex gap-1 sm:gap-1 items-center"
-        style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}
-      >
-        {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, tab]) => {
-          const count = key === "classic" ? classicUsers.length : premiumUsers.length;
-          const isActive = activeTab === key;
-          return (
-            <button
-              key={key}
-              onClick={() => switchTab(key)}
-              className="flex-1 sm:flex-initial min-w-0 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-1.5 rounded-lg px-2 sm:px-3.5 py-1.5 sm:py-[7px] text-[12px] sm:text-[13px]"
-              style={{
-                border: isActive ? "none" : "1px solid var(--border)",
-                background: isActive ? tab.gradient : "transparent",
-                color: isActive ? "#fff" : "var(--text-muted)",
-                fontWeight: isActive ? 700 : 500,
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              {tab.icon}
-              <span className="truncate min-w-0">{tab.label}</span>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "1px 7px",
-                  borderRadius: 20,
-                  background: isActive ? "rgba(255,255,255,0.25)" : "var(--bg-muted, #f3f4f6)",
-                  color: isActive ? "#fff" : "var(--text-muted)",
-                  minWidth: 28,
-                  textAlign: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {count.toLocaleString("uk-UA")}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* Search */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ position: "relative", maxWidth: 340 }}>
@@ -228,7 +141,7 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
             type="text"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            placeholder={`Пошук у ${cfg.label}...`}
+            placeholder="Пошук клієнтів..."
             style={{
               width: "100%",
               paddingLeft: 32,
@@ -246,7 +159,7 @@ export function UsersTable({ users, orderCountMap }: UsersTableProps) {
         </div>
         {q && (
           <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
-            Знайдено: {filtered.length} з {pool.length}
+            Знайдено: {filtered.length} з {users.length}
           </div>
         )}
       </div>

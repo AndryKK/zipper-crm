@@ -130,11 +130,8 @@ export async function GET(req: NextRequest) {
 
   const logins = Array.from(new Set((orderRows || []).map((o: { login: string | null }) => o.login).filter(Boolean)));
   const { data: loginUsers } = logins.length > 0
-    ? await supabaseServer.from("users").select("login, password, phone").in("login", logins)
+    ? await supabaseServer.from("users").select("login, phone").in("login", logins)
     : { data: [] };
-  const premiumLogins = (loginUsers || [])
-    .filter((u: { password: string }) => u.password === "SUPABASE_AUTH")
-    .map((u: { login: string }) => u.login);
   // users.phone (the account's own number) is the actual CLIENT's phone —
   // orders.phone is only ever the shipping recipient's, which can be
   // someone else entirely (same distinction as original_client_name vs
@@ -150,7 +147,6 @@ export async function GET(req: NextRequest) {
   const items = (orderRows || []).map((o: { id: number; login: string | null; phone: string | null }) => ({
     ...o,
     items: activeItems.filter((i: { oid: number }) => i.oid === o.id),
-    isPremiumUser: premiumLogins.includes(o.login ?? ""),
     clientPhone: (o.login && phoneByLogin.get(o.login)) || o.phone,
   }));
 

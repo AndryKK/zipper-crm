@@ -21,7 +21,7 @@ async function fetchAllUsers() {
   while (true) {
     const { data, error } = await supabaseServer
       .from("users")
-      .select("id, login, person, phone, rank, addr_delivery, password")
+      .select("id, login, person, phone, rank, addr_delivery")
       .order("id", { ascending: false })
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) { console.error("[users] fetch error:", error.message); break; }
@@ -30,11 +30,7 @@ async function fetchAllUsers() {
     if (data.length < PAGE) break;
     page++;
   }
-  // `password` is only ever a real hash or the "SUPABASE_AUTH" migration
-  // marker (see UsersTable's classic/premium split) — never displayed, so it
-  // has no reason to leave the server. Collapsed to a boolean here instead
-  // of shipping the raw value down to the browser as page props.
-  return rows.map(({ password, ...u }) => ({ ...u, isPremium: password === "SUPABASE_AUTH" }));
+  return rows;
 }
 
 // user_order_counts (scripts/create-user-order-counts-view.sql) now has

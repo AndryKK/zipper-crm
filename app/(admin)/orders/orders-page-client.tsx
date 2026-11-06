@@ -70,14 +70,17 @@ function FlagIcon({ variant }: { variant: "ua" | "ru" }) {
   );
 }
 
-// The order's own type ('ru'/'uk', set by whichever storefront actually
-// created it) always wins over the customer's account — a customer who also
-// has a Zipper Premium account (password === 'SUPABASE_AUTH') still gets
-// tagged RU/UA for an order that actually came from that site. "Premium"
-// only shows when the order itself carries neither a ru nor uk type (i.e.
-// it really did come from Zipper Premium, not just from a premium customer
-// shopping on the regular sites).
-function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser: boolean }) {
+// The order's own `type` is the only thing this badges on now — each
+// storefront's checkout sets it directly ("ru" -> zipper.in.ua, "uk" ->
+// zipper.com.ua, "premium" -> Zipper Premium, this new storefront's own
+// checkout). Used to also fall back to the customer's account having been
+// registered through Zipper Premium's old Supabase-Auth-based signup
+// (password === 'SUPABASE_AUTH') for orders with neither type — that
+// signup path (and the classic/premium *user* split generally) is gone
+// now that customer accounts are fully shared across all three sites, and
+// Zipper Premium's checkout always stamps "premium" on its own orders
+// directly, so there's nothing left for that fallback to catch.
+function SiteBadge({ type }: { type: string | null }) {
   if (type === "ru") {
     return (
       <span title="Замовлення з zipper.in.ua (RU)" style={sitePillStyle("rgba(190,18,60,0.08)")}>
@@ -92,7 +95,7 @@ function SiteBadge({ type, isPremiumUser }: { type: string | null; isPremiumUser
       </span>
     );
   }
-  if (isPremiumUser) {
+  if (type === "premium") {
     return (
       <span
         title="Замовлення з Zipper Premium"
@@ -148,7 +151,6 @@ interface OrderRow {
   notes: string | null;
   welcome_email_sent_at: string | null;
   items: { price: number; quantity: number }[];
-  isPremiumUser: boolean;
 }
 
 function OrdersPageInner() {
@@ -378,7 +380,7 @@ function OrdersPageInner() {
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <SiteBadge type={order.type} isPremiumUser={order.isPremiumUser} />
+                      <SiteBadge type={order.type} />
                       <span className="font-mono" style={{ fontSize: 13, color: "var(--text-muted)", flexShrink: 0 }}>
                         #{order.id}
                       </span>
@@ -572,7 +574,7 @@ function OrdersPageInner() {
                         )}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <SiteBadge type={order.type} isPremiumUser={order.isPremiumUser} />
+                        <SiteBadge type={order.type} />
                       </td>
                       <td className="text-center">{(order.items || []).length}</td>
                       <td className="font-medium whitespace-nowrap">{orderTotal.toFixed(2)} грн</td>
