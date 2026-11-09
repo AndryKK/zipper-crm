@@ -628,13 +628,18 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
   const baseTotal = items.reduce((s, i) => s + i.sumBase, 0);
   const discountedTotal = baseTotal > orderTotal + 0.001;
 
-  // The struck-through pre-discount price/sum/total lines below used to be
-  // a pale gray (#999 on white rows, #d8dcdd on the tfoot's own #778085
-  // fill) — barely legible on screen and worse once printed: a toner-
-  // saving printer either drops a colored background fill entirely
-  // (leaving faint gray text on plain white) or mutes everything further,
-  // either way making a light color disappear. Solid black (see below)
-  // holds up regardless of how the printer handles the fill.
+  // The struck-through pre-discount price/sum lines (per item, white rows)
+  // used to be a pale #999 — barely legible on screen, worse printed —
+  // now solid black against those rows' own white background. The
+  // footer's struck-through total went through two rounds: #d8dcdd (pale
+  // gray) on the footer's own #778085 (medium gray) fill had no contrast
+  // either way, and switching just the text to black on that SAME gray
+  // fill wasn't enough either (confirmed by report) — #778085 isn't dark
+  // enough for black text to read clearly against. Fixed by making the
+  // fill itself solid black (print-color-adjust below, so this doesn't
+  // silently get dropped on print the way a lighter fill sometimes does)
+  // with white text throughout that row, matching the header row's own
+  // already-high-contrast white-on-solid-color treatment.
   const greetingHtml = opts.greeting
     ? `<p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#1c1d1f;">${welcomeGreetingText(name, order.id).replace(/\n\n/, "<br/><br/>")}</p>`
     : "";
@@ -655,7 +660,7 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
 
   <table cellpadding="0" cellspacing="0" style="width:100%; border-collapse:collapse; margin-top:18px;">
     <thead>
-      <tr style="background:${CONFIRMATION_ACCENT}; color:#fff;">
+      <tr style="background:${CONFIRMATION_ACCENT}; color:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
         <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:4%;"></th>
         <th style="padding:10px 8px; font-size:12px; font-weight:600;" colspan="2">Товар</th>
         <th style="padding:10px 8px; text-align:center; font-size:12px; font-weight:600; width:17%;">Ціна</th>
@@ -665,10 +670,10 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
     </thead>
     <tbody>${confirmationItemRowsHtml(items)}</tbody>
     <tfoot>
-      <tr style="background:#778085; color:#fff;">
+      <tr style="background:#000; color:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
         <td colspan="6" style="padding:14px 18px; text-align:right;">
           <div style="font-weight:700;">Всього по замовленню: ${orderTotal.toFixed(2)} грн</div>
-          ${discountedTotal ? `<div style="font-size:12px; text-decoration:line-through; color:#000;">${baseTotal.toFixed(2)} грн</div>` : ""}
+          ${discountedTotal ? `<div style="font-size:12px; text-decoration:line-through; color:#fff;">${baseTotal.toFixed(2)} грн</div>` : ""}
         </td>
       </tr>
     </tfoot>
