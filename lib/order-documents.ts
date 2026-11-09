@@ -597,12 +597,12 @@ function confirmationItemRowsHtml(items: OrderDocumentItem[]): string {
         </td>
         <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">
           ${item.price.toFixed(2)} грн
-          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.priceBase.toFixed(2)} грн</span>` : ""}
+          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#000;">${item.priceBase.toFixed(2)} грн</span>` : ""}
         </td>
         <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">${item.quantity} ${esc(item.measureLabel)}</td>
         <td style="padding:10px 8px; border-bottom:1px solid #eee; text-align:center; white-space:nowrap; font-size:13px;">
           ${item.sum.toFixed(2)} грн
-          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#999;">${item.sumBase.toFixed(2)} грн</span>` : ""}
+          ${discounted ? `<br/><span style="font-size:11px; text-decoration:line-through; color:#000;">${item.sumBase.toFixed(2)} грн</span>` : ""}
         </td>
       </tr>`;
   }).join("");
@@ -628,6 +628,13 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
   const baseTotal = items.reduce((s, i) => s + i.sumBase, 0);
   const discountedTotal = baseTotal > orderTotal + 0.001;
 
+  // The struck-through pre-discount price/sum/total lines below used to be
+  // a pale gray (#999 on white rows, #d8dcdd on the tfoot's own #778085
+  // fill) — barely legible on screen and worse once printed: a toner-
+  // saving printer either drops a colored background fill entirely
+  // (leaving faint gray text on plain white) or mutes everything further,
+  // either way making a light color disappear. Solid black (see below)
+  // holds up regardless of how the printer handles the fill.
   const greetingHtml = opts.greeting
     ? `<p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#1c1d1f;">${welcomeGreetingText(name, order.id).replace(/\n\n/, "<br/><br/>")}</p>`
     : "";
@@ -661,7 +668,7 @@ export function renderOrderConfirmationHtml(doc: OrderDocumentData, opts: { gree
       <tr style="background:#778085; color:#fff;">
         <td colspan="6" style="padding:14px 18px; text-align:right;">
           <div style="font-weight:700;">Всього по замовленню: ${orderTotal.toFixed(2)} грн</div>
-          ${discountedTotal ? `<div style="font-size:12px; text-decoration:line-through; color:#d8dcdd;">${baseTotal.toFixed(2)} грн</div>` : ""}
+          ${discountedTotal ? `<div style="font-size:12px; text-decoration:line-through; color:#000;">${baseTotal.toFixed(2)} грн</div>` : ""}
         </td>
       </tr>
     </tfoot>
