@@ -3,7 +3,6 @@ import { getDefaultWarehouseId, deductStock, restockStock, restockOrderItems, de
 import { supabaseServer } from "@/lib/supabase";
 import { sendWelcomeEmail, sendNewOrderNotification } from "@/lib/order-emails";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
-import { revalidateTag } from "next/cache";
 import { isShippedOrLater } from "@/lib/order-status";
 
 const CANCELLED_STATUS = "Скасовано";
@@ -56,20 +55,21 @@ export async function POST(req: NextRequest) {
 
   const payload = (await req.json()) as WebhookPayload;
 
-  if (
-    (payload.table === "orders" && (payload.type === "INSERT" || payload.type === "UPDATE")) ||
-    (payload.table === "orders_returns" && payload.type === "INSERT")
-  ) {
-    // Orders arrive/change status from the storefront, and return requests
-    // are inserted directly by the storefront's own return form too — this
-    // webhook (via the pg_net triggers in scripts/_add_orders_returns_insert_webhook.sql)
-    // is the one place both are guaranteed to pass through, so it's where
-    // the sidebar badge counts (see app/(admin)/layout.tsx's
-    // getSidebarCounts) need invalidating for anything that didn't
-    // originate from this app's own API routes (which already call
-    // revalidateTag themselves right after their own writes).
-    revalidateTag("sidebar-counts", { expire: 0 });
-  }
+  // No on-demand revalidateTag("sidebar-counts") here anymore (REMOVED
+  // 2026-11-10, Vercel Hobby ISR-write quota incident) — this fired on
+  // literally EVERY INSERT/UPDATE to `orders` and INSERT to
+  // `orders_returns`, from ANY source (storefront checkout, every CRM
+  // write, Nova Poshta status-sync cron/heartbeat, scripts) — i.e. on
+  // essentially all order-table write traffic across the entire system,
+  // 24/7, completely decoupled from how often anyone actually looks at
+  // the sidebar. Each revalidateTag call is itself a billed cache write
+  // regardless of whether a page view follows it, and this was almost
+  // certainly the dominant contributor to exceeding the 200k/month ISR
+  // write cap. The sidebar badge (new orders / awaiting shipment / new
+  // returns, see app/(admin)/layout.tsx's getSidebarCounts) now relies
+  // solely on its own 120s periodic revalidate — up to ~2 minutes of
+  // staleness on a notification COUNT, never on real order/customer data,
+  // which this app never caches anywhere.
 
   if (payload.table === "orders_returns") {
     return NextResponse.json({ success: true });

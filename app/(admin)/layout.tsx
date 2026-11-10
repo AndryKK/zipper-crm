@@ -59,17 +59,22 @@ const getSidebarCounts = unstable_cache(
     };
   },
   ["admin-sidebar-counts"],
-  // `tags` lets every place that actually changes an order/return status
-  // (see app/api/orders/[id]/{process,confirm-payment,ttn/*}, the returns
-  // routes, the inventory-sync webhook, and the TTN-status cron) call
-  // revalidateTag("sidebar-counts", { expire: 0 }) right after the write,
-  // so the badge is correct on the very next navigation instead of up to
-  // `revalidate` seconds stale. `{ expire: 0 }` (immediate) is used
-  // instead of the "max" stale-while-revalidate profile precisely because
-  // "one visit behind" is the exact staleness this was added to fix. The
-  // 120s `revalidate` below stays as a fallback for any future write path
-  // that forgets to invalidate.
-  { revalidate: 120, tags: ["sidebar-counts"] }
+  // No `tags` anymore (REMOVED 2026-11-10, Vercel Hobby ISR-write quota
+  // incident) — this used to be on-demand invalidated (tags:
+  // ["sidebar-counts"]) from every place that changes an order/return
+  // status (process/confirm-payment/ttn/*, the returns routes) AND from
+  // the inventory-sync webhook, which fired on literally every write to
+  // `orders` from ANY source (storefront checkout included) — i.e.
+  // essentially all order-table activity across the whole system, 24/7,
+  // each call itself a billed cache write regardless of whether anyone
+  // actually viewed the sidebar afterward. That was almost certainly the
+  // dominant contributor to exceeding the 200k/month ISR write cap. Purely
+  // time-based now: the badge is at most 120s stale, which is a
+  // non-issue for a notification count (never for real order data, which
+  // this app never caches anywhere) — see docs/caching-rules.md before
+  // reintroducing any revalidateTag/revalidatePath call anywhere in this
+  // app.
+  { revalidate: 120 }
 );
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

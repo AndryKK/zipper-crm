@@ -3,7 +3,6 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { getDefaultWarehouseId, restockStock } from "@/lib/inventory";
 import { RETURN_STATUS, RETURN_STATUSES } from "@/lib/returns";
-import { revalidateTag } from "next/cache";
 
 // Updates a return's status (and optionally links it to a product/quantity —
 // needed for legacy storefront-submitted returns, which arrive with only a
@@ -70,6 +69,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (body.status !== undefined) revalidateTag("sidebar-counts", { expire: 0 });
+  // No on-demand revalidateTag("sidebar-counts") here anymore — see
+  // app/(admin)/layout.tsx's getSidebarCounts for why; a return status
+  // change is picked up via the sidebar's own 120s periodic refresh.
   return NextResponse.json(updated);
 }

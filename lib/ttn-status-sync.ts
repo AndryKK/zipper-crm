@@ -1,7 +1,6 @@
 import { supabaseServer } from "@/lib/supabase";
 import { npGetStatus } from "@/lib/nova-poshta";
 import { RETURN_STATUS } from "@/lib/returns";
-import { revalidateTag } from "next/cache";
 
 function getSetting(settings: { value: string; text: string }[], key: string) {
   return settings.find((s) => s.value === key)?.text?.trim() ?? "";
@@ -115,10 +114,13 @@ export async function runTtnStatusSync(opts: { onlyOrderId?: string; onlyReturnI
     }
   }
 
-  // Cheap regardless of how often this runs — simpler and just as correct
-  // to invalidate unconditionally here than to track exactly which branch
-  // above actually changed a status.
-  revalidateTag("sidebar-counts", { expire: 0 });
+  // No on-demand revalidateTag("sidebar-counts") here anymore — this used
+  // to fire unconditionally on every run (up to 24x/day via the heartbeat,
+  // see app/api/orders/ttn-heartbeat/route.ts), including the common case
+  // where nothing actually changed. See app/(admin)/layout.tsx's
+  // getSidebarCounts and app/api/webhooks/inventory-sync/route.ts's own
+  // comment for the full picture — the sidebar badge now relies solely on
+  // its own 120s periodic refresh.
 
   return {
     checked: log.length,

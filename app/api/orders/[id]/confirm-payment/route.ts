@@ -5,7 +5,6 @@ import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail, sendPaymentReceivedNotification } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
-import { revalidateTag } from "next/cache";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -80,8 +79,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
 
   /* ── Оновити статус → "Оплачено" ────────────────────────────────── */
+  // No on-demand revalidateTag("sidebar-counts") here anymore — see
+  // app/(admin)/layout.tsx's getSidebarCounts for why; the sidebar badge
+  // picks this up via its own 120s periodic refresh instead.
   await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", orderId);
-  revalidateTag("sidebar-counts", { expire: 0 });
 
   /* ── Внутрішнє сповіщення про оплату ───────────────────────────────
      Independent of the customer email above — must fire regardless of

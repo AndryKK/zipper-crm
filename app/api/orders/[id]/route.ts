@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { resolveLegacyReturns } from "@/lib/returns-resolve";
-import { revalidateTag } from "next/cache";
 import { resolveStorefrontGroups, buildStorefrontProductPath } from "@/lib/products";
 import { getClientDiscountPercent } from "@/lib/pricing";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
@@ -120,13 +119,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq("id", parseInt(id))
     .select("*")
     .single();
-  // This is the generic manual-edit save (the status dropdown + "Зберегти"
-  // button, and advanceStatus() for "Відправлено"/"Завершено") — unlike
-  // process/confirm-payment/ttn/*, it wasn't previously wired to
-  // revalidateTag, so a manual status change here left the sidebar's
-  // "очікують відправку" badge stuck at the old count until the 120s
-  // cache fallback happened to expire.
-  if (body.status !== undefined) revalidateTag("sidebar-counts", { expire: 0 });
+  // No on-demand revalidateTag("sidebar-counts") here anymore — see
+  // app/(admin)/layout.tsx's getSidebarCounts for why; a manual status
+  // change here is picked up via the sidebar's own 120s periodic refresh.
   return NextResponse.json(order);
 }
 

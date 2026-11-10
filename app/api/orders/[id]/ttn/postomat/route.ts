@@ -5,7 +5,6 @@ import { createOrderTtn } from "@/lib/order-ttn";
 import { sendPaymentConfirmedEmail } from "@/lib/order-emails";
 import { isValidEmail } from "@/lib/email";
 import { isGuestCheckoutEmail } from "@/lib/guest-checkout";
-import { revalidateTag } from "next/cache";
 
 type StepStatus = "ok" | "error" | "skipped" | "warn";
 type StepLog = { step: string; status: StepStatus; msg: string; data?: Record<string, unknown> };
@@ -64,8 +63,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // No on-demand revalidateTag("sidebar-counts") here anymore — see
+  // app/(admin)/layout.tsx's getSidebarCounts for why; the sidebar badge
+  // picks this up via its own 120s periodic refresh instead.
   await supabaseServer.from("orders").update({ status: "Оплачено" }).eq("id", orderId);
-  revalidateTag("sidebar-counts", { expire: 0 });
 
   return NextResponse.json({ log, orderId });
 }

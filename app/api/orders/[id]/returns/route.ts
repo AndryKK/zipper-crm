@@ -3,7 +3,6 @@ import { supabaseServer } from "@/lib/supabase";
 import { auth } from "@/lib/auth";
 import { RETURN_STATUS } from "@/lib/returns";
 import { resolveLegacyReturns } from "@/lib/returns-resolve";
-import { revalidateTag } from "next/cache";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -62,6 +61,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  revalidateTag("sidebar-counts", { expire: 0 });
+  // No on-demand revalidateTag("sidebar-counts") here anymore — see
+  // app/(admin)/layout.tsx's getSidebarCounts for why; the sidebar badge
+  // picks this up via its own 120s periodic refresh instead.
   return NextResponse.json(ret);
 }
